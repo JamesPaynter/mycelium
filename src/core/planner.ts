@@ -7,6 +7,7 @@ import fse from "fs-extra";
 import type { ProjectConfig } from "./config.js";
 import { JsonlLogger } from "./logger.js";
 import { orchestratorHome } from "./paths.js";
+import { renderPromptTemplate } from "./prompts.js";
 import { slugify, ensureDir, isoNow } from "./utils.js";
 
 export type PlannedTask = {
@@ -111,13 +112,13 @@ export async function planFromImplementationPlan(args: {
     })
     .join("\n");
 
-  const prompt = buildPlannerPrompt({
-    projectName,
-    repoPath,
-    resourcesBlock,
-    doctor: config.doctor,
-    implementationPlan,
-    codebaseTree,
+  const prompt = await renderPromptTemplate("planner", {
+    project_name: projectName,
+    repo_path: repoPath,
+    resources: resourcesBlock,
+    doctor_command: config.doctor,
+    implementation_plan: implementationPlan,
+    codebase_tree: codebaseTree,
   });
 
   const log = args.log;
@@ -196,58 +197,6 @@ export async function planFromImplementationPlan(args: {
   log?.log({ type: "planner.write.complete", payload: { output_dir: outputDir } });
 
   return parsed;
-}
-
-function buildPlannerPrompt(args: {
-  projectName: string;
-  repoPath: string;
-  resourcesBlock: string;
-  doctor: string;
-  implementationPlan: string;
-  codebaseTree: string;
-}): string {
-  return `You are a planning agent. Your job is to convert an implementation plan into structured, executable tickets.
-
-## Context
-
-Project: ${args.projectName}
-Repository: ${args.repoPath}
-
-## Project Resources
-
-This project has the following resources. Each ticket must declare which resources it reads and writes:
-
-${args.resourcesBlock}
-
-## Your Task
-
-Given the implementation plan below, output a JSON object with this exact schema:
-
-{\n  "tasks": [\n    {\n      "id": "001",\n      "name": "short-kebab-case-name",\n      "description": "One sentence description",\n      "estimated_minutes": 15,\n      "locks": {\n        "reads": ["resource-name"],\n        "writes": ["resource-name"]\n      },\n      "files": {\n        "reads": ["path/to/file"],\n        "writes": ["path/to/file"]\n      },\n      "affected_tests": ["path/to/test"],\n      "verify": {\n        "doctor": "${args.doctor}",\n        "fast": "pytest path/to/specific_test.py -x"\n      },\n      "spec": "Full markdown specification for this task..."\n    }\n  ]\n}
-
-## Rules
-
-1. Task size: Each task should be completable in 15-60 minutes. If larger, split it.
-2. Independence: Each task must be an independent unit of work.
-3. File declarations: Declare ALL files the task reads, including imports and dependencies.
-4. Resource locks: Map file paths to the project resources. When in doubt, be conservative.
-5. Task ordering: Include dependencies via a "dependencies" array when ordering matters.
-6. Spec detail: Include exact file paths, symbol names, patterns to follow, edge cases, and verification.
-7. Test coverage: Identify affected tests. If new tests are needed, specify them.
-
-## Implementation Plan
-
-<implementation-plan>
-${args.implementationPlan}
-</implementation-plan>
-
-## Current Codebase Structure
-
-<codebase>
-${args.codebaseTree}
-</codebase>
-
-Output only valid JSON. No explanation or commentary.`;
 }
 
 async function writePlannerCodexConfig(filePath: string, model: string): Promise<void> {

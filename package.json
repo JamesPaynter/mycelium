@@ -8,6 +8,13 @@
   "bin": {
     "task-orchestrator": "./bin/task-orchestrator"
   },
+  "files": [
+    "dist/**/*",
+    "bin/task-orchestrator",
+    "templates/**/*",
+    "README.md",
+    "LICENSE"
+  ],
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "build:worker": "tsc -p tsconfig.json",

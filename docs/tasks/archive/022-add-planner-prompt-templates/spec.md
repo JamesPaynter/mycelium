@@ -2,9 +2,9 @@
 
 ## Status
 - [x] Scoped
-- [ ] In Progress
-- [ ] Implemented
-- [ ] Verified
+- [x] In Progress
+- [x] Implemented
+- [x] Verified
 
 ## Summary
 Add prompt templates for planner and future validators with consistent structure and schema guidance.
@@ -27,9 +27,9 @@ Add prompt templates for planner and future validators with consistent structure
 - Rollback: Inline prompts in code while templates are stabilized.
 
 ## Implementation Checklist
-- [ ] Create templates with placeholders: project_name, repo_path, resources, implementation_plan, etc.
-- [ ] Add helper to load template files and substitute placeholders safely.
-- [ ] Ensure templates are included in npm package (files field) if publishing.
+- [x] Create templates with placeholders: project_name, repo_path, resources, implementation_plan, etc.
+- [x] Add helper to load template files and substitute placeholders safely.
+- [x] Ensure templates are included in npm package (files field) if publishing.
 
 ## Verification
 - `npm test`
