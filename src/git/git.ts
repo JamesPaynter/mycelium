@@ -50,6 +50,16 @@ export async function headSha(cwd: string): Promise<string> {
   return res.stdout.trim();
 }
 
+export async function getRemoteUrl(cwd: string, remote = "origin"): Promise<string | null> {
+  try {
+    const res = await git(cwd, ["config", "--get", `remote.${remote}.url`]);
+    const url = res.stdout.trim();
+    return url.length > 0 ? url : null;
+  } catch {
+    return null;
+  }
+}
+
 export async function checkout(cwd: string, branch: string): Promise<void> {
   await git(cwd, ["checkout", branch]);
 }
@@ -84,4 +94,13 @@ export async function fetchRemote(cwd: string, name: string, refspec: string): P
 
 export async function deleteLocalBranch(cwd: string, branch: string): Promise<void> {
   await git(cwd, ["branch", "-D", branch]);
+}
+
+export async function branchExists(cwd: string, branch: string): Promise<boolean> {
+  try {
+    await git(cwd, ["rev-parse", "--verify", branch]);
+    return true;
+  } catch {
+    return false;
+  }
 }

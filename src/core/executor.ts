@@ -14,7 +14,6 @@ import {
 } from "../docker/docker.js";
 import { buildWorkerImage } from "../docker/image.js";
 import { attachLineStream } from "../docker/streams.js";
-import { cloneRepo, createBranchInClone, checkoutBranchInClone } from "../git/branches.js";
 import {
   ensureCleanWorkingTree,
   checkout,
@@ -48,6 +47,7 @@ import {
   type RunState,
 } from "./state.js";
 import { ensureDir, defaultRunId, isoNow } from "./utils.js";
+import { prepareTaskWorkspace } from "./workspaces.js";
 
 export type RunOptions = {
   runId?: string;
@@ -234,11 +234,10 @@ export async function runProject(
         const taskSlug = task.slug;
         const branchName = `${config.task_branch_prefix}${taskId}-${taskSlug}`;
 
-        const workspace = taskWorkspaceDir(projectName, runId, taskId, taskSlug);
+        const workspace = taskWorkspaceDir(projectName, runId, taskId);
         const tLogsDir = taskLogsDir(projectName, runId, taskId, taskSlug);
         const codexHome = workerCodexHomeDir(projectName, runId, taskId, taskSlug);
 
-        await ensureDir(workspace);
         await ensureDir(tLogsDir);
         await ensureDir(codexHome);
         await writeCodexConfig(path.join(codexHome, "config.toml"), {
@@ -248,17 +247,23 @@ export async function runProject(
           sandboxMode: "danger-full-access",
         });
 
-        // Clone repo into workspace
         orchLog.log({
-          type: "workspace.clone.start",
+          type: "workspace.prepare.start",
           taskId,
           payload: { workspace },
         });
-        await cloneRepo({ sourceRepo: repoPath, destDir: workspace });
-        orchLog.log({
-          type: "workspace.clone.complete",
+        const workspacePrep = await prepareTaskWorkspace({
+          projectName,
+          runId,
           taskId,
-          payload: { workspace },
+          repoPath,
+          mainBranch: config.main_branch,
+          taskBranch: branchName,
+        });
+        orchLog.log({
+          type: "workspace.prepare.complete",
+          taskId,
+          payload: { workspace, created: workspacePrep.created },
         });
 
         // Ensure tasks directory is available inside the clone (copy from integration repo).
@@ -266,10 +271,6 @@ export async function runProject(
         const destTasksDir = path.join(workspace, config.tasks_dir);
         await fse.remove(destTasksDir);
         await fse.copy(srcTasksDir, destTasksDir);
-
-        // Checkout integration branch and create task branch.
-        await checkoutBranchInClone(workspace, config.main_branch);
-        await createBranchInClone(workspace, branchName, config.main_branch);
 
         // Prepare per-task logger.
         const taskEvents = new JsonlLogger(

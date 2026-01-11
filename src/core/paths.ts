@@ -43,6 +43,14 @@ export function runLogsDir(projectName: string, runId: string): string {
   return path.join(logsBaseDir(projectName), `run-${runId}`);
 }
 
+export function workspacesRoot(): string {
+  return path.join(orchestratorHome(), "workspaces");
+}
+
+export function projectWorkspacesDir(projectName: string): string {
+  return path.join(workspacesRoot(), projectName);
+}
+
 export function orchestratorLogPath(projectName: string, runId: string): string {
   return path.join(runLogsDir(projectName, runId), "orchestrator.jsonl");
 }
@@ -52,16 +60,11 @@ export function plannerLogPath(projectName: string, runId: string): string {
 }
 
 export function runWorkspaceDir(projectName: string, runId: string): string {
-  return path.join(orchestratorHome(), "workspaces", projectName, `run-${runId}`);
+  return path.join(projectWorkspacesDir(projectName), `run-${runId}`);
 }
 
-export function taskWorkspaceDir(
-  projectName: string,
-  runId: string,
-  taskId: string,
-  taskSlug: string,
-): string {
-  return path.join(runWorkspaceDir(projectName, runId), "tasks", `${taskId}-${taskSlug}`);
+export function taskWorkspaceDir(projectName: string, runId: string, taskId: string): string {
+  return path.join(runWorkspaceDir(projectName, runId), `task-${taskId}`);
 }
 
 export function taskLogsDir(
