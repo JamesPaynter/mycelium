@@ -1,0 +1,53 @@
+# Example project configuration
+
+# Path to the target repo on your machine
+repo_path: /absolute/path/to/your/repo
+
+# Integration branch the orchestrator merges into
+main_branch: development-codex
+
+# Task branches are created as: <task_branch_prefix><id>-<name>
+task_branch_prefix: agent/
+
+# Limits
+max_parallel: 3
+max_retries: 20
+
+doctor: "npm test"
+doctor_timeout: 900
+
+# Optional bootstrap commands executed inside each worker container before Codex runs.
+# Use this to install dependencies.
+bootstrap:
+  - npm ci
+
+# Define abstract resources for safe scheduling
+resources:
+  - name: backend
+    description: Backend code
+    paths:
+      - src/server/*
+  - name: frontend
+    description: Frontend code
+    paths:
+      - src/client/*
+  - name: build-system
+    description: Build configuration
+    paths:
+      - package.json
+      - package-lock.json
+      - pnpm-lock.yaml
+      - yarn.lock
+      - Dockerfile*
+
+planner:
+  provider: codex
+  model: o3
+
+worker:
+  model: gpt-5.1-codex-max
+
+docker:
+  image: task-orchestrator-worker:latest
+  dockerfile: templates/worker.Dockerfile
+  build_context: .

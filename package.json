@@ -1,0 +1,35 @@
+{
+  "name": "task-orchestrator",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Autonomous task orchestrator for long-running Codex-powered software delivery",
+  "license": "Apache-2.0",
+  "bin": {
+    "task-orchestrator": "./bin/task-orchestrator"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "dev": "tsx src/main.ts",
+    "docker:build-worker": "docker build -f templates/worker.Dockerfile -t task-orchestrator-worker:latest .",
+    "test": "node --test"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.71.2",
+    "@openai/codex-sdk": "^0.77.0",
+    "commander": "^12.1.0",
+    "dockerode": "^4.0.2",
+    "execa": "^9.5.0",
+    "fast-glob": "^3.3.2",
+    "fs-extra": "^11.2.0",
+    "handlebars": "^4.7.8",
+    "js-yaml": "^4.1.0",
+    "openai": "^6.16.0",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.30",
+    "tsx": "^4.15.0",
+    "typescript": "^5.4.5"
+  }
+}

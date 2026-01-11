@@ -1,0 +1,8 @@
+#!/usr/bin/env node
+
+import { main } from "../dist/src/main.js";
+
+main(process.argv).catch((err) => {
+  console.error(err);
+  process.exit(1);
+});

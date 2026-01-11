@@ -1,0 +1,10 @@
+# Codex configuration used inside the worker container.
+#
+# NOTE: The orchestrator writes a per-task config.toml at runtime based on
+# the configured model, so this file is mainly reference.
+
+model = "gpt-5.1-codex-max"
+approval_policy = "never"
+# In Docker we typically rely on the container for isolation.
+# Use with care.
+sandbox_mode = "danger-full-access"

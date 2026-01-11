@@ -1,0 +1,14 @@
+node_modules/
+dist/
+.DS_Store
+
+# Orchestrator runtime data
+.state/
+logs/
+workspaces/
+
+# Project/task artifacts
+.tasks/
+
+# Env
+.env

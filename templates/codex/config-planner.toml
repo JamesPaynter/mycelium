@@ -1,0 +1,7 @@
+# Codex configuration for the planner phase.
+#
+# Goal: allow codebase reading but prevent repo modifications.
+
+model = "o3"
+approval_policy = "never"
+sandbox_mode = "read-only"

@@ -1,0 +1,45 @@
+# 018 — Implement logs command
+
+## Status
+- [x] Scoped
+- [ ] In Progress
+- [ ] Implemented
+- [ ] Verified
+
+## Summary
+Provide basic log viewing and grep-style searching across JSONL log files.
+
+## Model & Effort
+- Effort: **M**
+- Tier: **mini**
+
+## Files Changing
+| file | change type | description |
+|---|---|---|
+| src/cli/logs.ts | modify | Implement logs subcommands: query, search, doctor (MVP: raw). |
+| src/core/log-query.ts | add | File scanning helpers (tail, filter by task/type). |
+| src/core/paths.ts | modify | Add helpers for per-run log directory discovery. |
+| src/core/log-query.test.ts | add | Unit tests for search and filter behavior. |
+
+## Blast Radius
+- Scope: Debugging workflows; read-only with respect to execution.
+- Risk level: Low — file reading only.
+- Rollback: Fallback to printing file paths and instructing users to use grep/jq.
+
+## Implementation Checklist
+- [ ] Implement `logs --follow` tailing orchestrator.jsonl (best-effort).
+- [ ] Implement `logs query --task <id>`: print matching lines from task events.
+- [ ] Implement `logs search <pattern>`: grep across run log tree.
+- [ ] Ensure commands work cross-platform where possible (Node fs).
+
+## Verification
+- `npm test`
+- `Manual: create sample jsonl files and confirm `logs search` finds matches.`
+
+## Dependencies
+### Blocks
+- 027
+
+### Blocked by
+- 008
+- 009
