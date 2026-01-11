@@ -4,6 +4,8 @@ import { z } from "zod";
 // SCHEMAS
 // =============================================================================
 
+const LlmProviderSchema = z.enum(["openai", "anthropic", "codex"]);
+
 const ResourceSchema = z
   .object({
     name: z.string().min(1),
@@ -14,9 +16,10 @@ const ResourceSchema = z
 
 const PlannerSchema = z
   .object({
-    provider: z.enum(["openai", "anthropic", "codex"]).default("codex"),
+    provider: LlmProviderSchema.default("codex"),
     model: z.string().min(1),
     temperature: z.number().min(0).max(2).optional(),
+    timeout_seconds: z.number().int().positive().optional(),
   })
   .strict();
 
@@ -30,8 +33,10 @@ const WorkerSchema = z
 const ValidatorSchema = z
   .object({
     enabled: z.boolean().default(true),
-    provider: z.enum(["openai", "anthropic", "codex"]).default("openai"),
+    provider: LlmProviderSchema.default("openai"),
     model: z.string().min(1),
+    temperature: z.number().min(0).max(2).optional(),
+    timeout_seconds: z.number().int().positive().optional(),
   })
   .strict();
 
@@ -74,4 +79,10 @@ export const ProjectConfigSchema = z
   })
   .strict();
 
+export type LlmProvider = z.infer<typeof LlmProviderSchema>;
+export type PlannerConfig = z.infer<typeof PlannerSchema>;
+export type WorkerConfig = z.infer<typeof WorkerSchema>;
+export type ValidatorConfig = z.infer<typeof ValidatorSchema>;
+export type ResourceConfig = z.infer<typeof ResourceSchema>;
+export type DockerConfig = z.infer<typeof DockerSchema>;
 export type ProjectConfig = z.infer<typeof ProjectConfigSchema>;

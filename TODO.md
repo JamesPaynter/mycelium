@@ -20,7 +20,7 @@
 - [x] [018 - Implement logs command](docs/tasks/archive/018-implement-logs-command/spec.md) (Effort <M>, Tier <mini>)
 - [x] [019 - Implement clean command](docs/tasks/archive/019-implement-clean-command/spec.md) (Effort <M>, Tier <mini>)
 - [x] [020 - Add worker image templates](docs/tasks/active/020-add-worker-image-templates/spec.md) (Effort <S>, Tier <mini>)
-- [ ] [021 - Implement LLM client abstraction](docs/tasks/active/021-implement-llm-client-abstraction/spec.md) (Effort <M>, Tier <standard>)
+- [x] [021 - Implement LLM client abstraction](docs/tasks/archive/021-implement-llm-client-abstraction/spec.md) (Effort <M>, Tier <standard>)
 - [ ] [022 - Add planner prompt templates](docs/tasks/active/022-add-planner-prompt-templates/spec.md) (Effort <S>, Tier <standard>)
 - [ ] [023 - Implement plan command](docs/tasks/active/023-implement-plan-command/spec.md) (Effort <L>, Tier <standard>)
 - [ ] [024 - Document MVP limitations](docs/tasks/active/024-document-mvp-limitations/spec.md) (Effort <XS>, Tier <mini>)

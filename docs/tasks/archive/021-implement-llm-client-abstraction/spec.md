@@ -2,9 +2,9 @@
 
 ## Status
 - [x] Scoped
-- [ ] In Progress
-- [ ] Implemented
-- [ ] Verified
+- [x] In Progress
+- [x] Implemented
+- [x] Verified
 
 ## Summary
 Introduce a provider-agnostic LLM interface used by planner and future validators.
@@ -27,10 +27,10 @@ Introduce a provider-agnostic LLM interface used by planner and future validator
 - Rollback: Keep LLM integration behind a feature flag; fallback to stubbed planner output.
 
 ## Implementation Checklist
-- [ ] Define client interface: complete(prompt, schema?, temperature?, timeout?).
-- [ ] Add OpenAI client with API key from env and request retries/backoff.
-- [ ] Ensure deterministic mode available (temperature=0) for validators.
-- [ ] Add tests for request shaping and error mapping.
+- [x] Define client interface: complete(prompt, schema?, temperature?, timeout?).
+- [x] Add OpenAI client with API key from env and request retries/backoff.
+- [x] Ensure deterministic mode available (temperature=0) for validators.
+- [x] Add tests for request shaping and error mapping.
 
 ## Verification
 - `npm test`
