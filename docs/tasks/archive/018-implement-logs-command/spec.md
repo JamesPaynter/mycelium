@@ -2,9 +2,9 @@
 
 ## Status
 - [x] Scoped
-- [ ] In Progress
-- [ ] Implemented
-- [ ] Verified
+- [x] In Progress
+- [x] Implemented
+- [x] Verified
 
 ## Summary
 Provide basic log viewing and grep-style searching across JSONL log files.
@@ -27,10 +27,10 @@ Provide basic log viewing and grep-style searching across JSONL log files.
 - Rollback: Fallback to printing file paths and instructing users to use grep/jq.
 
 ## Implementation Checklist
-- [ ] Implement `logs --follow` tailing orchestrator.jsonl (best-effort).
-- [ ] Implement `logs query --task <id>`: print matching lines from task events.
-- [ ] Implement `logs search <pattern>`: grep across run log tree.
-- [ ] Ensure commands work cross-platform where possible (Node fs).
+- [x] Implement `logs --follow` tailing orchestrator.jsonl (best-effort).
+- [x] Implement `logs query --task <id>`: print matching lines from task events.
+- [x] Implement `logs search <pattern>`: grep across run log tree.
+- [x] Ensure commands work cross-platform where possible (Node fs).
 
 ## Verification
 - `npm test`

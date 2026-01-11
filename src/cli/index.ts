@@ -4,7 +4,7 @@ import { loadProjectConfig } from "../core/config-loader.js";
 import { projectConfigPath } from "../core/paths.js";
 
 import { cleanCommand } from "./clean.js";
-import { logsCommand } from "./logs.js";
+import { registerLogsCommand } from "./logs.js";
 import { planProject } from "./plan.js";
 import { resumeCommand } from "./resume.js";
 import { runCommand } from "./run.js";
@@ -22,6 +22,8 @@ export function buildCli(): Command {
       "Override project config path (defaults to ~/.task-orchestrator/projects/<project>.yaml)",
     )
     .option("-v, --verbose", "Verbose output", false);
+
+  registerLogsCommand(program);
 
   program
     .command("plan")
@@ -97,25 +99,6 @@ export function buildCli(): Command {
       const configPath = globals.config ?? projectConfigPath(opts.project);
       const cfg = loadProjectConfig(configPath);
       await statusCommand(opts.project, cfg, { runId: opts.runId });
-    });
-
-  program
-    .command("logs")
-    .requiredOption("--project <name>", "Project name")
-    .option("--run-id <id>", "Run ID (default: latest)")
-    .option("--task <id>", "Task ID")
-    .option("--follow", "Tail/follow logs", false)
-    .option("--search <pattern>", "Search for a string")
-    .action(async (opts) => {
-      const globals = program.opts();
-      const configPath = globals.config ?? projectConfigPath(opts.project);
-      const cfg = loadProjectConfig(configPath);
-      await logsCommand(opts.project, cfg, {
-        runId: opts.runId,
-        taskId: opts.task,
-        follow: opts.follow,
-        search: opts.search,
-      });
     });
 
   program

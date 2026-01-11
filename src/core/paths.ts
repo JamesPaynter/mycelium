@@ -1,3 +1,4 @@
+import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
@@ -41,6 +42,38 @@ export function runStateTempPath(projectName: string, runId: string): string {
 
 export function runLogsDir(projectName: string, runId: string): string {
   return path.join(logsBaseDir(projectName), `run-${runId}`);
+}
+
+export function resolveRunLogsDir(
+  projectName: string,
+  runId?: string,
+): { runId: string; dir: string } | null {
+  const base = logsBaseDir(projectName);
+  if (!fs.existsSync(base)) return null;
+
+  if (runId) {
+    const dir = path.join(base, `run-${runId}`);
+    return fs.existsSync(dir) && fs.statSync(dir).isDirectory() ? { runId, dir } : null;
+  }
+
+  const runDirs = fs
+    .readdirSync(base, { withFileTypes: true })
+    .filter((entry) => entry.isDirectory() && entry.name.startsWith("run-"));
+
+  if (runDirs.length === 0) {
+    return null;
+  }
+
+  const withMtime = runDirs
+    .map((entry) => {
+      const dir = path.join(base, entry.name);
+      const stat = fs.statSync(dir);
+      return { dir, runId: entry.name.replace(/^run-/, ""), mtimeMs: stat.mtimeMs };
+    })
+    .sort((a, b) => b.mtimeMs - a.mtimeMs);
+
+  const latest = withMtime[0];
+  return { runId: latest.runId, dir: latest.dir };
 }
 
 export function workspacesRoot(): string {
