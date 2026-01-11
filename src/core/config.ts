@@ -60,7 +60,7 @@ export const ProjectConfigSchema = z
 
     // Optional: run once in the worker container before Codex starts.
     // Example: ["npm ci", "npm test -- --help"]
-    bootstrap: z.array(z.string()).optional(),
+    bootstrap: z.array(z.string()).default([]),
 
     resources: z.array(ResourceSchema).min(1),
 

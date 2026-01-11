@@ -2,9 +2,9 @@
 
 ## Status
 - [x] Scoped
-- [ ] In Progress
-- [ ] Implemented
-- [ ] Verified
+- [x] In Progress
+- [x] Implemented
+- [x] Verified
 
 ## Summary
 Run configured bootstrap commands inside each container before starting the worker.
@@ -27,9 +27,9 @@ Run configured bootstrap commands inside each container before starting the work
 - Rollback: Disable bootstrap (empty list) and rely on prebuilt worker images.
 
 ## Implementation Checklist
-- [ ] Add config support for bootstrap array of commands.
-- [ ] Run bootstrap sequentially; stop early on failure and mark task failed.
-- [ ] Log each command start/finish events with truncated output.
+- [x] Add config support for bootstrap array of commands.
+- [x] Run bootstrap sequentially; stop early on failure and mark task failed.
+- [x] Log each command start/finish events with truncated output.
 
 ## Verification
 - `npm test`

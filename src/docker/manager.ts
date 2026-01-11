@@ -112,12 +112,15 @@ export class DockerManager {
 
   async execInContainer(
     container: Docker.Container,
-    command: string[],
+    command: string[] | string,
     opts: ExecOptions = {},
   ): Promise<ExecResult> {
+    const cmdArray = Array.isArray(command) ? command : ["sh", "-c", command];
+    const cmdLabel = Array.isArray(command) ? command.join(" ") : command;
+
     try {
       const exec = await container.exec({
-        Cmd: command,
+        Cmd: cmdArray,
         Env: normalizeEnv(opts.env),
         AttachStdout: true,
         AttachStderr: true,
@@ -143,7 +146,7 @@ export class DockerManager {
       return { exitCode, stdout: stdoutText, stderr: stderrText };
     } catch (err: any) {
       throw new DockerError(
-        `Failed to exec in container: ${err?.message ?? String(err)}`,
+        `Failed to exec in container (${cmdLabel}): ${err?.message ?? String(err)}`,
         err,
       );
     }

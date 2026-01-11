@@ -315,7 +315,8 @@ export async function runProject(
             DOCTOR_CMD: task.manifest.verify?.doctor ?? config.doctor,
             DOCTOR_TIMEOUT: config.doctor_timeout ? String(config.doctor_timeout) : undefined,
             MAX_RETRIES: String(config.max_retries),
-            BOOTSTRAP_CMDS: config.bootstrap ? JSON.stringify(config.bootstrap) : undefined,
+            BOOTSTRAP_CMDS:
+              config.bootstrap.length > 0 ? JSON.stringify(config.bootstrap) : undefined,
             CODEX_MODEL: config.worker.model,
             CODEX_HOME: "/codex-home",
             RUN_LOGS_DIR: "/run-logs",

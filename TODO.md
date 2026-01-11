@@ -12,7 +12,7 @@
 - [x] [010 - Implement workspace manager](docs/tasks/archive/010-implement-workspace-manager/spec.md) (Effort <M>, Tier <mini>)
 - [x] [011 - Implement git branch and merge](docs/tasks/archive/011-implement-git-branch-and-merge/spec.md) (Effort <M>, Tier <mini>)
 - [x] [012 - Implement Docker manager](docs/tasks/archive/012-implement-docker-manager/spec.md) (Effort <L>, Tier <mini>)
-- [ ] [013 - Implement bootstrap runner](docs/tasks/active/013-implement-bootstrap-runner/spec.md) (Effort <S>, Tier <mini>)
+- [x] [013 - Implement bootstrap runner](docs/tasks/archive/013-implement-bootstrap-runner/spec.md) (Effort <S>, Tier <mini>)
 - [ ] [014 - Implement worker loop](docs/tasks/active/014-implement-worker-loop/spec.md) (Effort <L>, Tier <mini>)
 - [ ] [015 - Wire run command](docs/tasks/active/015-wire-run-command/spec.md) (Effort <L>, Tier <mini>)
 - [ ] [016 - Implement resume command](docs/tasks/active/016-implement-resume-command/spec.md) (Effort <M>, Tier <mini>)
