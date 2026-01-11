@@ -2,9 +2,9 @@
 
 ## Status
 - [x] Scoped
-- [ ] In Progress
-- [ ] Implemented
-- [ ] Verified
+- [x] In Progress
+- [x] Implemented
+- [x] Verified
 
 ## Summary
 Persist run state to disk for crash recovery (Level 1 resumability).
@@ -27,10 +27,10 @@ Persist run state to disk for crash recovery (Level 1 resumability).
 - Rollback: Disable resume; run-only mode with ephemeral state.
 
 ## Implementation Checklist
-- [ ] Define RunState per spec (run_id, project, status, batches, tasks map).
-- [ ] Implement state transitions: start run, start batch, task running/complete/failed, batch complete.
-- [ ] Persist state after each meaningful transition using atomic write pattern.
-- [ ] Implement 'Level 1' recovery semantics: on resume, running -> pending.
+- [x] Define RunState per spec (run_id, project, status, batches, tasks map).
+- [x] Implement state transitions: start run, start batch, task running/complete/failed, batch complete.
+- [x] Persist state after each meaningful transition using atomic write pattern.
+- [x] Implement 'Level 1' recovery semantics: on resume, running -> pending.
 
 ## Verification
 - `npm test`

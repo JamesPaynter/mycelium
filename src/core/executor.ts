@@ -31,15 +31,23 @@ import type { TaskSpec } from "./task-manifest.js";
 import {
   orchestratorHome,
   orchestratorLogPath,
-  runStatePath,
   taskEventsLogPath,
   taskLogsDir,
   taskWorkspaceDir,
   workerCodexHomeDir,
 } from "./paths.js";
 import { buildGreedyBatch, topologicalReady } from "./scheduler.js";
-import { createRunState, saveRunState, loadRunState, type RunState } from "./state.js";
-import { ensureDir, defaultRunId, isoNow, pathExists } from "./utils.js";
+import { StateStore } from "./state-store.js";
+import {
+  completeBatch,
+  createRunState,
+  markTaskComplete,
+  markTaskFailed,
+  resetRunningTasks,
+  startBatch,
+  type RunState,
+} from "./state.js";
+import { ensureDir, defaultRunId, isoNow } from "./utils.js";
 
 export type RunOptions = {
   runId?: string;
@@ -63,7 +71,7 @@ export async function runProject(
 
   // Prepare directories
   await ensureDir(orchestratorHome());
-  const statePath = runStatePath(projectName, runId);
+  const stateStore = new StateStore(projectName, runId);
   const orchLog = new JsonlLogger(orchestratorLogPath(projectName, runId), { runId });
 
   orchLog.log({
@@ -132,8 +140,8 @@ export async function runProject(
 
   // Create or resume run state
   let state: RunState;
-  if (await pathExists(statePath)) {
-    state = await loadRunState(statePath);
+  if (await stateStore.exists()) {
+    state = await stateStore.load();
     orchLog.log({ type: "run.resume", payload: { status: state.status } });
     // If a previous run was marked complete/failed, we keep it immutable unless the user
     // explicitly changes the run ID.
@@ -143,27 +151,14 @@ export async function runProject(
       return { runId, state };
     }
 
-    // Best-effort crash recovery:
-    // - Treat previously "running" tasks as "pending" again (we don't attempt to
-    //   reattach to old containers in this MVP implementation).
-    // - Ensure any newly added tasks appear in state.
-    for (const [_id, tState] of Object.entries(state.tasks)) {
-      if (tState.status === "running") {
-        tState.status = "pending";
-        tState.container_id = undefined;
-        tState.branch = undefined;
-        tState.workspace = undefined;
-        tState.logs_dir = undefined;
-        tState.started_at = undefined;
-        tState.last_error = "Recovered from crash: previous status was running";
-      }
-    }
+    // Level 1 recovery: rerun any tasks that were in-flight.
+    resetRunningTasks(state);
     for (const t of tasks) {
       if (!state.tasks[t.manifest.id]) {
         state.tasks[t.manifest.id] = { status: "pending", attempts: 0 };
       }
     }
-    await saveRunState(statePath, state);
+    await stateStore.save(state);
   } else {
     state = createRunState({
       runId,
@@ -172,7 +167,7 @@ export async function runProject(
       mainBranch: config.main_branch,
       taskIds: tasks.map((t) => t.manifest.id),
     });
-    await saveRunState(statePath, state);
+    await stateStore.save(state);
   }
 
   // Main loop
@@ -201,7 +196,7 @@ export async function runProject(
         },
       });
       state.status = "failed";
-      await saveRunState(statePath, state);
+      await stateStore.save(state);
       break;
     }
 
@@ -209,21 +204,9 @@ export async function runProject(
     const { batch } = buildGreedyBatch(ready, maxParallel);
 
     const batchTaskIds = batch.map((t) => t.manifest.id);
-    state.batches.push({
-      batch_id: batchId,
-      status: "running",
-      tasks: batchTaskIds,
-      started_at: isoNow(),
-    });
-    for (const t of batch) {
-      state.tasks[t.manifest.id] = {
-        ...state.tasks[t.manifest.id],
-        status: "running",
-        batch_id: batchId,
-        started_at: isoNow(),
-      };
-    }
-    await saveRunState(statePath, state);
+    const startedAt = isoNow();
+    startBatch(state, batchId, batchTaskIds, startedAt);
+    await stateStore.save(state);
 
     orchLog.log({
       type: "batch.start",
@@ -240,7 +223,7 @@ export async function runProject(
       }
       state.batches[state.batches.length - 1].status = "complete";
       state.batches[state.batches.length - 1].completed_at = isoNow();
-      await saveRunState(statePath, state);
+      await stateStore.save(state);
       continue;
     }
 
@@ -355,7 +338,7 @@ export async function runProject(
         state.tasks[taskId].branch = branchName;
         state.tasks[taskId].workspace = workspace;
         state.tasks[taskId].logs_dir = tLogsDir;
-        await saveRunState(statePath, state);
+        await stateStore.save(state);
 
         orchLog.log({
           type: "container.create",
@@ -416,17 +399,17 @@ export async function runProject(
     // Update task statuses
     for (const r of results) {
       if (r.success) {
-        state.tasks[r.taskId].status = "complete";
-        state.tasks[r.taskId].completed_at = isoNow();
+        markTaskComplete(state, r.taskId);
         completed.add(r.taskId);
         orchLog.log({ type: "task.complete", taskId: r.taskId });
       } else {
-        state.tasks[r.taskId].status = "failed";
-        state.tasks[r.taskId].completed_at = isoNow();
+        markTaskFailed(state, r.taskId, "Task worker exited with a non-zero status");
         failed.add(r.taskId);
         orchLog.log({ type: "task.failed", taskId: r.taskId });
       }
     }
+
+    await stateStore.save(state);
 
     // Merge successful tasks sequentially into integration branch.
     const toMerge = results.filter((r) => r.success);
@@ -477,12 +460,9 @@ export async function runProject(
     }
 
     // Mark batch complete
-    const batchState = state.batches.find((b) => b.batch_id === batchId);
-    if (batchState) {
-      batchState.status = failed.size > 0 ? "failed" : "complete";
-      batchState.completed_at = isoNow();
-    }
-    await saveRunState(statePath, state);
+    const batchStatus: "complete" | "failed" = failed.size > 0 ? "failed" : "complete";
+    completeBatch(state, batchId, batchStatus);
+    await stateStore.save(state);
 
     orchLog.log({ type: "batch.complete", payload: { batch_id: batchId } });
 
@@ -495,7 +475,7 @@ export async function runProject(
   if (state.status === "running") {
     state.status = failed.size > 0 ? "failed" : "complete";
   }
-  await saveRunState(statePath, state);
+  await stateStore.save(state);
 
   orchLog.log({ type: "run.complete", payload: { status: state.status } });
   orchLog.close();

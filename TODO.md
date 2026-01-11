@@ -8,7 +8,7 @@
 - [x] [006 - Define task manifest schema](docs/tasks/archive/006-define-task-manifest-schema/spec.md) (Effort <M>, Tier <mini>)
 - [x] [007 - Implement lock scheduler](docs/tasks/archive/007-implement-lock-scheduler/spec.md) (Effort <S>, Tier <mini>)
 - [x] [008 - Implement JSONL logger](docs/tasks/archive/008-implement-jsonl-logger/spec.md) (Effort <S>, Tier <mini>)
-- [ ] [009 - Implement state store](docs/tasks/active/009-implement-state-store/spec.md) (Effort <M>, Tier <mini>)
+- [x] [009 - Implement state store](docs/tasks/archive/009-implement-state-store/spec.md) (Effort <M>, Tier <mini>)
 - [ ] [010 - Implement workspace manager](docs/tasks/active/010-implement-workspace-manager/spec.md) (Effort <M>, Tier <mini>)
 - [ ] [011 - Implement git branch and merge](docs/tasks/active/011-implement-git-branch-and-merge/spec.md) (Effort <M>, Tier <mini>)
 - [ ] [012 - Implement Docker manager](docs/tasks/active/012-implement-docker-manager/spec.md) (Effort <L>, Tier <mini>)

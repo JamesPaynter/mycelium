@@ -3,7 +3,7 @@ import path from "node:path";
 
 import type { ProjectConfig } from "../core/config.js";
 import { runStateDir, runStatePath } from "../core/paths.js";
-import { loadRunState } from "../core/state.js";
+import { loadRunState } from "../core/state-store.js";
 
 export async function statusCommand(
   projectName: string,

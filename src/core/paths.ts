@@ -15,8 +15,12 @@ export function projectConfigPath(projectName: string): string {
   return path.join(projectsDir(), `${projectName}.yaml`);
 }
 
+export function stateRootDir(): string {
+  return path.join(orchestratorHome(), "state");
+}
+
 export function stateBaseDir(projectName: string): string {
-  return path.join(orchestratorHome(), "state", projectName);
+  return path.join(stateRootDir(), projectName);
 }
 
 export function logsBaseDir(projectName: string): string {
@@ -29,6 +33,10 @@ export function runStateDir(projectName: string): string {
 
 export function runStatePath(projectName: string, runId: string): string {
   return path.join(stateBaseDir(projectName), `run-${runId}.json`);
+}
+
+export function runStateTempPath(projectName: string, runId: string): string {
+  return path.join(stateBaseDir(projectName), `run-${runId}.json.tmp`);
 }
 
 export function runLogsDir(projectName: string, runId: string): string {
