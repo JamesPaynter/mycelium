@@ -2,9 +2,9 @@
 
 ## Status
 - [x] Scoped
-- [ ] In Progress
-- [ ] Implemented
-- [ ] Verified
+- [x] In Progress
+- [x] Implemented
+- [x] Verified
 
 ## Summary
 Implement the orchestrator run loop: schedule batches, run tasks in Docker, and merge results.
@@ -17,7 +17,7 @@ Implement the orchestrator run loop: schedule batches, run tasks in Docker, and 
 | file | change type | description |
 |---|---|---|
 | src/cli/run.ts | modify | Implement run command orchestration flow. |
-| src/core/executor.ts | add | Main execution loop coordinating scheduler, docker, state, and git merge. |
+| src/core/executor.ts | modify | Main execution loop coordinating scheduler, docker, state, and git merge. |
 | src/core/scheduler.ts | modify | Return richer batch metadata (ids, locks) for logging/state. |
 | src/core/state.ts | modify | Add batch/task status updates used by executor. |
 | src/core/logger.ts | modify | Add orchestrator event helpers. |
@@ -28,16 +28,18 @@ Implement the orchestrator run loop: schedule batches, run tasks in Docker, and 
 - Rollback: Run in dry-run mode only; or force single-task execution; disable auto-merge.
 
 ## Implementation Checklist
-- [ ] Implement run_id generation and per-run directories (state/logs/workspaces).
-- [ ] Load tasks, build batches, and enforce max_parallel.
-- [ ] For each batch: spawn containers for ready tasks; wait for completion; update state.
-- [ ] On success: fetch from workspaces and merge into main_branch sequentially.
-- [ ] Run integration doctor after batch merge (config.doctor) and mark batch pass/fail.
-- [ ] Ensure all critical events are logged as JSONL.
+- [x] Implement run_id generation and per-run directories (state/logs/workspaces).
+- [x] Load tasks, build batches, and enforce max_parallel.
+- [x] For each batch: spawn containers for ready tasks; wait for completion; update state.
+- [x] On success: fetch from workspaces and merge into main_branch sequentially.
+- [x] Run integration doctor after batch merge (config.doctor) and mark batch pass/fail.
+- [x] Ensure all critical events are logged as JSONL.
 
 ## Verification
-- `Manual: run `node dist/index.js run --project example --dry-run` and confirm batch plan output.`
-- `Manual (integration): with a tiny git repo fixture and a fake worker that exits 0, validate state/log directories are created and merge is attempted.`
+- Executed: `npm test`
+- Executed: `npm run build`
+- Manual: run `node dist/index.js run --project example --dry-run` and confirm batch plan output.
+- Manual (integration): with a tiny git repo fixture and a fake worker that exits 0, validate state/log directories are created and merge is attempted.
 
 ## Dependencies
 ### Blocks

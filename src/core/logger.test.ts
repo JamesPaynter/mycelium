@@ -4,7 +4,7 @@ import path from "node:path";
 
 import { describe, expect, it } from "vitest";
 
-import { JsonlLogger, eventWithTs } from "./logger.js";
+import { JsonlLogger, eventWithTs, logOrchestratorEvent } from "./logger.js";
 
 describe("JsonlLogger", () => {
   it("writes events with run and task metadata", () => {
@@ -40,6 +40,28 @@ describe("JsonlLogger", () => {
 
     expect(events.map((e) => e.type)).toEqual(["first", "second"]);
     expect(events.map((e) => e.payload)).toEqual([{ order: 1 }, { order: 2 }]);
+  });
+
+  it("logs orchestrator helpers with top-level fields", () => {
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "jsonl-logger-"));
+    const logPath = path.join(tmpDir, "events.jsonl");
+    const logger = new JsonlLogger(logPath, { runId: "run-3" });
+
+    logOrchestratorEvent(logger, "batch.start", {
+      batch_id: 1,
+      tasks: ["001"],
+      taskId: "001",
+    });
+    logger.close();
+
+    const lines = fs.readFileSync(logPath, "utf8").trim().split("\n");
+    const event = JSON.parse(lines[0]) as Record<string, unknown>;
+
+    expect(event.type).toBe("batch.start");
+    expect(event.run_id).toBe("run-3");
+    expect(event.task_id).toBe("001");
+    expect(event.batch_id).toBe(1);
+    expect(event.tasks).toEqual(["001"]);
   });
 });
 

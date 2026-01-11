@@ -5,22 +5,25 @@ import {
   type TaskSpec,
 } from "./task-manifest.js";
 
-export type Batch = TaskSpec[];
+export type BatchPlan = {
+  tasks: TaskSpec[];
+  locks: NormalizedLocks;
+};
 
 export function buildGreedyBatch(
   available: TaskSpec[],
   maxParallel: number,
-): { batch: TaskSpec[]; remaining: TaskSpec[] } {
+): { batch: BatchPlan; remaining: TaskSpec[] } {
   assertMaxParallel(maxParallel);
 
   const sorted = sortByTaskId(available);
   return buildBatchFromSorted(sorted, maxParallel);
 }
 
-export function buildBatches(available: TaskSpec[], maxParallel: number): Batch[] {
+export function buildBatches(available: TaskSpec[], maxParallel: number): BatchPlan[] {
   assertMaxParallel(maxParallel);
 
-  const batches: Batch[] = [];
+  const batches: BatchPlan[] = [];
   let remaining = sortByTaskId(available);
 
   while (remaining.length > 0) {
@@ -47,7 +50,7 @@ type BatchLocks = {
 function buildBatchFromSorted(
   available: TaskSpec[],
   maxParallel: number,
-): { batch: TaskSpec[]; remaining: TaskSpec[] } {
+): { batch: BatchPlan; remaining: TaskSpec[] } {
   const remaining = [...available];
   const batchLocks = createBatchLocks();
   const batch: TaskSpec[] = [];
@@ -67,7 +70,10 @@ function buildBatchFromSorted(
     throw new Error("Scheduler could not place any tasks into a batch; check lock definitions.");
   }
 
-  return { batch, remaining };
+  return {
+    batch: { tasks: batch, locks: toNormalizedLocks(batchLocks) },
+    remaining,
+  };
 }
 
 function canRunInSameBatch(locks: NormalizedLocks, batchLocks: BatchLocks): boolean {
@@ -86,6 +92,13 @@ function addToBatch(locks: NormalizedLocks, batchLocks: BatchLocks): void {
 
 function createBatchLocks(): BatchLocks {
   return { reads: new Set(), writes: new Set() };
+}
+
+function toNormalizedLocks(batchLocks: BatchLocks): NormalizedLocks {
+  return {
+    reads: [...batchLocks.reads].sort(),
+    writes: [...batchLocks.writes].sort(),
+  };
 }
 
 function sortByTaskId(tasks: TaskSpec[]): TaskSpec[] {

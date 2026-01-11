@@ -11,7 +11,7 @@ export interface JsonObject {
   [key: string]: JsonValue;
 }
 
-export type LogEvent = {
+export type LogEvent = JsonObject & {
   ts: string;
   type: string;
   run_id: string;
@@ -19,7 +19,7 @@ export type LogEvent = {
   payload?: JsonObject;
 };
 
-export type LogEventInput = {
+export type LogEventInput = JsonObject & {
   type: string;
   runId?: string;
   taskId?: string;
@@ -70,35 +70,51 @@ export class JsonlLogger {
 }
 
 export function eventWithTs(event: LogEventInput, defaults: EventDefaults = {}): LogEvent {
-  const runId = event.runId ?? defaults.runId;
+  const { runId: providedRunId, taskId, payload, ts, type, ...rest } = event;
+
+  const runId = providedRunId ?? defaults.runId;
   if (!runId) {
     throw new Error("run_id is required for log events");
   }
 
-  const ts =
-    typeof event.ts === "string"
-      ? event.ts
-      : event.ts instanceof Date
-        ? event.ts.toISOString()
-        : isoNow();
+  const normalizedTs =
+    typeof ts === "string" ? ts : ts instanceof Date ? ts.toISOString() : isoNow();
 
-  const payload = event.payload;
-  const taskId = event.taskId ?? defaults.taskId;
+  const resolvedTaskId = taskId ?? defaults.taskId;
 
   const result: LogEvent = {
-    ts,
-    type: event.type,
+    ...rest,
+    ts: normalizedTs,
+    type,
     run_id: runId,
   };
 
-  if (taskId) {
-    result.task_id = taskId;
+  if (resolvedTaskId) {
+    result.task_id = resolvedTaskId;
   }
   if (payload && Object.keys(payload).length > 0) {
     result.payload = payload;
   }
 
   return result;
+}
+
+export function logOrchestratorEvent(
+  logger: JsonlLogger,
+  type: string,
+  fields: JsonObject & { taskId?: string; ts?: string | Date } = {},
+): void {
+  const { taskId, ts, ...rest } = fields;
+  const event: LogEventInput = { type, ...rest };
+
+  if (taskId !== undefined) {
+    event.taskId = taskId;
+  }
+  if (ts !== undefined) {
+    event.ts = ts;
+  }
+
+  logger.log(event);
 }
 
 export function logJsonLineOrRaw(
@@ -117,11 +133,11 @@ export function logJsonLineOrRaw(
     ) {
       const { type, ts, ...rest } = parsed as Record<string, unknown>;
       const payload = { ...rest, stream } as JsonObject;
-      logger.log({
-        type: String(type),
-        ts: typeof ts === "string" ? ts : undefined,
-        payload,
-      });
+      const event: LogEventInput = { type: String(type), payload };
+      if (typeof ts === "string") {
+        event.ts = ts;
+      }
+      logger.log(event);
       return;
     }
   } catch {

@@ -10,7 +10,7 @@ describe("scheduler", () => {
 
     const { batch, remaining } = buildGreedyBatch([t1, t2], 5);
 
-    expect(batch.map(taskId)).toEqual(["001", "002"]);
+    expect(batch.tasks.map(taskId)).toEqual(["001", "002"]);
     expect(remaining).toHaveLength(0);
   });
 
@@ -20,7 +20,7 @@ describe("scheduler", () => {
 
     const { batch, remaining } = buildGreedyBatch([reader, writer], 5);
 
-    expect(batch.map(taskId)).toEqual(["001"]);
+    expect(batch.tasks.map(taskId)).toEqual(["001"]);
     expect(remaining.map(taskId)).toEqual(["002"]);
   });
 
@@ -30,7 +30,7 @@ describe("scheduler", () => {
 
     const { batch, remaining } = buildGreedyBatch([writer, reader], 5);
 
-    expect(batch.map(taskId)).toEqual(["001"]);
+    expect(batch.tasks.map(taskId)).toEqual(["001"]);
     expect(remaining.map(taskId)).toEqual(["002"]);
   });
 
@@ -40,7 +40,7 @@ describe("scheduler", () => {
 
     const { batch, remaining } = buildGreedyBatch([firstWriter, secondWriter], 5);
 
-    expect(batch.map(taskId)).toEqual(["001"]);
+    expect(batch.tasks.map(taskId)).toEqual(["001"]);
     expect(remaining.map(taskId)).toEqual(["002"]);
   });
 
@@ -53,12 +53,22 @@ describe("scheduler", () => {
     ];
 
     const batches = buildBatches(tasks, 2);
-    const batchIds = batches.map((batch) => batch.map(taskId));
+    const batchIds = batches.map((batch) => batch.tasks.map(taskId));
 
     expect(batchIds).toEqual([
       ["001", "003"],
       ["002", "004"],
     ]);
+  });
+
+  it("returns normalized locks for batches", () => {
+    const t1 = createTask("001", { reads: ["logs"], writes: ["cache"] });
+    const t2 = createTask("002", { reads: ["logs"] });
+
+    const { batch } = buildGreedyBatch([t1, t2], 2);
+
+    expect(batch.locks.reads).toEqual(["logs"]);
+    expect(batch.locks.writes).toEqual(["cache"]);
   });
 
   it("sorts ready tasks by id while filtering dependencies", () => {

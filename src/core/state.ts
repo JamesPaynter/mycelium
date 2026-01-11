@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 import { isoNow } from "./utils.js";
+import { LocksSchema, type NormalizedLocks } from "./task-manifest.js";
 
 export const TaskStatusSchema = z.enum(["pending", "running", "complete", "failed", "skipped"]);
 export type TaskStatus = z.infer<typeof TaskStatusSchema>;
@@ -34,6 +35,7 @@ export const BatchStateSchema = z.object({
   completed_at: z.string().optional(),
   merge_commit: z.string().optional(),
   integration_doctor_passed: z.boolean().optional(),
+  locks: LocksSchema.optional(),
 });
 
 export type BatchState = z.infer<typeof BatchStateSchema>;
@@ -80,10 +82,10 @@ export function createRunState(args: {
 
 export function startBatch(
   state: RunState,
-  batchId: number,
-  taskIds: string[],
-  now: string = isoNow(),
+  params: { batchId: number; taskIds: string[]; locks?: NormalizedLocks; now?: string },
 ): void {
+  const { batchId, taskIds, locks, now = isoNow() } = params;
+
   if (state.status !== "running") {
     throw new Error(`Cannot start batch ${batchId} when run status is ${state.status}`);
   }
@@ -99,6 +101,7 @@ export function startBatch(
     status: "running",
     tasks: [...taskIds],
     started_at: now,
+    locks,
   });
 
   for (const taskId of taskIds) {

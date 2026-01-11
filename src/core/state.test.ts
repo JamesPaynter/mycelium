@@ -35,7 +35,7 @@ describe("state transitions", () => {
     expect(state.status).toBe("running");
 
     vi.setSystemTime(new Date("2024-01-02T03:10:00Z"));
-    startBatch(state, 1, ["001", "002"]);
+    startBatch(state, { batchId: 1, taskIds: ["001", "002"] });
     expect(state.batches[0]).toMatchObject({
       batch_id: 1,
       status: "running",
@@ -69,7 +69,7 @@ describe("state transitions", () => {
       taskIds: ["010"],
     });
 
-    startBatch(state, 1, ["010"]);
+    startBatch(state, { batchId: 1, taskIds: ["010"] });
     state.tasks["010"].branch = "agent/010-work";
     state.tasks["010"].container_id = "container-123";
     state.batches[0].status = "running";
@@ -139,7 +139,7 @@ describe("state store", () => {
         mainBranch: "main",
         taskIds: ["020"],
       });
-      startBatch(state, 1, ["020"]);
+      startBatch(state, { batchId: 1, taskIds: ["020"] });
       await store.save(state);
 
       const recovered = await store.loadAndRecover("crash recovery");

@@ -14,7 +14,7 @@
 - [x] [012 - Implement Docker manager](docs/tasks/archive/012-implement-docker-manager/spec.md) (Effort <L>, Tier <mini>)
 - [x] [013 - Implement bootstrap runner](docs/tasks/archive/013-implement-bootstrap-runner/spec.md) (Effort <S>, Tier <mini>)
 - [x] [014 - Implement worker loop](docs/tasks/archive/014-implement-worker-loop/spec.md) (Effort <L>, Tier <mini>)
-- [ ] [015 - Wire run command](docs/tasks/active/015-wire-run-command/spec.md) (Effort <L>, Tier <mini>)
+- [x] [015 - Wire run command](docs/tasks/active/015-wire-run-command/spec.md) (Effort <L>, Tier <mini>)
 - [ ] [016 - Implement resume command](docs/tasks/active/016-implement-resume-command/spec.md) (Effort <M>, Tier <mini>)
 - [ ] [017 - Implement status command](docs/tasks/active/017-implement-status-command/spec.md) (Effort <S>, Tier <mini>)
 - [ ] [018 - Implement logs command](docs/tasks/active/018-implement-logs-command/spec.md) (Effort <M>, Tier <mini>)
