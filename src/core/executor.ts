@@ -13,13 +13,13 @@ import {
   findContainerByName,
 } from "../docker/docker.js";
 import { buildWorkerImage } from "../docker/image.js";
-import { attachLineStream } from "../docker/streams.js";
+import { streamContainerLogs } from "../docker/streams.js";
 import { ensureCleanWorkingTree, checkout } from "../git/git.js";
 import { mergeTaskBranches } from "../git/merge.js";
 import { buildTaskBranchName } from "../git/branches.js";
 
 import type { ProjectConfig } from "./config.js";
-import { JsonlLogger, type JsonObject } from "./logger.js";
+import { JsonlLogger } from "./logger.js";
 import { loadTaskSpecs } from "./task-loader.js";
 import type { TaskSpec } from "./task-manifest.js";
 import {
@@ -60,6 +60,7 @@ export async function runProject(
 ): Promise<{ runId: string; state: RunState }> {
   const runId = opts.runId ?? defaultRunId();
   const maxParallel = opts.maxParallel ?? config.max_parallel;
+  const cleanupOnSuccess = opts.cleanupOnSuccess ?? false;
 
   const repoPath = config.repo_path;
   const docker = dockerClient();
@@ -347,28 +348,8 @@ export async function runProject(
         });
 
         // Attach log stream
-        const detach = await attachLineStream(container, (line, stream) => {
-          try {
-            const parsed = JSON.parse(line);
-            if (
-              parsed &&
-              typeof parsed === "object" &&
-              "type" in (parsed as Record<string, unknown>) &&
-              typeof (parsed as Record<string, unknown>).type === "string"
-            ) {
-              const { type, ts, ...rest } = parsed as Record<string, unknown>;
-              const data = { ...rest, stream } as JsonObject;
-              taskEvents.log({
-                type: String(type),
-                ts: typeof ts === "string" ? ts : undefined,
-                payload: data,
-              });
-              return;
-            }
-          } catch {
-            // fall through to raw log
-          }
-          taskEvents.log({ type: "task.log", payload: { stream, raw: line } });
+        const detach = await streamContainerLogs(container, taskEvents, {
+          fallbackType: "task.log",
         });
 
         await startContainer(container);
@@ -387,6 +368,10 @@ export async function runProject(
           taskId,
           payload: { container_id: containerId, exit_code: waited.exitCode },
         });
+
+        if (cleanupOnSuccess && waited.exitCode === 0) {
+          await removeContainer(container);
+        }
 
         if (waited.exitCode === 0) {
           return { taskId, taskSlug, branchName, workspace, success: true as const };

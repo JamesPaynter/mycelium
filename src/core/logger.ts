@@ -100,3 +100,33 @@ export function eventWithTs(event: LogEventInput, defaults: EventDefaults = {}):
 
   return result;
 }
+
+export function logJsonLineOrRaw(
+  logger: JsonlLogger,
+  line: string,
+  stream: "stdout" | "stderr",
+  fallbackType = "task.log",
+): void {
+  try {
+    const parsed = JSON.parse(line);
+    if (
+      parsed &&
+      typeof parsed === "object" &&
+      "type" in (parsed as Record<string, unknown>) &&
+      typeof (parsed as Record<string, unknown>).type === "string"
+    ) {
+      const { type, ts, ...rest } = parsed as Record<string, unknown>;
+      const payload = { ...rest, stream } as JsonObject;
+      logger.log({
+        type: String(type),
+        ts: typeof ts === "string" ? ts : undefined,
+        payload,
+      });
+      return;
+    }
+  } catch {
+    // fall through to raw logging
+  }
+
+  logger.log({ type: fallbackType, payload: { stream, raw: line } });
+}

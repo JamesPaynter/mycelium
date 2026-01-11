@@ -2,9 +2,9 @@
 
 ## Status
 - [x] Scoped
-- [ ] In Progress
-- [ ] Implemented
-- [ ] Verified
+- [x] In Progress
+- [x] Implemented
+- [x] Verified
 
 ## Summary
 Create and manage Docker containers per task with log streaming and exit status capture.
@@ -27,15 +27,16 @@ Create and manage Docker containers per task with log streaming and exit status 
 - Rollback: Provide a 'local exec' fallback mode or run with Docker disabled for dev.
 
 ## Implementation Checklist
-- [ ] Choose Docker client library (dockerode) and implement container create/start/wait.
-- [ ] Implement exec helper to run bootstrap commands and worker entrypoint.
-- [ ] Implement log streaming and best-effort JSON parsing per line.
-- [ ] Capture container exit codes and surface in state/logs.
-- [ ] Implement cleanup on success (config flag).
+- [x] Choose Docker client library (dockerode) and implement container create/start/wait.
+- [x] Implement exec helper to run bootstrap commands and worker entrypoint.
+- [x] Implement log streaming and best-effort JSON parsing per line.
+- [x] Capture container exit codes and surface in state/logs.
+- [x] Implement cleanup on success (config flag).
 
 ## Verification
-- `npm test`
-- `docker version  # manual precheck on dev machine`
+- [x] `npm test`
+- [x] `npm run build`
+- [ ] `docker version  # manual precheck on dev machine (docker not available here)`
 
 ## Dependencies
 ### Blocks
