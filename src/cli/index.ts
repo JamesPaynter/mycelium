@@ -1,6 +1,6 @@
 import { Command } from "commander";
 
-import { loadProjectConfig } from "../core/config.js";
+import { loadProjectConfig } from "../core/config-loader.js";
 import { projectConfigPath } from "../core/paths.js";
 
 import { cleanCommand } from "./clean.js";

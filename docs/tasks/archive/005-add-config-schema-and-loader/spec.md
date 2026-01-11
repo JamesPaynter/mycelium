@@ -2,9 +2,9 @@
 
 ## Status
 - [x] Scoped
-- [ ] In Progress
-- [ ] Implemented
-- [ ] Verified
+- [x] In Progress
+- [x] Implemented
+- [x] Verified
 
 ## Summary
 Load and validate project YAML config files with sensible defaults and errors.
@@ -27,11 +27,11 @@ Load and validate project YAML config files with sensible defaults and errors.
 - Rollback: Fallback to permissive parsing; reduce validation strictness.
 
 ## Implementation Checklist
-- [ ] Define ProjectConfig type and validate required keys (repo_path, main_branch, doctor, resources).
-- [ ] Support optional keys: task_branch_prefix, max_parallel, max_retries, bootstrap, docker.image, etc.
-- [ ] Implement YAML loader and env var substitution (${VAR}).
-- [ ] Return actionable error messages (file, key path, expected type).
-- [ ] Add example.yaml aligned with the spec.
+- [x] Define ProjectConfig type and validate required keys (repo_path, main_branch, doctor, resources).
+- [x] Support optional keys: task_branch_prefix, max_parallel, max_retries, bootstrap, docker.image, etc.
+- [x] Implement YAML loader and env var substitution (${VAR}).
+- [x] Return actionable error messages (file, key path, expected type).
+- [x] Add example.yaml aligned with the spec.
 
 ## Verification
 - `node dist/index.js status --project example --help`

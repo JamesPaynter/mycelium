@@ -50,6 +50,11 @@ Edit `~/.task-orchestrator/projects/my-project.yaml` and set:
 - `doctor`
 - `resources`
 
+Notes:
+
+- `${VARS}` in the YAML are expanded from your environment.
+- Relative paths are resolved from the directory that contains your config file.
+
 ### 4) Ensure `.tasks/` is ignored in your target repo
 
 Add this to your **target repo** `.gitignore`:

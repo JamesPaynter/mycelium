@@ -1,6 +1,7 @@
 # Example project configuration
 
-# Path to the target repo on your machine
+# Path to the target repo on your machine (env vars like ${HOME} are allowed).
+# Relative paths are resolved from the directory containing this YAML file.
 repo_path: /absolute/path/to/your/repo
 
 # Integration branch the orchestrator merges into
@@ -12,6 +13,7 @@ task_branch_prefix: agent/
 # Limits
 max_parallel: 3
 max_retries: 20
+timeout_minutes: 120
 
 doctor: "npm test"
 doctor_timeout: 900
@@ -47,7 +49,16 @@ planner:
 worker:
   model: gpt-5.1-codex-max
 
+test_validator:
+  provider: openai
+  model: o3
+
+doctor_validator:
+  provider: openai
+  model: o3
+
+# Docker worker image (paths resolve relative to this file when not absolute)
 docker:
   image: task-orchestrator-worker:latest
-  dockerfile: templates/worker.Dockerfile
-  build_context: .
+  dockerfile: /absolute/path/to/task-orchestrator/templates/worker.Dockerfile
+  build_context: /absolute/path/to/task-orchestrator
