@@ -45,7 +45,7 @@ planner:
 worker:
   model: gpt-5.1-codex-max
 docker:
-  dockerfile: ./templates/worker.Dockerfile
+  dockerfile: ./templates/Dockerfile
   build_context: ..
 `,
     );
@@ -55,7 +55,7 @@ docker:
 
       expect(config.repo_path).toBe("/tmp/repo-path");
       expect(config.docker.dockerfile).toBe(
-        path.resolve(path.dirname(configPath), "./templates/worker.Dockerfile"),
+        path.resolve(path.dirname(configPath), "./templates/Dockerfile"),
       );
       expect(config.docker.build_context).toBe(path.resolve(path.dirname(configPath), ".."));
       expect(config.task_branch_prefix).toBe("agent/");

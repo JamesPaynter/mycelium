@@ -1,0 +1,10 @@
+# Codex configuration for workers (flat keys per Codex SDK)
+
+# Model used by the worker thread
+model = "gpt-5.1-codex-max"
+
+# Approval policy: "never" for unattended runs
+approval_policy = "never"
+
+# Sandbox mode: Docker provides isolation for the workspace
+sandbox_mode = "danger-full-access"

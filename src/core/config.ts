@@ -38,7 +38,7 @@ const ValidatorSchema = z
 const DockerSchema = z
   .object({
     image: z.string().min(1).default("task-orchestrator-worker:latest"),
-    dockerfile: z.string().default("templates/worker.Dockerfile"),
+    dockerfile: z.string().default("templates/Dockerfile"),
     build_context: z.string().default("."),
   })
   .strict();

@@ -2,9 +2,9 @@
 
 ## Status
 - [x] Scoped
-- [ ] In Progress
-- [ ] Implemented
-- [ ] Verified
+- [x] In Progress
+- [x] Implemented
+- [x] Verified
 
 ## Summary
 Add baseline Dockerfile template and Codex config template aligned with corrected spec.
@@ -27,9 +27,9 @@ Add baseline Dockerfile template and Codex config template aligned with correcte
 - Rollback: Allow user to provide custom docker image via config; skip internal build.
 
 ## Implementation Checklist
-- [ ] Create templates/Dockerfile as in spec (node:20-bookworm base, install dependencies).
-- [ ] Create codex-config.toml using corrected flat keys.
-- [ ] Document how config points to docker.image or dockerfile override.
+- [x] Create templates/Dockerfile as in spec (node:20-bookworm base, install dependencies).
+- [x] Create codex-config.toml using corrected flat keys.
+- [x] Document how config points to docker.image or dockerfile override.
 
 ## Verification
 - `docker build -f templates/Dockerfile -t task-orchestrator-worker:dev .`

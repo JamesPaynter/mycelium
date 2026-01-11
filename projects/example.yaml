@@ -60,5 +60,5 @@ doctor_validator:
 # Docker worker image (paths resolve relative to this file when not absolute)
 docker:
   image: task-orchestrator-worker:latest
-  dockerfile: /absolute/path/to/task-orchestrator/templates/worker.Dockerfile
+  dockerfile: /absolute/path/to/task-orchestrator/templates/Dockerfile
   build_context: /absolute/path/to/task-orchestrator

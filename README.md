@@ -34,6 +34,8 @@ npm run build
 npm run docker:build-worker
 ```
 
+This builds `task-orchestrator-worker:latest` from `templates/Dockerfile`. Override the image tag or Dockerfile path in your project config if you need a custom worker base.
+
 ### 3) Create a project config
 
 Copy `projects/example.yaml` to your orchestrator home:
@@ -85,6 +87,12 @@ task-orchestrator plan \
 task-orchestrator run --project my-project
 ```
 
+## Worker image config
+
+- Defaults: `docker.image` → `task-orchestrator-worker:latest`, `docker.dockerfile` → `templates/Dockerfile`, `docker.build_context` → `.`.
+- Point `docker.image` at a prebuilt image to skip local builds, or set `docker.dockerfile`/`docker.build_context` to build from your own Dockerfile.
+- `templates/codex-config.toml` shows the flat Codex config written to `CODEX_HOME` for workers.
+
 ## Development
 
 - Node 20+
@@ -100,7 +108,8 @@ task-orchestrator run --project my-project
 
 - `src/` — orchestrator CLI + core engine
 - `worker/` — Codex worker that runs inside Docker
-- `templates/worker.Dockerfile` — worker image definition
+- `templates/Dockerfile` — worker image definition (installs Codex CLI)
+- `templates/codex-config.toml` — example Codex config for `CODEX_HOME`
 - `projects/example.yaml` — example per-project config
 
 ## Notes / assumptions
