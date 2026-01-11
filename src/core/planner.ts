@@ -5,7 +5,7 @@ import { execa } from "execa";
 import fse from "fs-extra";
 
 import type { ProjectConfig } from "./config.js";
-import { JsonlLogger, eventWithTs } from "./logger.js";
+import { JsonlLogger } from "./logger.js";
 import { orchestratorHome } from "./paths.js";
 import { slugify, ensureDir, isoNow } from "./utils.js";
 
@@ -121,7 +121,7 @@ export async function planFromImplementationPlan(args: {
   });
 
   const log = args.log;
-  log?.log(eventWithTs({ type: "planner.start", project: projectName, input: inputAbs }));
+  log?.log({ type: "planner.start", payload: { project: projectName, input: inputAbs } });
 
   // Planner runs via Codex SDK in read-only mode.
   const codexHome = path.join(orchestratorHome(), "codex", projectName, "planner");
@@ -144,7 +144,7 @@ export async function planFromImplementationPlan(args: {
     throw new Error(`Planner output did not include tasks[]`);
   }
 
-  log?.log(eventWithTs({ type: "planner.complete", task_count: parsed.tasks.length }));
+  log?.log({ type: "planner.complete", payload: { task_count: parsed.tasks.length } });
 
   if (dryRun) {
     return parsed;
@@ -193,7 +193,7 @@ export async function planFromImplementationPlan(args: {
     "utf8",
   );
 
-  log?.log(eventWithTs({ type: "planner.write.complete", output_dir: outputDir }));
+  log?.log({ type: "planner.write.complete", payload: { output_dir: outputDir } });
 
   return parsed;
 }

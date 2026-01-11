@@ -2,9 +2,9 @@
 
 ## Status
 - [x] Scoped
-- [ ] In Progress
-- [ ] Implemented
-- [ ] Verified
+- [x] In Progress
+- [x] Implemented
+- [x] Verified
 
 ## Summary
 Create a structured logger that writes orchestrator and per-task JSONL event streams.
@@ -26,10 +26,10 @@ Create a structured logger that writes orchestrator and per-task JSONL event str
 - Rollback: Fallback to console-only logging; keep file logging best-effort.
 
 ## Implementation Checklist
-- [ ] Define event shape minimally: ts, type, run_id, task_id (optional), payload.
-- [ ] Implement log rotation strategy as out-of-scope; keep per-run directory.
-- [ ] Ensure directories are created and writes are atomic/append-only.
-- [ ] Add tests writing to a temp directory.
+- [x] Define event shape minimally: ts, type, run_id, task_id (optional), payload.
+- [x] Implement log rotation strategy as out-of-scope; keep per-run directory.
+- [x] Ensure directories are created and writes are atomic/append-only.
+- [x] Add tests writing to a temp directory.
 
 ## Verification
 - `npm test`

@@ -1,8 +1,8 @@
 import path from "node:path";
 
 import type { ProjectConfig } from "../core/config.js";
-import { JsonlLogger, eventWithTs } from "../core/logger.js";
-import { runLogsDir } from "../core/paths.js";
+import { JsonlLogger } from "../core/logger.js";
+import { plannerLogPath } from "../core/paths.js";
 import { planFromImplementationPlan } from "../core/planner.js";
 import { defaultRunId } from "../core/utils.js";
 
@@ -16,8 +16,8 @@ export async function planProject(
   },
 ): Promise<void> {
   const runId = defaultRunId();
-  const logsDir = runLogsDir(projectName, `plan-${runId}`);
-  const log = new JsonlLogger(path.join(logsDir, "planner.jsonl"));
+  const logRunId = `plan-${runId}`;
+  const log = new JsonlLogger(plannerLogPath(projectName, logRunId), { runId: logRunId });
 
   const outputDir = opts.output
     ? path.isAbsolute(opts.output)
@@ -40,6 +40,6 @@ export async function planProject(
     console.log(`Wrote ${res.tasks.length} tasks to ${outputDir}`);
   }
 
-  log.log(eventWithTs({ type: "plan.cli.complete", tasks: res.tasks.length }));
+  log.log({ type: "plan.cli.complete", payload: { tasks: res.tasks.length } });
   log.close();
 }

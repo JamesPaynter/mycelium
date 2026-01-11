@@ -25,13 +25,14 @@ import {
 } from "../git/git.js";
 
 import type { ProjectConfig } from "./config.js";
-import { JsonlLogger, eventWithTs } from "./logger.js";
+import { JsonlLogger, type JsonObject } from "./logger.js";
 import { loadTaskSpecs } from "./task-loader.js";
 import type { TaskSpec } from "./task-manifest.js";
 import {
   orchestratorHome,
+  orchestratorLogPath,
   runStatePath,
-  runLogsDir,
+  taskEventsLogPath,
   taskLogsDir,
   taskWorkspaceDir,
   workerCodexHomeDir,
@@ -63,12 +64,12 @@ export async function runProject(
   // Prepare directories
   await ensureDir(orchestratorHome());
   const statePath = runStatePath(projectName, runId);
-  const logsDir = runLogsDir(projectName, runId);
-  const orchLog = new JsonlLogger(path.join(logsDir, "orchestrator.jsonl"));
+  const orchLog = new JsonlLogger(orchestratorLogPath(projectName, runId), { runId });
 
-  orchLog.log(
-    eventWithTs({ type: "run.start", run_id: runId, project: projectName, repo_path: repoPath }),
-  );
+  orchLog.log({
+    type: "run.start",
+    payload: { project: projectName, repo_path: repoPath },
+  });
 
   // Ensure repo is clean and on integration branch.
   await ensureCleanWorkingTree(repoPath);
@@ -86,7 +87,7 @@ export async function runProject(
     tasks = res.tasks;
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
-    orchLog.log(eventWithTs({ type: "run.tasks_invalid", message }));
+    orchLog.log({ type: "run.tasks_invalid", payload: { message } });
     orchLog.close();
     throw err;
   }
@@ -96,7 +97,7 @@ export async function runProject(
   }
 
   if (tasks.length === 0) {
-    orchLog.log(eventWithTs({ type: "run.no_tasks" }));
+    orchLog.log({ type: "run.no_tasks" });
     orchLog.close();
     return {
       runId,
@@ -115,13 +116,13 @@ export async function runProject(
   const haveImage = await imageExists(docker, workerImage);
   if (!haveImage) {
     if (opts.buildImage ?? true) {
-      orchLog.log(eventWithTs({ type: "docker.image.build.start", image: workerImage }));
+      orchLog.log({ type: "docker.image.build.start", payload: { image: workerImage } });
       await buildWorkerImage({
         tag: workerImage,
         dockerfile: config.docker.dockerfile,
         context: config.docker.build_context,
       });
-      orchLog.log(eventWithTs({ type: "docker.image.build.complete", image: workerImage }));
+      orchLog.log({ type: "docker.image.build.complete", payload: { image: workerImage } });
     } else {
       throw new Error(
         `Docker image not found: ${workerImage}. Build it or run with --build-image.`,
@@ -133,11 +134,11 @@ export async function runProject(
   let state: RunState;
   if (await pathExists(statePath)) {
     state = await loadRunState(statePath);
-    orchLog.log(eventWithTs({ type: "run.resume", run_id: runId, status: state.status }));
+    orchLog.log({ type: "run.resume", payload: { status: state.status } });
     // If a previous run was marked complete/failed, we keep it immutable unless the user
     // explicitly changes the run ID.
     if (state.status !== "running") {
-      orchLog.log(eventWithTs({ type: "run.resume.blocked", reason: "state_not_running" }));
+      orchLog.log({ type: "run.resume.blocked", payload: { reason: "state_not_running" } });
       orchLog.close();
       return { runId, state };
     }
@@ -193,12 +194,12 @@ export async function runProject(
 
     const ready = topologicalReady(pendingTasks, completed);
     if (ready.length === 0) {
-      orchLog.log(
-        eventWithTs({
-          type: "run.deadlock",
+      orchLog.log({
+        type: "run.deadlock",
+        payload: {
           message: "No dependency-satisfied tasks remaining. Check dependencies field.",
-        }),
-      );
+        },
+      });
       state.status = "failed";
       await saveRunState(statePath, state);
       break;
@@ -224,10 +225,13 @@ export async function runProject(
     }
     await saveRunState(statePath, state);
 
-    orchLog.log(eventWithTs({ type: "batch.start", batch_id: batchId, tasks: batchTaskIds }));
+    orchLog.log({
+      type: "batch.start",
+      payload: { batch_id: batchId, tasks: batchTaskIds },
+    });
 
     if (opts.dryRun) {
-      orchLog.log(eventWithTs({ type: "batch.dry_run", batch_id: batchId }));
+      orchLog.log({ type: "batch.dry_run", payload: { batch_id: batchId } });
       // Mark all as skipped for dry-run
       for (const t of batch) {
         state.tasks[t.manifest.id].status = "skipped";
@@ -262,9 +266,17 @@ export async function runProject(
         });
 
         // Clone repo into workspace
-        orchLog.log(eventWithTs({ type: "workspace.clone.start", task_id: taskId, workspace }));
+        orchLog.log({
+          type: "workspace.clone.start",
+          taskId,
+          payload: { workspace },
+        });
         await cloneRepo({ sourceRepo: repoPath, destDir: workspace });
-        orchLog.log(eventWithTs({ type: "workspace.clone.complete", task_id: taskId, workspace }));
+        orchLog.log({
+          type: "workspace.clone.complete",
+          taskId,
+          payload: { workspace },
+        });
 
         // Ensure tasks directory is available inside the clone (copy from integration repo).
         const srcTasksDir = path.join(repoPath, config.tasks_dir);
@@ -277,7 +289,10 @@ export async function runProject(
         await createBranchInClone(workspace, branchName, config.main_branch);
 
         // Prepare per-task logger.
-        const taskEvents = new JsonlLogger(path.join(tLogsDir, "events.jsonl"));
+        const taskEvents = new JsonlLogger(
+          taskEventsLogPath(projectName, runId, taskId, taskSlug),
+          { runId, taskId },
+        );
 
         // Create container
         const containerName = `to-${projectName}-${runId}-${taskId}-${taskSlug}`
@@ -342,43 +357,53 @@ export async function runProject(
         state.tasks[taskId].logs_dir = tLogsDir;
         await saveRunState(statePath, state);
 
-        orchLog.log(
-          eventWithTs({
-            type: "container.create",
-            task_id: taskId,
-            container_id: containerId,
-            name: containerName,
-          }),
-        );
+        orchLog.log({
+          type: "container.create",
+          taskId,
+          payload: { container_id: containerId, name: containerName },
+        });
 
         // Attach log stream
         const detach = await attachLineStream(container, (line, stream) => {
-          // Try JSON first
           try {
-            const obj = JSON.parse(line) as Record<string, unknown>;
-            taskEvents.log(obj);
+            const parsed = JSON.parse(line);
+            if (
+              parsed &&
+              typeof parsed === "object" &&
+              "type" in (parsed as Record<string, unknown>) &&
+              typeof (parsed as Record<string, unknown>).type === "string"
+            ) {
+              const { type, ts, ...rest } = parsed as Record<string, unknown>;
+              const data = { ...rest, stream } as JsonObject;
+              taskEvents.log({
+                type: String(type),
+                ts: typeof ts === "string" ? ts : undefined,
+                payload: data,
+              });
+              return;
+            }
           } catch {
-            taskEvents.log({ ts: new Date().toISOString(), stream, raw: line });
+            // fall through to raw log
           }
+          taskEvents.log({ type: "task.log", payload: { stream, raw: line } });
         });
 
         await startContainer(container);
-        orchLog.log(
-          eventWithTs({ type: "container.start", task_id: taskId, container_id: containerId }),
-        );
+        orchLog.log({
+          type: "container.start",
+          taskId,
+          payload: { container_id: containerId },
+        });
 
         const waited = await waitContainer(container);
         detach();
         taskEvents.close();
 
-        orchLog.log(
-          eventWithTs({
-            type: "container.exit",
-            task_id: taskId,
-            container_id: containerId,
-            exit_code: waited.exitCode,
-          }),
-        );
+        orchLog.log({
+          type: "container.exit",
+          taskId,
+          payload: { container_id: containerId, exit_code: waited.exitCode },
+        });
 
         if (waited.exitCode === 0) {
           return { taskId, taskSlug, branchName, workspace, success: true as const };
@@ -394,25 +419,22 @@ export async function runProject(
         state.tasks[r.taskId].status = "complete";
         state.tasks[r.taskId].completed_at = isoNow();
         completed.add(r.taskId);
-        orchLog.log(eventWithTs({ type: "task.complete", task_id: r.taskId }));
+        orchLog.log({ type: "task.complete", taskId: r.taskId });
       } else {
         state.tasks[r.taskId].status = "failed";
         state.tasks[r.taskId].completed_at = isoNow();
         failed.add(r.taskId);
-        orchLog.log(eventWithTs({ type: "task.failed", task_id: r.taskId }));
+        orchLog.log({ type: "task.failed", taskId: r.taskId });
       }
     }
 
     // Merge successful tasks sequentially into integration branch.
     const toMerge = results.filter((r) => r.success);
     if (toMerge.length > 0) {
-      orchLog.log(
-        eventWithTs({
-          type: "batch.merging",
-          batch_id: batchId,
-          tasks: toMerge.map((r) => r.taskId),
-        }),
-      );
+      orchLog.log({
+        type: "batch.merging",
+        payload: { batch_id: batchId, tasks: toMerge.map((r) => r.taskId) },
+      });
       await checkout(repoPath, config.main_branch);
 
       for (const r of toMerge) {
@@ -427,13 +449,10 @@ export async function runProject(
       }
 
       // Integration doctor
-      orchLog.log(
-        eventWithTs({
-          type: "doctor.integration.start",
-          batch_id: batchId,
-          command: config.doctor,
-        }),
-      );
+      orchLog.log({
+        type: "doctor.integration.start",
+        payload: { batch_id: batchId, command: config.doctor },
+      });
       const doctorRes = await execaCommand(config.doctor, {
         cwd: repoPath,
         shell: true,
@@ -441,13 +460,10 @@ export async function runProject(
         timeout: config.doctor_timeout ? config.doctor_timeout * 1000 : undefined,
       });
       const doctorOk = doctorRes.exitCode === 0;
-      orchLog.log(
-        eventWithTs({
-          type: doctorOk ? "doctor.integration.pass" : "doctor.integration.fail",
-          batch_id: batchId,
-          exit_code: doctorRes.exitCode,
-        }),
-      );
+      orchLog.log({
+        type: doctorOk ? "doctor.integration.pass" : "doctor.integration.fail",
+        payload: { batch_id: batchId, exit_code: doctorRes.exitCode ?? -1 },
+      });
 
       const b = state.batches.find((b) => b.batch_id === batchId);
       if (b) {
@@ -468,10 +484,10 @@ export async function runProject(
     }
     await saveRunState(statePath, state);
 
-    orchLog.log(eventWithTs({ type: "batch.complete", batch_id: batchId }));
+    orchLog.log({ type: "batch.complete", payload: { batch_id: batchId } });
 
     if (state.status === "failed") {
-      orchLog.log(eventWithTs({ type: "run.stop", reason: "integration_doctor_failed" }));
+      orchLog.log({ type: "run.stop", payload: { reason: "integration_doctor_failed" } });
       break;
     }
   }
@@ -481,7 +497,7 @@ export async function runProject(
   }
   await saveRunState(statePath, state);
 
-  orchLog.log(eventWithTs({ type: "run.complete", run_id: runId, status: state.status }));
+  orchLog.log({ type: "run.complete", payload: { status: state.status } });
   orchLog.close();
 
   // Optional cleanup of successful workspaces can be added later.
