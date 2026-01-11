@@ -6,6 +6,7 @@ import { projectConfigPath } from "../core/paths.js";
 import { cleanCommand } from "./clean.js";
 import { logsCommand } from "./logs.js";
 import { planProject } from "./plan.js";
+import { resumeCommand } from "./resume.js";
 import { runCommand } from "./run.js";
 import { statusCommand } from "./status.js";
 
@@ -62,6 +63,25 @@ export function buildCli(): Command {
       await runCommand(opts.project, cfg, {
         runId: opts.runId,
         tasks: opts.tasks,
+        maxParallel: opts.maxParallel,
+        dryRun: opts.dryRun,
+        buildImage: opts.buildImage,
+      });
+    });
+
+  program
+    .command("resume")
+    .requiredOption("--project <name>", "Project name")
+    .option("--run-id <id>", "Run ID (default: latest)")
+    .option("--max-parallel <n>", "Max parallel containers", (v) => parseInt(v, 10))
+    .option("--dry-run", "Plan batches but do not start containers", false)
+    .option("--no-build-image", "Do not auto-build the worker image if missing")
+    .action(async (opts) => {
+      const globals = program.opts();
+      const configPath = globals.config ?? projectConfigPath(opts.project);
+      const cfg = loadProjectConfig(configPath);
+      await resumeCommand(opts.project, cfg, {
+        runId: opts.runId,
         maxParallel: opts.maxParallel,
         dryRun: opts.dryRun,
         buildImage: opts.buildImage,
