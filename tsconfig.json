@@ -11,7 +11,7 @@
     "skipLibCheck": true,
     "resolveJsonModule": true,
     "sourceMap": true,
-    "types": ["node"]
+    "types": ["node", "vitest"]
   },
   "include": ["index.ts", "src/**/*.ts", "worker/**/*.ts"]
 }

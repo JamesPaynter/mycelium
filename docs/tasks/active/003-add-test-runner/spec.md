@@ -2,9 +2,9 @@
 
 ## Status
 - [x] Scoped
-- [ ] In Progress
-- [ ] Implemented
-- [ ] Verified
+- [x] In Progress
+- [x] Implemented
+- [x] Verified
 
 ## Summary
 Add a unit-test framework and a minimal smoke test to validate the toolchain.
@@ -26,9 +26,9 @@ Add a unit-test framework and a minimal smoke test to validate the toolchain.
 - Rollback: Remove test deps and test folder; restore scripts.
 
 ## Implementation Checklist
-- [ ] Select and install test runner (e.g., Vitest or Jest) and TS support.
-- [ ] Add a minimal smoke test.
-- [ ] Wire npm test script.
+- [x] Select and install test runner (e.g., Vitest or Jest) and TS support.
+- [x] Add a minimal smoke test.
+- [x] Wire npm test script.
 
 ## Verification
 - `npm test`
