@@ -45,6 +45,11 @@ export type TaskSpec = {
   slug: string;
 };
 
+export type NormalizedLocks = {
+  reads: string[];
+  writes: string[];
+};
+
 export function formatManifestIssues(issues: ZodIssue[]): string[] {
   return issues.map((issue) => {
     const location = issue.path.length > 0 ? issue.path.join(".") : "<root>";
@@ -81,4 +86,28 @@ export function validateResourceLocks(manifest: TaskManifest, resources: string[
   }
 
   return issues;
+}
+
+export function normalizeLocks(locks?: TaskManifest["locks"]): NormalizedLocks {
+  const reads = Array.from(new Set(locks?.reads ?? [])).sort();
+  const writes = Array.from(new Set(locks?.writes ?? [])).sort();
+  return { reads, writes };
+}
+
+export function locksConflict(a: NormalizedLocks, b: NormalizedLocks): boolean {
+  const bReads = new Set(b.reads);
+  const bWrites = new Set(b.writes);
+
+  for (const res of a.writes) {
+    if (bWrites.has(res) || bReads.has(res)) {
+      return true;
+    }
+  }
+  for (const res of a.reads) {
+    if (bWrites.has(res)) {
+      return true;
+    }
+  }
+
+  return false;
 }

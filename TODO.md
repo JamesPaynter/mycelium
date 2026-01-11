@@ -6,7 +6,7 @@
 - [x] [004 - Implement CLI skeleton](docs/tasks/active/004-implement-cli-skeleton/spec.md) (Effort <M>, Tier <mini>)
 - [x] [005 - Add config schema and loader](docs/tasks/archive/005-add-config-schema-and-loader/spec.md) (Effort <M>, Tier <mini>)
 - [x] [006 - Define task manifest schema](docs/tasks/archive/006-define-task-manifest-schema/spec.md) (Effort <M>, Tier <mini>)
-- [ ] [007 - Implement lock scheduler](docs/tasks/active/007-implement-lock-scheduler/spec.md) (Effort <S>, Tier <mini>)
+- [x] [007 - Implement lock scheduler](docs/tasks/archive/007-implement-lock-scheduler/spec.md) (Effort <S>, Tier <mini>)
 - [ ] [008 - Implement JSONL logger](docs/tasks/active/008-implement-jsonl-logger/spec.md) (Effort <S>, Tier <mini>)
 - [ ] [009 - Implement state store](docs/tasks/active/009-implement-state-store/spec.md) (Effort <M>, Tier <mini>)
 - [ ] [010 - Implement workspace manager](docs/tasks/active/010-implement-workspace-manager/spec.md) (Effort <M>, Tier <mini>)

@@ -2,9 +2,9 @@
 
 ## Status
 - [x] Scoped
-- [ ] In Progress
-- [ ] Implemented
-- [ ] Verified
+- [x] In Progress
+- [x] Implemented
+- [x] Verified
 
 ## Summary
 Build parallel batches from resource lock declarations with deterministic ordering.
@@ -26,13 +26,14 @@ Build parallel batches from resource lock declarations with deterministic orderi
 - Rollback: Force serial execution (max_parallel=1) until scheduler is fixed.
 
 ## Implementation Checklist
-- [ ] Implement scheduler per spec: prevent write/write, write/read, read/write conflicts.
-- [ ] Ensure stable task iteration order (sorted by id).
-- [ ] Add tests for each conflict matrix row and for multi-batch construction.
-- [ ] Expose scheduler output as batches for run command.
+- [x] Implement scheduler per spec: prevent write/write, write/read, read/write conflicts.
+- [x] Ensure stable task iteration order (sorted by id).
+- [x] Add tests for each conflict matrix row and for multi-batch construction.
+- [x] Expose scheduler output as batches for run command.
 
 ## Verification
 - `npm test`
+- `npm run build`
 
 ## Dependencies
 ### Blocks
