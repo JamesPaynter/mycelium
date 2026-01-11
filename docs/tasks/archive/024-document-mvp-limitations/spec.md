@@ -2,9 +2,9 @@
 
 ## Status
 - [x] Scoped
-- [ ] In Progress
-- [ ] Implemented
-- [ ] Verified
+- [x] In Progress
+- [x] Implemented
+- [x] Verified
 
 ## Summary
 Document the MVP scope and clarified behaviors (workspace isolation, resume level, validators) in project docs.
@@ -25,12 +25,14 @@ Document the MVP scope and clarified behaviors (workspace isolation, resume leve
 - Rollback: Revert doc changes.
 
 ## Implementation Checklist
-- [ ] Document workspace isolation via per-task clones.
-- [ ] Document resume semantics (running -> pending on resume).
-- [ ] Document validators as future enhancements (non-blocking).
+- [x] Document workspace isolation via per-task clones.
+- [x] Document resume semantics (running -> pending on resume).
+- [x] Document validators as future enhancements (non-blocking).
 
 ## Verification
 - `Manual: review docs for consistency with spec corrections.`
+- `npm test`
+- `npm run build`
 
 ## Dependencies
 ### Blocks

@@ -23,7 +23,7 @@
 - [x] [021 - Implement LLM client abstraction](docs/tasks/archive/021-implement-llm-client-abstraction/spec.md) (Effort <M>, Tier <standard>)
 - [x] [022 - Add planner prompt templates](docs/tasks/archive/022-add-planner-prompt-templates/spec.md) (Effort <S>, Tier <standard>)
 - [x] [023 - Implement plan command](docs/tasks/archive/023-implement-plan-command/spec.md) (Effort <L>, Tier <standard>)
-- [ ] [024 - Document MVP limitations](docs/tasks/active/024-document-mvp-limitations/spec.md) (Effort <XS>, Tier <mini>)
+- [x] [024 - Document MVP limitations](docs/tasks/archive/024-document-mvp-limitations/spec.md) (Effort <XS>, Tier <mini>)
 - [ ] [025 - Add test validator agent (non-blocking)](docs/tasks/active/025-add-test-validator-agent/spec.md) (Effort <M>, Tier <pro>)
 - [ ] [026 - Add doctor validator agent (non-blocking)](docs/tasks/active/026-add-doctor-validator-agent/spec.md) (Effort <M>, Tier <pro>)
 - [ ] [027 - Index logs with SQLite](docs/tasks/active/027-index-logs-with-sqlite/spec.md) (Effort <L>, Tier <pro>)

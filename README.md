@@ -118,6 +118,13 @@ task-orchestrator run --project my-project
 - `templates/codex-config.toml` — example Codex config for `CODEX_HOME`
 - `projects/example.yaml` — example per-project config
 
+## MVP scope & non-goals
+
+- Dedicated per-task clones live at `~/.task-orchestrator/workspaces/<project>/run-<run-id>/task-<task-id>`; tasks never share a working tree, and manifests are copied into each workspace before execution.
+- Resume is **Level 1**: resuming resets `running` tasks to `pending` and reruns them; no container or Codex thread reattachment.
+- Validator agents (`test_validator`, `doctor_validator`) are not wired; `locks.reads/writes` guide scheduling only, and workers have full filesystem access inside their containers.
+- See `docs/mvp-scope.md` for details and future upgrades.
+
 ## Notes / assumptions
 
 - This MVP assumes your target repo is a **git repo** and `main_branch` exists (it will create it if missing).
@@ -126,8 +133,9 @@ task-orchestrator run --project my-project
 
 ## Known gaps vs your full spec (by design for MVP)
 
-- **True reattachment** to already-running containers on resume (MVP marks `running` as `pending` and reruns).
+- **Resume Level 1 only** — resuming resets `running` tasks to `pending` and reruns them; no container/thread reattachment.
 - **Test validator** and **doctor validator** are not wired yet.
+- **Access enforcement** beyond Docker is not present; runtime access is not sandboxed against manifest declarations.
 - **Branch push restrictions** are not implemented (this design merges locally).
 - No Web UI.
 
