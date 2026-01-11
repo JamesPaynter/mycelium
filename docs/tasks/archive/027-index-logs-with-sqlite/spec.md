@@ -2,9 +2,9 @@
 
 ## Status
 - [x] Scoped
-- [ ] In Progress
-- [ ] Implemented
-- [ ] Verified
+- [x] In Progress
+- [x] Implemented
+- [x] Verified
 
 ## Summary
 Add optional SQLite indexing for structured log queries beyond grep (future enhancement).
@@ -27,14 +27,15 @@ Add optional SQLite indexing for structured log queries beyond grep (future enha
 - Rollback: Disable indexing; continue using file-based log queries.
 
 ## Implementation Checklist
-- [ ] Define SQLite schema for events (ts, type, task_id, json payload).
-- [ ] Implement ingestion from JSONL with idempotency per run.
-- [ ] Add basic queries: by task, by type glob, by substring match.
-- [ ] Ensure logs command gracefully falls back when DB missing.
+- [x] Define SQLite schema for events (ts, type, task_id, json payload).
+- [x] Implement ingestion from JSONL with idempotency per run.
+- [x] Add basic queries: by task, by type glob, by substring match.
+- [x] Ensure logs command gracefully falls back when DB missing.
 
 ## Verification
-- `npm test`
-- `Manual: ingest a sample run and confirm queries return expected events.`
+- [x] `npm test`
+- [x] `npm run build`
+- [ ] Manual: ingest a sample run and confirm queries return expected events.
 
 ## Dependencies
 ### Blocks

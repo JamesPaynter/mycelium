@@ -26,5 +26,5 @@
 - [x] [024 - Document MVP limitations](docs/tasks/archive/024-document-mvp-limitations/spec.md) (Effort <XS>, Tier <mini>)
 - [x] [025 - Add test validator agent (non-blocking)](docs/tasks/archive/025-add-test-validator-agent/spec.md) (Effort <M>, Tier <pro>)
 - [x] [026 - Add doctor validator agent (non-blocking)](docs/tasks/archive/026-add-doctor-validator-agent/spec.md) (Effort <M>, Tier <pro>)
-- [ ] [027 - Index logs with SQLite](docs/tasks/active/027-index-logs-with-sqlite/spec.md) (Effort <L>, Tier <pro>)
+- [x] [027 - Index logs with SQLite](docs/tasks/archive/027-index-logs-with-sqlite/spec.md) (Effort <L>, Tier <pro>)
 - [ ] ALL_TASKS_COMPLETE

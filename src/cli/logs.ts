@@ -5,6 +5,7 @@ import { Command } from "commander";
 
 import { loadProjectConfig } from "../core/config-loader.js";
 import type { ProjectConfig } from "../core/config.js";
+import { LogIndex, logIndexPath, type LogIndexQuery } from "../core/log-index.js";
 import {
   followJsonlFile,
   readJsonlFile,
@@ -12,6 +13,7 @@ import {
   taskEventsLogPathForId,
   findTaskLogDir,
   type JsonlFilter,
+  type LogSearchResult,
 } from "../core/log-query.js";
 import { projectConfigPath, resolveRunLogsDir } from "../core/paths.js";
 
@@ -21,6 +23,7 @@ export function registerLogsCommand(program: Command): void {
     .description("Inspect orchestrator and task logs")
     .requiredOption("--project <name>", "Project name")
     .option("--run-id <id>", "Run ID (default: latest)")
+    .option("--use-index", "Query logs via SQLite index (builds if missing)", false)
     .option("--follow", "Follow orchestrator logs", false);
 
   logs
@@ -36,6 +39,7 @@ export function registerLogsCommand(program: Command): void {
         taskId: opts.task,
         typeGlob: opts.type,
         follow: opts.follow ?? false,
+        useIndex: ctx.useIndex,
       });
     });
 
@@ -50,6 +54,7 @@ export function registerLogsCommand(program: Command): void {
         runId: ctx.runId,
         pattern,
         taskId: opts.task,
+        useIndex: ctx.useIndex,
       });
     });
 
@@ -72,6 +77,7 @@ export function registerLogsCommand(program: Command): void {
     await logsQuery(ctx.projectName, ctx.config, {
       runId: ctx.runId,
       follow: opts.follow ?? false,
+      useIndex: ctx.useIndex,
     });
   });
 }
@@ -79,7 +85,7 @@ export function registerLogsCommand(program: Command): void {
 export async function logsQuery(
   projectName: string,
   _config: ProjectConfig,
-  opts: { runId?: string; taskId?: string; typeGlob?: string; follow?: boolean },
+  opts: { runId?: string; taskId?: string; typeGlob?: string; follow?: boolean; useIndex?: boolean },
 ): Promise<void> {
   const runLogs = resolveRunLogsOrWarn(projectName, opts.runId);
   if (!runLogs) return;
@@ -87,6 +93,21 @@ export async function logsQuery(
   const filter: JsonlFilter = {};
   if (opts.taskId) filter.taskId = opts.taskId;
   if (opts.typeGlob) filter.typeGlob = opts.typeGlob;
+
+  const preferIndex = opts.useIndex ?? false;
+  if (preferIndex && opts.follow) {
+    console.log("--use-index is ignored when --follow is set; streaming from log file instead.");
+  }
+
+  if (preferIndex && !opts.follow) {
+    const indexedLines = queryLogsFromIndex(runLogs, filter);
+    if (indexedLines !== null) {
+      for (const line of indexedLines) {
+        console.log(line);
+      }
+      return;
+    }
+  }
 
   const target =
     opts.taskId === undefined
@@ -126,12 +147,19 @@ export async function logsQuery(
 export async function logsSearch(
   projectName: string,
   _config: ProjectConfig,
-  opts: { runId?: string; pattern: string; taskId?: string },
+  opts: { runId?: string; pattern: string; taskId?: string; useIndex?: boolean },
 ): Promise<void> {
   const runLogs = resolveRunLogsOrWarn(projectName, opts.runId);
   if (!runLogs) return;
 
-  const matches = searchLogs(runLogs.dir, opts.pattern, { taskId: opts.taskId });
+  const preferIndex = opts.useIndex ?? false;
+  let matches: LogSearchResult[];
+  if (preferIndex) {
+    const indexed = trySearchWithIndex(runLogs, opts.pattern, opts.taskId);
+    matches = indexed ?? searchLogs(runLogs.dir, opts.pattern, { taskId: opts.taskId });
+  } else {
+    matches = searchLogs(runLogs.dir, opts.pattern, { taskId: opts.taskId });
+  }
   if (matches.length === 0) {
     console.log(`No matches for "${opts.pattern}" in run ${runLogs.runId}.`);
     process.exitCode = 1;
@@ -193,12 +221,69 @@ export async function logsDoctor(
   process.stdout.write(content.endsWith("\n") ? content : `${content}\n`);
 }
 
+function queryLogsFromIndex(
+  runLogs: { runId: string; dir: string },
+  filter: JsonlFilter,
+): string[] | null {
+  const dbPath = logIndexPath(runLogs.dir);
+  const indexFilter: LogIndexQuery = {};
+  if (filter.taskId) indexFilter.taskId = filter.taskId;
+  if (filter.typeGlob) indexFilter.typeGlob = filter.typeGlob;
+
+  let index: LogIndex | null = null;
+  try {
+    index = LogIndex.open(runLogs.runId, runLogs.dir, dbPath);
+    index.ingestRunLogs(runLogs.dir);
+    const events = index.queryEvents(indexFilter);
+    return events.map((event) => event.raw);
+  } catch (err) {
+    console.log(
+      `Log index unavailable at ${dbPath} (${(err as Error).message}). Falling back to JSONL files.`,
+    );
+    return null;
+  } finally {
+    if (index) index.close();
+  }
+}
+
+function trySearchWithIndex(
+  runLogs: { runId: string; dir: string },
+  pattern: string,
+  taskId?: string,
+): LogSearchResult[] | null {
+  const dbPath = logIndexPath(runLogs.dir);
+  let index: LogIndex | null = null;
+  try {
+    index = LogIndex.open(runLogs.runId, runLogs.dir, dbPath);
+    index.ingestRunLogs(runLogs.dir);
+    const events = index.queryEvents({ taskId, search: pattern });
+    return events.map((event) => ({
+      filePath: path.join(runLogs.dir, event.source),
+      lineNumber: event.lineNumber,
+      line: event.raw,
+    }));
+  } catch (err) {
+    console.log(
+      `Log index unavailable at ${dbPath} (${(err as Error).message}). Falling back to file search.`,
+    );
+    return null;
+  } finally {
+    if (index) index.close();
+  }
+}
+
 function buildContext(command: Command): {
   projectName: string;
   runId?: string;
   config: ProjectConfig;
+  useIndex: boolean;
 } {
-  const opts = command.optsWithGlobals() as { project?: string; runId?: string; config?: string };
+  const opts = command.optsWithGlobals() as {
+    project?: string;
+    runId?: string;
+    config?: string;
+    useIndex?: boolean;
+  };
   if (!opts.project) {
     throw new Error("Project name is required");
   }
@@ -206,7 +291,7 @@ function buildContext(command: Command): {
   const configPath = opts.config ?? projectConfigPath(opts.project);
   const config = loadProjectConfig(configPath);
 
-  return { projectName: opts.project, runId: opts.runId, config };
+  return { projectName: opts.project, runId: opts.runId, config, useIndex: opts.useIndex ?? false };
 }
 
 function resolveRunLogsOrWarn(

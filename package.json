@@ -23,6 +23,8 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "dev": "tsx src/main.ts",
+    "logs:query": "tsx src/main.ts logs query --use-index",
+    "logs:search": "tsx src/main.ts logs search --use-index",
     "start": "node dist/index.js",
     "worker": "node dist/worker/index.js",
     "worker:dev": "tsx worker/index.ts",
@@ -32,6 +34,7 @@
   "dependencies": {
     "@anthropic-ai/sdk": "^0.71.2",
     "@openai/codex-sdk": "^0.77.0",
+    "better-sqlite3": "^12.6.0",
     "commander": "^12.1.0",
     "dockerode": "^4.0.2",
     "execa": "^9.5.0",
@@ -43,6 +46,7 @@
     "zod": "^3.23.8"
   },
   "devDependencies": {
+    "@types/better-sqlite3": "^7.6.13",
     "@types/dockerode": "^3.3.47",
     "@types/fs-extra": "^11.0.4",
     "@types/js-yaml": "^4.0.9",
