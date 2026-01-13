@@ -188,3 +188,21 @@ Why this matters: [Google Antigravity wiped a user's entire D: drive](https://ol
 ## License
 
 MIT. See `LICENSE`.
+
+---
+
+## Acknowledgements
+
+This project is heavily inspired by the “Ralph loop” pattern popularized by Geoffrey Huntley, and by the broader ecosystem of Ralph-loop implementations and writeups.
+
+Additional influences:
+- **Ralph loops** — the core “run an agent in a loop with fresh context, tight scope, and checkpoints” idea (see Geoffrey Huntley’s writeup: https://ghuntley.com/ralph/).
+- **Ralph implementations/playbooks** — practical references that helped shape details of the loop + workflow:
+  - https://github.com/snarktank/ralph
+  - https://github.com/ClaytonFarr/ralph-playbook
+- **Shrivu Shankar — “AI Can’t Read Your Docs”** — for clear thinking on designing software and interfaces that today’s coding agents can reliably navigate: https://blog.sshh.io/p/ai-cant-read-your-docs
+- **Steve Yegge — Beads** — even though this repo doesn’t use Beads directly, the “externalize state so agents can resume cleanly” philosophy strongly influenced the structure here:
+  - https://github.com/steveyegge/beads
+  - https://steve-yegge.medium.com/introducing-beads-a-coding-agent-memory-system-637d7d92514a
+- **Manus “todo.md” workflow** — the idea of continuously updating a checklist to keep the global plan in the model’s recent attention:
+  - https://manus.im/blog/Context-Engineering-for-AI-Agents-Lessons-from-Building-Manus
