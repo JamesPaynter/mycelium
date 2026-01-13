@@ -70,14 +70,18 @@ check_done() {
 
 run_agent() {
   docker run -i --rm \
-    -v claude_home:/root/.claude \
+    -u "$(id -u):$(id -g)" \
+    -e HOME=/home/claude \
+    -v "$HOME/.claude":/home/claude/.claude \
+    -v "$HOME/.claude.json":/home/claude/.claude.json \
     -v "$PROJECT_DIR:/workspace" \
     -w /workspace \
     ${ANTHROPIC_API_KEY:+-e ANTHROPIC_API_KEY} \
     "$IMAGE" \
-    claude -p "$(<"$INSTRUCTIONS_FILE")" \
+    claude --dangerously-skip-permissions \
       --model "$MODEL" \
-      --dangerously-skip-permissions
+      -p "Follow the instructions provided on stdin. Work only inside /workspace." \
+    < "$INSTRUCTIONS_FILE"
 }
 
 run_with_output() {
