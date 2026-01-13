@@ -20,6 +20,8 @@ Efficient Ralph Loops adds structure:
 - **Fresh context every loop.** The iteration ends once the task is complete. The agent starts the next task with a clean context window. This prevents context pollution, improves reasoning quality, and reduces token usage.
 - **Git commits between iterations.** Every completed task is committed before the next iteration starts. You preserve intermediate progress, can review diffs, and can identify when something breaks.
 - **Explicit termination.** Loop stops only when `TODO.md` contains `[x] ALL_TASKS_COMPLETE`.
+- **Docker isolation.** The agent runs with full permissions inside a container. It can't touch anything outside the mounted project directory, allowing true autonomous 12-hour runs without you worrying about rm -rf on your ~/home directory.
+
 
 The result is a workflow that looks more like real engineering: a prioritized backlog, small verifiable tasks, incremental commits, and clear completion criteria.
 
@@ -173,15 +175,13 @@ Tasks should be small enough that "do one, verify, commit" is realistic. Each sp
 
 ---
 
-## Extending the image
-
-The provided image is minimal. Real projects need toolchains (Python, Go, build tools, caches). Treat `Dockerfile` as a starting point—bake in whatever your verification commands require.
-
----
-
 ## Security
 
-Both scripts bypass approval prompts (`--dangerously-bypass-approvals-and-sandbox` for Codex, `--dangerously-skip-permissions` for Claude). Run on isolated/trusted workspaces only.
+The agent runs with full permissions inside the container (`--dangerously-bypass-approvals-and-sandbox` for Codex, `--dangerously-skip-permissions` for Claude). This is intentional—Docker provides the isolation, so the agent can work autonomously without approval prompts slowing it down.
+
+The host filesystem is not at risk. Only the mounted project directory is accessible. 
+
+Why this matters: [Google Antigravity wiped a user's entire D: drive](https://old.reddit.com/r/google_antigravity/comments/1p82or6/google_antigravity_just_deleted_the_contents_of/) when asked to clear a cache. Docker prevents this—only the mounted project directory is accessible.
 
 ---
 
