@@ -1,44 +1,90 @@
+```markdown
 # Agent Loop Harness
 
-This repo is a tiny harness for running an LLM agent in a loop inside Docker until a project signals it is done. It ships two loop scripts—one for OpenAI Codex and one for Anthropic Claude—that mount `YOUR_PROJECT` into the container, feed in instructions, and stop when the done pattern appears in the project's TODO file.
+Runs an LLM agent in a loop inside Docker until the project marks itself done. Two scripts—one for OpenAI Codex, one for Anthropic Claude—mount your project, feed instructions, and exit when the done pattern appears in the TODO file.
 
-## What’s here
-- `Dockerfile` builds the `agent-loop` image (Node 20 with `@openai/codex` and `@anthropic-ai/claude-code` CLIs).
-- `loop-codex.sh` runs the Codex loop; `loop-claude.sh` runs the Claude loop.
-- `YOUR_PROJECT/` holds the work-in-progress project, placeholder instructions, and a sample plan (a black hole ray tracer).
-- `LICENSE` is MIT.
+## Contents
+
+- `Dockerfile` — builds `agent-loop` image (Node 20 + `@openai/codex` + `@anthropic-ai/claude-code`)
+- `loop-codex.sh` — Codex loop
+- `loop-claude.sh` — Claude loop
+- `YOUR_PROJECT/` — sample project (black hole ray tracer)
+- `LICENSE` — MIT
 
 ## Prerequisites
-- Docker installed and running.
-- API key for the agent you plan to use: `CODEX_API_KEY`/`OPENAI_API_KEY` for Codex, or `ANTHROPIC_API_KEY`/`CLAUDE_API_KEY` for Claude.
 
-## Build the image
+- Docker
+- API key or subscription auth (see below)
+
+## Build
+
 ```sh
 docker build -t agent-loop .
 ```
 
-## Running the loops
-By default the scripts mount `YOUR_PROJECT` as `/workspace`, read instructions from `YOUR_PROJECT/INSTRUCTIONS.md`, and watch `YOUR_PROJECT/TODO.md` for `[x] ALL_TASKS_COMPLETE`.
+## Usage
+
+Scripts mount `YOUR_PROJECT` as `/workspace`, read `INSTRUCTIONS.md`, and poll `TODO.md` for `[x] ALL_TASKS_COMPLETE`.
 
 ### Codex
+
 ```sh
 CODEX_API_KEY=sk-... ./loop-codex.sh
+# or
+OPENAI_API_KEY=sk-... ./loop-codex.sh
 ```
 
-### Claude
+### Claude (API key)
+
 ```sh
 ANTHROPIC_API_KEY=sk-... ./loop-claude.sh
+# or
+CLAUDE_API_KEY=sk-... ./loop-claude.sh
 ```
 
-## Flags and environment
-- `--dry-run` prints the resolved settings without starting the loop.
-- `--once` runs a single iteration.
-- `PROJECT_DIR`, `INSTRUCTIONS_FILE`, `DONE_FILE`, `DONE_PATTERN` override the defaults if you want to point at a different project or completion marker.
-- `SLEEP_SECONDS` sets the pause between iterations; `MAX_LOOPS` caps the number of passes (0 runs until done).
-- `STDOUT_MODE` controls logging: `stream` (default), `quiet`, `log` (also writes to `logs/`), or `log_only`.
-- `IMAGE` overrides the Docker image tag; `MODEL` chooses the Claude model.
+### Claude (subscription auth - macOS)
 
-Both scripts pass the instructions file to the agent each loop and stop when the done pattern is found. The Codex script uses `codex exec` with `--dangerously-bypass-approvals-and-sandbox`; run it only on isolated workspaces you trust.
+Use your Pro/Max subscription instead of an API key:
 
-## Customizing the project
-Edit the files under `YOUR_PROJECT/` to define your own tasks, instructions, and completion criteria. The sample `PLAN.md` sketches a Python black hole ray tracer, but you can replace it with any project. Update `TODO.md` to reflect real tasks and mark them complete to end the loop.
+```sh
+# One-time setup: extract OAuth token from keychain
+mkdir -p ~/.claude
+security find-generic-password -s "Claude Code-credentials" -w > ~/.claude/.credentials.json
+```
+
+Then:
+
+```sh
+./loop-claude.sh
+```
+
+Script mounts `~/.claude` and `~/.claude.json` automatically.
+
+## Options
+
+| Flag | Description |
+|------|-------------|
+| `--dry-run` | Print config, don't run |
+| `--once` | Single iteration |
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `PROJECT_DIR` | `./YOUR_PROJECT` | Project path |
+| `INSTRUCTIONS_FILE` | `$PROJECT_DIR/INSTRUCTIONS.md` | Agent instructions |
+| `DONE_FILE` | `$PROJECT_DIR/TODO.md` | Completion file |
+| `DONE_PATTERN` | `\[x\] ALL_TASKS_COMPLETE` | Done regex |
+| `SLEEP_SECONDS` | `2` | Loop delay |
+| `MAX_LOOPS` | `0` | Iteration cap (0 = unlimited) |
+| `STDOUT_MODE` | `stream` | `stream`, `quiet`, `log`, `log_only` |
+| `LOG_DIR` | `./logs` | Log output dir |
+| `IMAGE` | `agent-loop:latest` | Docker image |
+| `MODEL` | `opus` | Claude model |
+
+## Customization
+
+Replace `YOUR_PROJECT/` contents with your own. Update `TODO.md` tasks and mark `[x] ALL_TASKS_COMPLETE` when done.
+
+## Security
+
+Both scripts bypass approval prompts (`--dangerously-bypass-approvals-and-sandbox` for Codex, `--dangerously-skip-permissions` for Claude). Run on isolated/trusted workspaces only.
+```
