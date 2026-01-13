@@ -21,6 +21,9 @@ Efficient Ralph Loops adds structure:
 - **Git commits between iterations.** Every completed task is committed before the next iteration starts. You preserve intermediate progress, can review diffs, and can identify when something breaks.
 - **Explicit termination.** Loop stops only when `TODO.md` contains `[x] ALL_TASKS_COMPLETE`.
 
+The result is a workflow that looks more like real engineering: a prioritized backlog, small verifiable tasks, incremental commits, and clear completion criteria.
+
+
 ## Contents
 
 - `Dockerfile` — builds `agent-loop` image (Node 20 + `@openai/codex` + `@anthropic-ai/claude-code`)
