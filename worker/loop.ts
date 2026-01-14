@@ -1,4 +1,5 @@
 import fs from "node:fs/promises";
+import path from "node:path";
 
 import { execa, execaCommand } from "execa";
 
@@ -54,6 +55,19 @@ export async function runWorker(config: WorkerConfig, logger?: WorkerLogger): Pr
   }
 
   const { spec, manifest } = await loadTaskInputs(config.specPath, config.manifestPath);
+  const workerFailOnceFile = path.join(config.codexHome, ".fail-once");
+  const commandEnv: NodeJS.ProcessEnv = {
+    ...process.env,
+    TASK_ID: config.taskId,
+    TASK_SLUG: config.taskSlug,
+    TASK_BRANCH: config.taskBranch,
+    CODEX_HOME: config.codexHome,
+    RUN_LOGS_DIR: config.runLogsDir,
+    WORKER_FAIL_ONCE_FILE: workerFailOnceFile,
+  };
+  if (config.codexModel) {
+    commandEnv.CODEX_MODEL = config.codexModel;
+  }
   const workerPayload: JsonObject = {
     manifest_path: config.manifestPath,
     spec_path: config.specPath,
@@ -73,6 +87,7 @@ export async function runWorker(config: WorkerConfig, logger?: WorkerLogger): Pr
       cwd: config.workingDirectory,
       log,
       runLogsDir: config.runLogsDir,
+      env: commandEnv,
     });
   }
 
@@ -118,6 +133,7 @@ export async function runWorker(config: WorkerConfig, logger?: WorkerLogger): Pr
       command: config.doctorCmd,
       cwd: config.workingDirectory,
       timeoutSeconds: config.doctorTimeoutSeconds,
+      env: commandEnv,
     });
 
     const doctorOutput = doctor.output.trim();
@@ -227,6 +243,7 @@ async function runBootstrap(args: {
   cwd: string;
   log: WorkerLogger;
   runLogsDir: string;
+  env?: NodeJS.ProcessEnv;
 }): Promise<void> {
   const cmds = args.commands.filter((cmd) => cmd.trim().length > 0);
   if (cmds.length === 0) {
@@ -244,6 +261,7 @@ async function runBootstrap(args: {
       shell: true,
       reject: false,
       stdio: "pipe",
+      env: args.env ?? process.env,
     });
 
     const output = `${res.stdout}\n${res.stderr}`.trim();
@@ -278,6 +296,7 @@ async function runDoctor(args: {
   command: string;
   cwd: string;
   timeoutSeconds?: number;
+  env?: NodeJS.ProcessEnv;
 }): Promise<{ exitCode: number; output: string }> {
   const res = await execaCommand(args.command, {
     cwd: args.cwd,
@@ -285,6 +304,7 @@ async function runDoctor(args: {
     reject: false,
     timeout: args.timeoutSeconds ? args.timeoutSeconds * 1000 : undefined,
     stdio: "pipe",
+    env: args.env ?? process.env,
   });
 
   const exitCode = res.exitCode ?? -1;

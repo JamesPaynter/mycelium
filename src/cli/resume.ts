@@ -2,7 +2,7 @@ import type { ProjectConfig } from "../core/config.js";
 import { runProject, type RunOptions } from "../core/executor.js";
 import { loadRunStateForProject } from "../core/state-store.js";
 
-type ResumeOptions = Pick<RunOptions, "maxParallel" | "dryRun" | "buildImage"> & {
+type ResumeOptions = Pick<RunOptions, "maxParallel" | "dryRun" | "buildImage" | "useDocker"> & {
   runId?: string;
 };
 
@@ -25,6 +25,7 @@ export async function resumeCommand(
     maxParallel: opts.maxParallel,
     dryRun: opts.dryRun,
     buildImage: opts.buildImage,
+    useDocker: opts.useDocker,
     resume: true,
   });
 

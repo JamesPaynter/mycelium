@@ -93,6 +93,17 @@ task-orchestrator plan \
 task-orchestrator run --project my-project
 ```
 
+- Add `--local-worker` to run workers on the host when Docker is unavailable.
+
+## MVP acceptance checklist
+
+- `plan` writes task manifests to your tasks directory (default `.tasks/`) from a real implementation plan.
+- `run` executes workers (Docker or `--local-worker`), bootstraps per task, and loops until both per-task doctor and integration doctor pass.
+- Successful task branches merge into the integration branch with no pending `running` tasks or merge conflicts.
+- Integration doctor runs on the integration branch with the same command you expect in CI.
+- Logs and state land under `~/.task-orchestrator/logs` and `~/.task-orchestrator/.state`; `status` and `logs` surface the run without digging through files.
+- `clean` removes workspaces, containers, and logs once the run is archived.
+
 ## Worker image config
 
 - Defaults: `docker.image` → `task-orchestrator-worker:latest`, `docker.dockerfile` → `templates/Dockerfile`, `docker.build_context` → `.`.

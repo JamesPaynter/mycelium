@@ -58,6 +58,11 @@ export function buildCli(): Command {
     .option("--max-parallel <n>", "Max parallel containers", (v) => parseInt(v, 10))
     .option("--dry-run", "Plan batches but do not start containers", false)
     .option("--no-build-image", "Do not auto-build the worker image if missing")
+    .option(
+      "--local-worker",
+      "Run workers directly on the host without Docker (development/pilot)",
+      false,
+    )
     .action(async (opts) => {
       const globals = program.opts();
       const configPath = globals.config ?? projectConfigPath(opts.project);
@@ -68,6 +73,7 @@ export function buildCli(): Command {
         maxParallel: opts.maxParallel,
         dryRun: opts.dryRun,
         buildImage: opts.buildImage,
+        useDocker: !opts.localWorker,
       });
     });
 
@@ -78,6 +84,11 @@ export function buildCli(): Command {
     .option("--max-parallel <n>", "Max parallel containers", (v) => parseInt(v, 10))
     .option("--dry-run", "Plan batches but do not start containers", false)
     .option("--no-build-image", "Do not auto-build the worker image if missing")
+    .option(
+      "--local-worker",
+      "Run workers directly on the host without Docker (development/pilot)",
+      false,
+    )
     .action(async (opts) => {
       const globals = program.opts();
       const configPath = globals.config ?? projectConfigPath(opts.project);
@@ -87,6 +98,7 @@ export function buildCli(): Command {
         maxParallel: opts.maxParallel,
         dryRun: opts.dryRun,
         buildImage: opts.buildImage,
+        useDocker: !opts.localWorker,
       });
     });
 

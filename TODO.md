@@ -1,6 +1,6 @@
 # TODO
 
-- [ ] [028 - Pilot run + acceptance checklist](docs/tasks/active/028-pilot-run-and-acceptance/spec.md) (Effort <S>, Tier <mini>)
+- [x] [028 - Pilot run + acceptance checklist](docs/tasks/archive/028-pilot-run-and-acceptance/spec.md) (Effort <S>, Tier <mini>)
 - [ ] [029 - Resume Level 2: reattach to running containers](docs/tasks/active/029-resume-level-2-reattach-containers/spec.md) (Effort <L>, Tier <standard>)
 - [ ] [030 - Resume Level 3: resume Codex thread inside worker](docs/tasks/active/030-resume-level-3-resume-codex-thread/spec.md) (Effort <L>, Tier <pro>)
 - [ ] [031 - Worker checkpoint commits (reduce lost work)](docs/tasks/active/031-worker-checkpoint-commits/spec.md) (Effort <M>, Tier <standard>)

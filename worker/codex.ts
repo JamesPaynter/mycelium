@@ -19,9 +19,12 @@ export class CodexRunner {
   private thread: Thread;
 
   constructor(opts: CodexRunnerOptions) {
-    const env = opts.codexHome ? { CODEX_HOME: opts.codexHome } : undefined;
+    const env: Record<string, string> = {};
+    if (opts.codexHome) env.CODEX_HOME = opts.codexHome;
+    if (process.env.CODEX_API_KEY) env.CODEX_API_KEY = process.env.CODEX_API_KEY;
+    if (process.env.OPENAI_API_KEY) env.OPENAI_API_KEY = process.env.OPENAI_API_KEY;
 
-    const codex = new Codex({ env });
+    const codex = new Codex({ env: Object.keys(env).length > 0 ? env : undefined });
     const threadOptions: ThreadOptions = {
       workingDirectory: opts.workingDirectory,
       sandboxMode: opts.sandboxMode ?? "danger-full-access",

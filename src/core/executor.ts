@@ -20,7 +20,13 @@ import { buildTaskBranchName } from "../git/branches.js";
 import { ensureCodexAuthForHome } from "./codexAuth.js";
 
 import type { ProjectConfig } from "./config.js";
-import { JsonlLogger, logOrchestratorEvent, logRunResume, logTaskReset } from "./logger.js";
+import {
+  JsonlLogger,
+  logJsonLineOrRaw,
+  logOrchestratorEvent,
+  logRunResume,
+  logTaskReset,
+} from "./logger.js";
 import { loadTaskSpecs } from "./task-loader.js";
 import type { TaskSpec } from "./task-manifest.js";
 import {
@@ -47,6 +53,8 @@ import { ensureDir, defaultRunId, isoNow } from "./utils.js";
 import { prepareTaskWorkspace } from "./workspaces.js";
 import { runDoctorValidator } from "../validators/doctor-validator.js";
 import { runTestValidator } from "../validators/test-validator.js";
+import { runWorker } from "../../worker/loop.js";
+import type { WorkerLogger, WorkerLogEventInput } from "../../worker/logging.js";
 
 export type RunOptions = {
   runId?: string;
@@ -56,6 +64,7 @@ export type RunOptions = {
   dryRun?: boolean;
   buildImage?: boolean;
   cleanupOnSuccess?: boolean;
+  useDocker?: boolean;
 };
 
 export type BatchPlanEntry = {
@@ -82,6 +91,7 @@ type TaskRunResult =
       branchName: string;
       workspace: string;
       logsDir: string;
+      errorMessage?: string;
     };
 
 export async function runProject(
@@ -103,10 +113,12 @@ export async function runProject(
   }
   const maxParallel = opts.maxParallel ?? config.max_parallel;
   const cleanupOnSuccess = opts.cleanupOnSuccess ?? false;
+  const useDocker = opts.useDocker ?? true;
   const plannedBatches: BatchPlanEntry[] = [];
 
   const repoPath = config.repo_path;
-  const docker = dockerClient();
+  const workerImage = config.docker.image;
+  const docker = useDocker ? dockerClient() : null;
 
   // Prepare directories
   await ensureDir(orchestratorHome());
@@ -195,21 +207,22 @@ export async function runProject(
   });
 
   // Ensure worker image exists.
-  const workerImage = config.docker.image;
-  const haveImage = await imageExists(docker, workerImage);
-  if (!haveImage) {
-    if (opts.buildImage ?? true) {
-      logOrchestratorEvent(orchLog, "docker.image.build.start", { image: workerImage });
-      await buildWorkerImage({
-        tag: workerImage,
-        dockerfile: config.docker.dockerfile,
-        context: config.docker.build_context,
-      });
-      logOrchestratorEvent(orchLog, "docker.image.build.complete", { image: workerImage });
-    } else {
-      throw new Error(
-        `Docker image not found: ${workerImage}. Build it or run with --build-image.`,
-      );
+  if (useDocker) {
+    const haveImage = docker ? await imageExists(docker, workerImage) : false;
+    if (!haveImage) {
+      if (opts.buildImage ?? true) {
+        logOrchestratorEvent(orchLog, "docker.image.build.start", { image: workerImage });
+        await buildWorkerImage({
+          tag: workerImage,
+          dockerfile: config.docker.dockerfile,
+          context: config.docker.build_context,
+        });
+        logOrchestratorEvent(orchLog, "docker.image.build.complete", { image: workerImage });
+      } else {
+        throw new Error(
+          `Docker image not found: ${workerImage}. Build it or run with --build-image.`,
+        );
+      }
     }
   }
 
@@ -390,100 +403,158 @@ export async function runProject(
           { runId, taskId },
         );
 
-        // Create container
-        const containerName = `to-${projectName}-${runId}-${taskId}-${taskSlug}`
-          .replace(/[^a-zA-Z0-9_.-]/g, "-")
-          .slice(0, 120);
-        const existing = await findContainerByName(docker, containerName);
-        if (existing) {
-          // If container name already exists (stale), remove it.
-          await removeContainer(existing);
-        }
-
-        const container = await createContainer(docker, {
-          name: containerName,
-          image: workerImage,
-          env: {
-            // Credentials / routing (passed through from the host).
-            CODEX_API_KEY: process.env.CODEX_API_KEY ?? process.env.OPENAI_API_KEY,
-            OPENAI_API_KEY: process.env.OPENAI_API_KEY,
-            OPENAI_BASE_URL: process.env.OPENAI_BASE_URL,
-            OPENAI_ORGANIZATION: process.env.OPENAI_ORGANIZATION,
-
-            TASK_ID: taskId,
-            TASK_SLUG: taskSlug,
-            TASK_MANIFEST_PATH: path.posix.join(
-              "/workspace",
-              config.tasks_dir,
-              path.basename(task.taskDir),
-              "manifest.json",
-            ),
-            TASK_SPEC_PATH: path.posix.join(
-              "/workspace",
-              config.tasks_dir,
-              path.basename(task.taskDir),
-              "spec.md",
-            ),
-            TASK_BRANCH: branchName,
-            DOCTOR_CMD: task.manifest.verify?.doctor ?? config.doctor,
-            DOCTOR_TIMEOUT: config.doctor_timeout ? String(config.doctor_timeout) : undefined,
-            MAX_RETRIES: String(config.max_retries),
-            BOOTSTRAP_CMDS:
-              config.bootstrap.length > 0 ? JSON.stringify(config.bootstrap) : undefined,
-            CODEX_MODEL: config.worker.model,
-            CODEX_HOME: "/codex-home",
-            RUN_LOGS_DIR: "/run-logs",
-          },
-          binds: [
-            { hostPath: workspace, containerPath: "/workspace", mode: "rw" },
-            { hostPath: codexHome, containerPath: "/codex-home", mode: "rw" },
-            { hostPath: tLogsDir, containerPath: "/run-logs", mode: "rw" },
-          ],
-          workdir: "/workspace",
-          labels: {
-            "task-orchestrator.project": projectName,
-            "task-orchestrator.run_id": runId,
-            "task-orchestrator.task_id": taskId,
-          },
-        });
-
-        const containerInfo = await container.inspect();
-        const containerId = containerInfo.Id;
-        state.tasks[taskId].container_id = containerId;
         state.tasks[taskId].branch = branchName;
         state.tasks[taskId].workspace = workspace;
         state.tasks[taskId].logs_dir = tLogsDir;
         await stateStore.save(state);
 
-        logOrchestratorEvent(orchLog, "container.create", {
-          taskId,
-          container_id: containerId,
-          name: containerName,
-        });
+        if (useDocker && docker) {
+          const containerName = `to-${projectName}-${runId}-${taskId}-${taskSlug}`
+            .replace(/[^a-zA-Z0-9_.-]/g, "-")
+            .slice(0, 120);
+          const existing = await findContainerByName(docker, containerName);
+          if (existing) {
+            // If container name already exists (stale), remove it.
+            await removeContainer(existing);
+          }
 
-        // Attach log stream
-        const detach = await streamContainerLogs(container, taskEvents, {
-          fallbackType: "task.log",
-        });
+          const container = await createContainer(docker, {
+            name: containerName,
+            image: workerImage,
+            env: {
+              // Credentials / routing (passed through from the host).
+              CODEX_API_KEY: process.env.CODEX_API_KEY ?? process.env.OPENAI_API_KEY,
+              OPENAI_API_KEY: process.env.OPENAI_API_KEY,
+              OPENAI_BASE_URL: process.env.OPENAI_BASE_URL,
+              OPENAI_ORGANIZATION: process.env.OPENAI_ORGANIZATION,
 
-        await startContainer(container);
-        logOrchestratorEvent(orchLog, "container.start", { taskId, container_id: containerId });
+              TASK_ID: taskId,
+              TASK_SLUG: taskSlug,
+              TASK_MANIFEST_PATH: path.posix.join(
+                "/workspace",
+                config.tasks_dir,
+                path.basename(task.taskDir),
+                "manifest.json",
+              ),
+              TASK_SPEC_PATH: path.posix.join(
+                "/workspace",
+                config.tasks_dir,
+                path.basename(task.taskDir),
+                "spec.md",
+              ),
+              TASK_BRANCH: branchName,
+              DOCTOR_CMD: task.manifest.verify?.doctor ?? config.doctor,
+              DOCTOR_TIMEOUT: config.doctor_timeout ? String(config.doctor_timeout) : undefined,
+              MAX_RETRIES: String(config.max_retries),
+              BOOTSTRAP_CMDS:
+                config.bootstrap.length > 0 ? JSON.stringify(config.bootstrap) : undefined,
+              CODEX_MODEL: config.worker.model,
+              CODEX_HOME: "/codex-home",
+              RUN_LOGS_DIR: "/run-logs",
+            },
+            binds: [
+              { hostPath: workspace, containerPath: "/workspace", mode: "rw" },
+              { hostPath: codexHome, containerPath: "/codex-home", mode: "rw" },
+              { hostPath: tLogsDir, containerPath: "/run-logs", mode: "rw" },
+            ],
+            workdir: "/workspace",
+            labels: {
+              "task-orchestrator.project": projectName,
+              "task-orchestrator.run_id": runId,
+              "task-orchestrator.task_id": taskId,
+            },
+          });
 
-        const waited = await waitContainer(container);
-        detach();
-        taskEvents.close();
+          const containerInfo = await container.inspect();
+          const containerId = containerInfo.Id;
+          state.tasks[taskId].container_id = containerId;
+          await stateStore.save(state);
 
-        logOrchestratorEvent(orchLog, "container.exit", {
-          taskId,
-          container_id: containerId,
-          exit_code: waited.exitCode,
-        });
+          logOrchestratorEvent(orchLog, "container.create", {
+            taskId,
+            container_id: containerId,
+            name: containerName,
+          });
 
-        if (cleanupOnSuccess && waited.exitCode === 0) {
-          await removeContainer(container);
+          // Attach log stream
+          const detach = await streamContainerLogs(container, taskEvents, {
+            fallbackType: "task.log",
+          });
+
+          await startContainer(container);
+          logOrchestratorEvent(orchLog, "container.start", { taskId, container_id: containerId });
+
+          const waited = await waitContainer(container);
+          detach();
+          taskEvents.close();
+
+          logOrchestratorEvent(orchLog, "container.exit", {
+            taskId,
+            container_id: containerId,
+            exit_code: waited.exitCode,
+          });
+
+          if (cleanupOnSuccess && waited.exitCode === 0) {
+            await removeContainer(container);
+          }
+
+          if (waited.exitCode === 0) {
+            return {
+              taskId,
+              taskSlug,
+              branchName,
+              workspace,
+              logsDir: tLogsDir,
+              success: true as const,
+            };
+          }
+
+          return {
+            taskId,
+            taskSlug,
+            branchName,
+            workspace,
+            logsDir: tLogsDir,
+            errorMessage: `Task worker container exited with code ${waited.exitCode}`,
+            success: false as const,
+          };
         }
 
-        if (waited.exitCode === 0) {
+        logOrchestratorEvent(orchLog, "worker.local.start", { taskId, workspace });
+        const manifestPath = path.join(
+          workspace,
+          config.tasks_dir,
+          path.basename(task.taskDir),
+          "manifest.json",
+        );
+        const specPath = path.join(
+          workspace,
+          config.tasks_dir,
+          path.basename(task.taskDir),
+          "spec.md",
+        );
+        const workerLogger = createLocalWorkerLogger(taskEvents, { taskId, taskSlug });
+
+        try {
+          await runWorker(
+            {
+              taskId,
+              taskSlug,
+              taskBranch: branchName,
+              manifestPath,
+              specPath,
+              doctorCmd: task.manifest.verify?.doctor ?? config.doctor,
+              doctorTimeoutSeconds: config.doctor_timeout,
+              maxRetries: config.max_retries,
+              bootstrapCmds: config.bootstrap,
+              runLogsDir: tLogsDir,
+              codexHome,
+              codexModel: config.worker.model,
+              workingDirectory: workspace,
+            },
+            workerLogger,
+          );
+          logOrchestratorEvent(orchLog, "worker.local.complete", { taskId });
           return {
             taskId,
             taskSlug,
@@ -492,16 +563,21 @@ export async function runProject(
             logsDir: tLogsDir,
             success: true as const,
           };
+        } catch (err) {
+          const message = err instanceof Error ? err.message : String(err);
+          logOrchestratorEvent(orchLog, "worker.local.error", { taskId, message });
+          return {
+            taskId,
+            taskSlug,
+            branchName,
+            workspace,
+            logsDir: tLogsDir,
+            errorMessage: message,
+            success: false as const,
+          };
+        } finally {
+          taskEvents.close();
         }
-
-        return {
-          taskId,
-          taskSlug,
-          branchName,
-          workspace,
-          logsDir: tLogsDir,
-          success: false as const,
-        };
       }),
     );
 
@@ -515,11 +591,14 @@ export async function runProject(
           attempts: state.tasks[r.taskId].attempts,
         });
       } else {
-        markTaskFailed(state, r.taskId, "Task worker exited with a non-zero status");
+        const errorMessage =
+          r.errorMessage ?? "Task worker exited with a non-zero status";
+        markTaskFailed(state, r.taskId, errorMessage);
         failed.add(r.taskId);
         logOrchestratorEvent(orchLog, "task.failed", {
           taskId: r.taskId,
           attempts: state.tasks[r.taskId].attempts,
+          message: errorMessage,
         });
       }
     }
@@ -694,6 +773,50 @@ export async function runProject(
 
   // Optional cleanup of successful workspaces can be added later.
   return { runId, state, plan: plannedBatches };
+}
+
+function createLocalWorkerLogger(
+  taskEvents: JsonlLogger,
+  defaults: { taskId: string; taskSlug: string },
+): WorkerLogger {
+  return {
+    log(event: WorkerLogEventInput) {
+      const normalized = normalizeWorkerEvent(event, defaults);
+      logJsonLineOrRaw(taskEvents, JSON.stringify(normalized), "stdout", "task.log");
+    },
+  };
+}
+
+function normalizeWorkerEvent(
+  event: WorkerLogEventInput,
+  defaults: { taskId: string; taskSlug: string },
+): Record<string, unknown> {
+  const ts =
+    typeof event.ts === "string"
+      ? event.ts
+      : event.ts instanceof Date
+        ? event.ts.toISOString()
+        : isoNow();
+
+  const payload =
+    event.payload && Object.keys(event.payload).length > 0 ? event.payload : undefined;
+
+  const normalized: Record<string, unknown> = {
+    ts,
+    type: event.type,
+  };
+
+  if (event.attempt !== undefined) normalized.attempt = event.attempt;
+
+  const taskId = event.taskId ?? defaults.taskId;
+  if (taskId) normalized.task_id = taskId;
+
+  const taskSlug = event.taskSlug ?? defaults.taskSlug;
+  if (taskSlug) normalized.task_slug = taskSlug;
+
+  if (payload) normalized.payload = payload;
+
+  return normalized;
 }
 
 async function writeCodexConfig(
