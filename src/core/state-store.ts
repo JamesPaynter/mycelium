@@ -30,6 +30,7 @@ export type TaskStatusCounts = {
   running: number;
   complete: number;
   failed: number;
+  needs_rescope: number;
   skipped: number;
 };
 
@@ -193,6 +194,7 @@ function summarizeTaskStatuses(tasks: Record<string, TaskState>): TaskStatusCoun
     running: 0,
     complete: 0,
     failed: 0,
+    needs_rescope: 0,
     skipped: 0,
   };
 

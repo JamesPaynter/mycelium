@@ -10,6 +10,9 @@ main_branch: development-codex
 # Task branches are created as: <task_branch_prefix><id>-<name>
 task_branch_prefix: agent/
 
+# Manifest enforcement policy: off | warn | block
+manifest_enforcement: warn
+
 # Limits
 max_parallel: 3
 max_retries: 20
@@ -48,6 +51,7 @@ planner:
 
 worker:
   model: gpt-5.1-codex-max
+  checkpoint_commits: true
 
 test_validator:
   provider: openai

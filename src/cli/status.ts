@@ -63,6 +63,7 @@ function formatTaskCounts(summary: RunStatusSummary): string {
     `running=${counts.running}`,
     `complete=${counts.complete}`,
     `failed=${counts.failed}`,
+    `needs_rescope=${counts.needs_rescope}`,
     `skipped=${counts.skipped}`,
   ];
   return `Tasks: ${parts.join("  ")}`;

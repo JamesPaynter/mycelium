@@ -27,6 +27,7 @@ const WorkerSchema = z
   .object({
     model: z.string().min(1),
     max_retries: z.number().int().positive().optional(),
+    checkpoint_commits: z.boolean().default(true),
   })
   .strict();
 
@@ -52,6 +53,8 @@ const DockerSchema = z
   })
   .strict();
 
+const ManifestEnforcementSchema = z.enum(["off", "warn", "block"]).default("warn");
+
 export const ProjectConfigSchema = z
   .object({
     repo_path: z.string().min(1),
@@ -74,6 +77,7 @@ export const ProjectConfigSchema = z
     resources: z.array(ResourceSchema).min(1),
 
     docker: DockerSchema.default({}),
+    manifest_enforcement: ManifestEnforcementSchema.default("warn"),
 
     planner: PlannerSchema,
     worker: WorkerSchema,
@@ -91,3 +95,4 @@ export type DoctorValidatorConfig = z.infer<typeof DoctorValidatorSchema>;
 export type ResourceConfig = z.infer<typeof ResourceSchema>;
 export type DockerConfig = z.infer<typeof DockerSchema>;
 export type ProjectConfig = z.infer<typeof ProjectConfigSchema>;
+export type ManifestEnforcementPolicy = z.infer<typeof ManifestEnforcementSchema>;

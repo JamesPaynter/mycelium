@@ -4,7 +4,7 @@
 - [x] [029 - Resume Level 2: reattach to running containers](docs/tasks/archive/029-resume-level-2-reattach-containers/spec.md) (Effort <L>, Tier <standard>)
 - [x] [030 - Resume Level 3: resume Codex thread inside worker](docs/tasks/archive/030-resume-level-3-resume-codex-thread/spec.md) (Effort <L>, Tier <pro>)
 - [x] [031 - Worker checkpoint commits (reduce lost work)](docs/tasks/archive/031-worker-checkpoint-commits/spec.md) (Effort <M>, Tier <standard>)
-- [ ] [032 - Manifest compliance enforcement + access requests](docs/tasks/active/032-manifest-compliance-and-access-requests/spec.md) (Effort <L>, Tier <pro>)
+- [x] [032 - Manifest compliance enforcement + access requests](docs/tasks/archive/032-manifest-compliance-and-access-requests/spec.md) (Effort <L>, Tier <pro>)
 - [ ] [033 - Auto-rescope tickets when access expands](docs/tasks/active/033-auto-rescope-and-rerun/spec.md) (Effort <L>, Tier <pro>)
 - [ ] [034 - Make validators blocking + human review queue](docs/tasks/active/034-make-validators-blocking/spec.md) (Effort <L>, Tier <pro>)
 - [ ] [035 - Doctor canary check (prove doctor is executed)](docs/tasks/active/035-doctor-canary-check/spec.md) (Effort <M>, Tier <standard>)

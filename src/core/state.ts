@@ -3,7 +3,14 @@ import { z } from "zod";
 import { isoNow } from "./utils.js";
 import { LocksSchema, type NormalizedLocks } from "./task-manifest.js";
 
-export const TaskStatusSchema = z.enum(["pending", "running", "complete", "failed", "skipped"]);
+export const TaskStatusSchema = z.enum([
+  "pending",
+  "running",
+  "complete",
+  "failed",
+  "needs_rescope",
+  "skipped",
+]);
 export type TaskStatus = z.infer<typeof TaskStatusSchema>;
 
 export const BatchStatusSchema = z.enum(["pending", "running", "complete", "failed"]);
@@ -11,6 +18,13 @@ export type BatchStatus = z.infer<typeof BatchStatusSchema>;
 
 export const RunStatusSchema = z.enum(["running", "complete", "failed"]);
 export type RunStatus = z.infer<typeof RunStatusSchema>;
+
+export const CheckpointCommitSchema = z.object({
+  attempt: z.number().int().positive(),
+  sha: z.string(),
+  created_at: z.string().optional(),
+});
+export type CheckpointCommit = z.infer<typeof CheckpointCommitSchema>;
 
 export const TaskStateSchema = z.object({
   status: TaskStatusSchema,
@@ -24,6 +38,7 @@ export const TaskStateSchema = z.object({
   completed_at: z.string().optional(),
   last_error: z.string().optional(),
   thread_id: z.string().optional(),
+  checkpoint_commits: z.array(CheckpointCommitSchema).default([]),
 });
 
 export type TaskState = z.infer<typeof TaskStateSchema>;
@@ -65,7 +80,7 @@ export function createRunState(args: {
   const now = isoNow();
   const tasks: Record<string, TaskState> = {};
   for (const id of args.taskIds) {
-    tasks[id] = { status: "pending", attempts: 0 };
+    tasks[id] = { status: "pending", attempts: 0, checkpoint_commits: [] };
   }
 
   return {
@@ -164,6 +179,24 @@ export function markTaskFailed(
   task.completed_at = now;
   if (errorMessage) {
     task.last_error = errorMessage;
+  }
+}
+
+export function markTaskNeedsRescope(
+  state: RunState,
+  taskId: string,
+  reason?: string,
+  now: string = isoNow(),
+): void {
+  const task = requireTask(state, taskId);
+  if (task.status !== "running") {
+    throw new Error(`Cannot mark task ${taskId} needs_rescope from status ${task.status}`);
+  }
+
+  task.status = "needs_rescope";
+  task.completed_at = now;
+  if (reason) {
+    task.last_error = reason;
   }
 }
 

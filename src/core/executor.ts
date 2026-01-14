@@ -19,7 +19,7 @@ import { mergeTaskBranches } from "../git/merge.js";
 import { buildTaskBranchName } from "../git/branches.js";
 import { ensureCodexAuthForHome } from "./codexAuth.js";
 
-import type { ProjectConfig } from "./config.js";
+import type { ManifestEnforcementPolicy, ProjectConfig } from "./config.js";
 import {
   JsonlLogger,
   logJsonLineOrRaw,
@@ -33,6 +33,7 @@ import {
   orchestratorHome,
   orchestratorLogPath,
   taskEventsLogPath,
+  taskComplianceReportPath,
   taskLogsDir,
   taskWorkspaceDir,
   workerCodexHomeDir,
@@ -45,6 +46,7 @@ import {
   createRunState,
   markTaskComplete,
   markTaskFailed,
+  markTaskNeedsRescope,
   resetTaskToPending,
   startBatch,
   type CheckpointCommit,
@@ -57,6 +59,7 @@ import { runTestValidator } from "../validators/test-validator.js";
 import { runWorker } from "../../worker/loop.js";
 import type { WorkerLogger, WorkerLogEventInput } from "../../worker/logging.js";
 import { loadWorkerState, type WorkerCheckpoint } from "../../worker/state.js";
+import { runManifestCompliance, type ManifestComplianceResult } from "./manifest-compliance.js";
 
 export type RunOptions = {
   runId?: string;
@@ -124,6 +127,7 @@ export async function runProject(
   const repoPath = config.repo_path;
   const workerImage = config.docker.image;
   const docker = useDocker ? dockerClient() : null;
+  const manifestPolicy: ManifestEnforcementPolicy = config.manifest_enforcement ?? "warn";
 
   // Prepare directories
   await ensureDir(orchestratorHome());
@@ -551,32 +555,137 @@ export async function runProject(
     }
   }
 
+  function logComplianceEvents(args: {
+    taskId: string;
+    taskSlug: string;
+    policy: ManifestEnforcementPolicy;
+    reportPath: string;
+    result: ManifestComplianceResult;
+  }): void {
+    const basePayload = {
+      task_slug: args.taskSlug,
+      policy: args.policy,
+      status: args.result.status,
+      report_path: args.reportPath,
+      changed_files: args.result.changedFiles.length,
+      violations: args.result.violations.length,
+    };
+
+    const eventType =
+      args.result.status === "skipped"
+        ? "manifest.compliance.skip"
+        : args.result.violations.length === 0
+          ? "manifest.compliance.pass"
+          : args.result.status === "block"
+            ? "manifest.compliance.block"
+            : "manifest.compliance.warn";
+
+    logOrchestratorEvent(orchLog, eventType, { taskId: args.taskId, ...basePayload });
+
+    if (args.result.violations.length === 0) return;
+
+    for (const violation of args.result.violations) {
+      logOrchestratorEvent(orchLog, "access.requested", {
+        taskId: args.taskId,
+        task_slug: args.taskSlug,
+        file: violation.path,
+        resources: violation.resources,
+        reasons: violation.reasons,
+        policy: args.policy,
+        enforcement: args.result.status,
+        report_path: args.reportPath,
+      });
+    }
+  }
+
+  function buildManifestBlockReason(result: ManifestComplianceResult): string {
+    const count = result.violations.length;
+    const example = result.violations[0]?.path;
+    const detail = example ? ` (example: ${example})` : "";
+    return `Manifest enforcement blocked: ${count} undeclared access request(s)${detail}`;
+  }
+
   async function finalizeBatch(params: {
     batchId: number;
     batchTasks: TaskSpec[];
     results: TaskRunResult[];
-  }): Promise<"merge_conflict" | "integration_doctor_failed" | undefined> {
+  }): Promise<"merge_conflict" | "integration_doctor_failed" | "manifest_enforcement_blocked" | undefined> {
     const hadPendingResets = params.results.some((r) => !r.success && r.resetToPending);
+    const manifestBlockedTasks: string[] = [];
     for (const r of params.results) {
-      if (r.success) {
-        markTaskComplete(state, r.taskId);
-        logOrchestratorEvent(orchLog, "task.complete", {
-          taskId: r.taskId,
-          attempts: state.tasks[r.taskId].attempts,
-        });
-      } else if (r.resetToPending) {
-        const reason = r.errorMessage ?? "Task reset to pending";
-        resetTaskToPending(state, r.taskId, reason);
-        logTaskReset(orchLog, r.taskId, reason);
-      } else {
-        const errorMessage = r.errorMessage ?? "Task worker exited with a non-zero status";
-        markTaskFailed(state, r.taskId, errorMessage);
+      if (!r.success) {
+        if (r.resetToPending) {
+          const reason = r.errorMessage ?? "Task reset to pending";
+          resetTaskToPending(state, r.taskId, reason);
+          logTaskReset(orchLog, r.taskId, reason);
+        } else {
+          const errorMessage = r.errorMessage ?? "Task worker exited with a non-zero status";
+          markTaskFailed(state, r.taskId, errorMessage);
+          logOrchestratorEvent(orchLog, "task.failed", {
+            taskId: r.taskId,
+            attempts: state.tasks[r.taskId].attempts,
+            message: errorMessage,
+          });
+        }
+        continue;
+      }
+
+      const taskSpec = params.batchTasks.find((t) => t.manifest.id === r.taskId);
+      if (!taskSpec) {
+        const message = "Task spec missing during finalizeBatch";
+        markTaskFailed(state, r.taskId, message);
         logOrchestratorEvent(orchLog, "task.failed", {
           taskId: r.taskId,
           attempts: state.tasks[r.taskId].attempts,
-          message: errorMessage,
+          message,
         });
+        continue;
       }
+
+      const complianceReportPath = taskComplianceReportPath(
+        projectName,
+        runId,
+        r.taskId,
+        r.taskSlug,
+      );
+      const compliance = await runManifestCompliance({
+        workspacePath: r.workspace,
+        mainBranch: config.main_branch,
+        manifest: taskSpec.manifest,
+        resources: config.resources,
+        policy: manifestPolicy,
+        reportPath: complianceReportPath,
+      });
+
+      logComplianceEvents({
+        taskId: r.taskId,
+        taskSlug: r.taskSlug,
+        policy: manifestPolicy,
+        reportPath: complianceReportPath,
+        result: compliance,
+      });
+
+      if (compliance.status === "block") {
+        const reason = buildManifestBlockReason(compliance);
+        markTaskNeedsRescope(state, r.taskId, reason);
+        logOrchestratorEvent(orchLog, "task.needs_rescope", {
+          taskId: r.taskId,
+          violations: compliance.violations.length,
+          report_path: complianceReportPath,
+        });
+        manifestBlockedTasks.push(r.taskId);
+        continue;
+      }
+
+      markTaskComplete(state, r.taskId);
+      logOrchestratorEvent(orchLog, "task.complete", {
+        taskId: r.taskId,
+        attempts: state.tasks[r.taskId].attempts,
+      });
+    }
+
+    if (manifestBlockedTasks.length > 0) {
+      state.status = "failed";
     }
 
     await stateStore.save(state);
@@ -614,7 +723,15 @@ export async function runProject(
 
     let batchMergeCommit: string | undefined;
     let integrationDoctorPassed: boolean | undefined;
-    let stopReason: "merge_conflict" | "integration_doctor_failed" | undefined;
+    let stopReason:
+      | "merge_conflict"
+      | "integration_doctor_failed"
+      | "manifest_enforcement_blocked"
+      | undefined;
+
+    if (manifestBlockedTasks.length > 0) {
+      stopReason = "manifest_enforcement_blocked";
+    }
 
     if (successfulTasks.length > 0) {
       logOrchestratorEvent(orchLog, "batch.merging", {
@@ -1100,7 +1217,7 @@ function buildStatusSets(state: RunState): { completed: Set<string>; failed: Set
   );
   const failed = new Set<string>(
     Object.entries(state.tasks)
-      .filter(([, s]) => s.status === "failed")
+      .filter(([, s]) => s.status === "failed" || s.status === "needs_rescope")
       .map(([id]) => id),
   );
   return { completed, failed };

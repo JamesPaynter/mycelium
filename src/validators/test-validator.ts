@@ -13,6 +13,7 @@ import { writeJsonFile } from "../core/utils.js";
 import type { LlmClient, LlmCompletionResult } from "../llm/client.js";
 import { LlmError } from "../llm/client.js";
 import { OpenAiClient } from "../llm/openai.js";
+import { listChangedFiles } from "../git/changes.js";
 
 // =============================================================================
 // TYPES
@@ -306,23 +307,6 @@ async function persistReport(
   });
 }
 
-async function listChangedFiles(workspacePath: string, mainBranch: string): Promise<string[]> {
-  const files = new Set<string>();
-
-  const diff = await runGit(workspacePath, ["diff", "--name-only", `${mainBranch}...HEAD`]);
-  diff.forEach((file) => files.add(file));
-
-  const statusLines = await runGit(workspacePath, ["status", "--porcelain"]);
-  statusLines
-    .map(parseStatusPath)
-    .filter(Boolean)
-    .forEach((file) => files.add(file as string));
-
-  return Array.from(files)
-    .filter((file) => Boolean(file) && !file.endsWith("/"))
-    .sort();
-}
-
 async function readFileSamples(
   baseDir: string,
   relativePaths: string[],
@@ -418,31 +402,6 @@ function truncate(text: string, limit: number): { text: string; truncated: boole
     return { text, truncated: false };
   }
   return { text: `${text.slice(0, limit)}\n... [truncated]`, truncated: true };
-}
-
-async function runGit(cwd: string, args: string[]): Promise<string[]> {
-  try {
-    const res = await execa("git", args, { cwd, stdio: "pipe" });
-    return res.stdout
-      .split("\n")
-      .map((line) => line.trim())
-      .filter((line) => line.length > 0);
-  } catch {
-    return [];
-  }
-}
-
-function parseStatusPath(line: string): string | null {
-  const trimmed = line.trim();
-  if (trimmed.length === 0) return null;
-
-  const arrowIndex = trimmed.indexOf("->");
-  if (arrowIndex !== -1) {
-    return trimmed.slice(arrowIndex + 2).trim();
-  }
-
-  const parts = trimmed.split(/\s+/);
-  return parts.length >= 2 ? parts.slice(1).join(" ").trim() : null;
 }
 
 function isTestFile(file: string): boolean {

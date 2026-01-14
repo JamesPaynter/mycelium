@@ -13,6 +13,7 @@ It is intentionally an MVP: it runs end-to-end, but it does not yet implement ev
 
 - `plan` — generate `.tasks/...` from an implementation plan via **Codex SDK** structured output
 - `run` — load `.tasks`, build conflict-free batches, spawn **Docker** workers in parallel, stream logs, merge successful branches, run integration doctor
+- Manifest compliance check after each task with structured `access.requested` events (warn/block via `manifest_enforcement`)
 - `status` — show run + task status from persisted state
 - `logs` — dump orchestrator or task JSONL logs (simple query)
 - `clean` — remove containers/workspaces/logs for a run
@@ -50,6 +51,7 @@ Edit `~/.task-orchestrator/projects/my-project.yaml` and set:
 - `repo_path`
 - `main_branch`
 - `doctor`
+- `manifest_enforcement` (off|warn|block, defaults to warn)
 - `resources`
 
 Notes:
@@ -146,7 +148,7 @@ task-orchestrator run --project my-project
 
 - **Resume Level 1 only** — resuming resets `running` tasks to `pending` and reruns them; no container/thread reattachment.
 - **Validator agents are advisory only** — validators do not block merges; doctor validator triggers on cadence/suspicion.
-- **Access enforcement** beyond Docker is not present; runtime access is not sandboxed against manifest declarations.
+- **Runtime sandboxing** is not enforced; manifest compliance runs post-task (warn/block) but filesystem access is still wide open during execution.
 - **Branch push restrictions** are not implemented (this design merges locally).
 - No Web UI.
 

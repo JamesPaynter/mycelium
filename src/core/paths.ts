@@ -141,6 +141,15 @@ export function taskEventsLogPath(
   return path.join(taskLogsDir(projectName, runId, taskId, taskSlug), "events.jsonl");
 }
 
+export function taskComplianceReportPath(
+  projectName: string,
+  runId: string,
+  taskId: string,
+  taskSlug: string,
+): string {
+  return path.join(taskLogsDir(projectName, runId, taskId, taskSlug), "compliance.json");
+}
+
 export function plannerHomeDir(projectName: string): string {
   return path.join(orchestratorHome(), "codex", projectName, "planner");
 }

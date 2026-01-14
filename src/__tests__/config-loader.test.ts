@@ -59,6 +59,7 @@ docker:
       );
       expect(config.docker.build_context).toBe(path.resolve(path.dirname(configPath), ".."));
       expect(config.task_branch_prefix).toBe("agent/");
+      expect(config.manifest_enforcement).toBe("warn");
     } finally {
       if (original === undefined) {
         delete process.env.PROJECT_REPO_PATH;
