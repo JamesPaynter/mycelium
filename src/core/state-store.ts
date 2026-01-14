@@ -38,6 +38,7 @@ export type TaskStatusRow = {
   status: TaskStatus;
   attempts: number;
   branch: string | null;
+  threadId: string | null;
 };
 
 export type RunStatusSummary = {
@@ -209,6 +210,7 @@ function buildTaskStatusRows(tasks: Record<string, TaskState>): TaskStatusRow[] 
       status: task.status,
       attempts: task.attempts ?? 0,
       branch: task.branch ?? null,
+      threadId: task.thread_id ?? null,
     }))
     .sort((a, b) => a.id.localeCompare(b.id, undefined, { numeric: true, sensitivity: "base" }));
 }

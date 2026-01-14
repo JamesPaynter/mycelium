@@ -55,6 +55,7 @@ import { runDoctorValidator } from "../validators/doctor-validator.js";
 import { runTestValidator } from "../validators/test-validator.js";
 import { runWorker } from "../../worker/loop.js";
 import type { WorkerLogger, WorkerLogEventInput } from "../../worker/logging.js";
+import { loadWorkerState } from "../../worker/state.js";
 
 export type RunOptions = {
   runId?: string;
@@ -323,6 +324,27 @@ export async function runProject(
     return { branchName, workspace, logsDir };
   };
 
+  const syncThreadIdFromWorkerState = async (
+    taskId: string,
+    workspace: string,
+  ): Promise<boolean> => {
+    try {
+      const workerState = await loadWorkerState(workspace);
+      if (!workerState || !workerState.thread_id) return false;
+
+      const taskState = state.tasks[taskId];
+      if (!taskState) return false;
+      if (taskState.thread_id === workerState.thread_id) return false;
+
+      taskState.thread_id = workerState.thread_id;
+      return true;
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      logOrchestratorEvent(orchLog, "worker.state.read_error", { taskId, message });
+      return false;
+    }
+  };
+
   const buildSuccessfulTaskSummaries = (batchTasks: TaskSpec[]): TaskSuccessResult[] => {
     const summaries: TaskSuccessResult[] = [];
     for (const task of batchTasks) {
@@ -389,6 +411,8 @@ export async function runProject(
     const taskId = task.manifest.id;
     const taskState = state.tasks[taskId];
     const meta = resolveTaskMeta(task);
+
+    await syncThreadIdFromWorkerState(taskId, meta.workspace);
 
     if (!useDocker || !docker) {
       const reason = "Docker unavailable on resume; resetting running task to pending";
@@ -463,6 +487,8 @@ export async function runProject(
       if (cleanupOnSuccess && waited.exitCode === 0) {
         await removeContainer(container);
       }
+
+      await syncThreadIdFromWorkerState(taskId, meta.workspace);
 
       if (waited.exitCode === 0) {
         return {
@@ -827,6 +853,8 @@ export async function runProject(
         await fse.remove(destTasksDir);
         await fse.copy(srcTasksDir, destTasksDir);
 
+        await syncThreadIdFromWorkerState(taskId, workspace);
+
         // Prepare per-task logger.
         const taskEvents = new JsonlLogger(
           taskEventsLogPath(projectName, runId, taskId, taskSlug),
@@ -847,6 +875,12 @@ export async function runProject(
             // If container name already exists (stale), remove it.
             await removeContainer(existing);
           }
+
+          const codexHomeInContainer = path.posix.join(
+            "/workspace",
+            ".task-orchestrator",
+            "codex-home",
+          );
 
           const container = await createContainer(docker, {
             name: containerName,
@@ -879,12 +913,11 @@ export async function runProject(
               BOOTSTRAP_CMDS:
                 config.bootstrap.length > 0 ? JSON.stringify(config.bootstrap) : undefined,
               CODEX_MODEL: config.worker.model,
-              CODEX_HOME: "/codex-home",
+              CODEX_HOME: codexHomeInContainer,
               RUN_LOGS_DIR: "/run-logs",
             },
             binds: [
               { hostPath: workspace, containerPath: "/workspace", mode: "rw" },
-              { hostPath: codexHome, containerPath: "/codex-home", mode: "rw" },
               { hostPath: tLogsDir, containerPath: "/run-logs", mode: "rw" },
             ],
             workdir: "/workspace",
@@ -928,6 +961,8 @@ export async function runProject(
             if (cleanupOnSuccess && waited.exitCode === 0) {
               await removeContainer(container);
             }
+
+            await syncThreadIdFromWorkerState(taskId, workspace);
 
             if (waited.exitCode === 0) {
               return {
@@ -991,6 +1026,7 @@ export async function runProject(
             workerLogger,
           );
           logOrchestratorEvent(orchLog, "worker.local.complete", { taskId });
+          await syncThreadIdFromWorkerState(taskId, workspace);
           return {
             taskId,
             taskSlug,
@@ -1002,6 +1038,7 @@ export async function runProject(
         } catch (err) {
           const message = err instanceof Error ? err.message : String(err);
           logOrchestratorEvent(orchLog, "worker.local.error", { taskId, message });
+          await syncThreadIdFromWorkerState(taskId, workspace);
           return {
             taskId,
             taskSlug,

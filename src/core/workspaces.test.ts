@@ -92,6 +92,25 @@ describe("prepareTaskWorkspace", () => {
     expect(await fse.readFile(markerPath, "utf8")).toBe("keep");
   });
 
+  it("ignores task-orchestrator runtime files in git status", async () => {
+    const options = {
+      projectName,
+      runId,
+      taskId,
+      repoPath: bareRepo,
+      mainBranch,
+      taskBranch,
+    };
+
+    await prepareTaskWorkspace(options);
+
+    const workspacePath = taskWorkspaceDir(projectName, runId, taskId);
+    const excludePath = path.join(workspacePath, ".git", "info", "exclude");
+    const exclude = await fse.readFile(excludePath, "utf8");
+
+    expect(exclude).toContain(".task-orchestrator/");
+  });
+
   it("fails when workspace points to a different repo", async () => {
     const options = {
       projectName,

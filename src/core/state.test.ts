@@ -255,10 +255,12 @@ describe("state store", () => {
     state.tasks["001"].status = "complete";
     state.tasks["001"].attempts = 1;
     state.tasks["001"].branch = "feature/001-work";
+    state.tasks["001"].thread_id = "thread-001";
     state.tasks["002"].status = "failed";
     state.tasks["002"].attempts = 2;
     state.tasks["003"].status = "running";
     state.tasks["003"].attempts = 1;
+    state.tasks["003"].thread_id = "thread-003";
     state.tasks["004"].status = "skipped";
 
     state.batches = [
@@ -292,10 +294,16 @@ describe("state store", () => {
     });
 
     expect(summary.tasks).toEqual([
-      { id: "001", status: "complete", attempts: 1, branch: "feature/001-work" },
-      { id: "002", status: "failed", attempts: 2, branch: null },
-      { id: "003", status: "running", attempts: 1, branch: null },
-      { id: "004", status: "skipped", attempts: 0, branch: null },
+      {
+        id: "001",
+        status: "complete",
+        attempts: 1,
+        branch: "feature/001-work",
+        threadId: "thread-001",
+      },
+      { id: "002", status: "failed", attempts: 2, branch: null, threadId: null },
+      { id: "003", status: "running", attempts: 1, branch: null, threadId: "thread-003" },
+      { id: "004", status: "skipped", attempts: 0, branch: null, threadId: null },
     ]);
   });
 });

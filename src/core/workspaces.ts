@@ -32,6 +32,7 @@ export async function prepareTaskWorkspace(
   if (exists) {
     await assertExistingWorkspaceValid(workspacePath, opts.repoPath, opts.mainBranch);
     await ensureTaskBranchPresent(workspacePath, opts.mainBranch, opts.taskBranch);
+    await ensureWorkspaceRuntimeIgnored(workspacePath);
     return { workspacePath, created: false };
   }
 
@@ -39,6 +40,7 @@ export async function prepareTaskWorkspace(
   await cloneRepo({ sourceRepo: opts.repoPath, destDir: workspacePath });
   await checkoutBranchInClone(workspacePath, opts.mainBranch);
   await createBranchInClone(workspacePath, opts.taskBranch, opts.mainBranch);
+  await ensureWorkspaceRuntimeIgnored(workspacePath);
 
   return { workspacePath, created: true };
 }
@@ -59,6 +61,35 @@ export async function removeRunWorkspace(projectName: string, runId: string): Pr
   if (await pathExists(dir)) {
     await fse.remove(dir);
   }
+}
+
+async function ensureWorkspaceRuntimeIgnored(workspacePath: string): Promise<void> {
+  const excludePath = path.join(workspacePath, ".git", "info", "exclude");
+  const patterns = [".task-orchestrator/"];
+
+  let existing = "";
+  try {
+    existing = await fse.readFile(excludePath, "utf8");
+  } catch {
+    existing = "";
+  }
+
+  const existingLines = existing
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0);
+  const missing = patterns.filter((pattern) => !existingLines.includes(pattern));
+  if (missing.length === 0) return;
+
+  const pieces: string[] = [existing.trimEnd()];
+  if (!existing.includes("task-orchestrator runtime files")) {
+    pieces.push("# task-orchestrator runtime files");
+  }
+  pieces.push(...missing);
+
+  const next = pieces.filter((part) => part.length > 0).join("\n") + "\n";
+  await fse.ensureDir(path.dirname(excludePath));
+  await fse.writeFile(excludePath, next, "utf8");
 }
 
 async function assertExistingWorkspaceValid(

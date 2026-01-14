@@ -59,7 +59,7 @@ export async function main(argv: string[]): Promise<void> {
     )
     .option(
       "--codex-home <path>",
-      "CODEX_HOME path for Codex SDK (env: CODEX_HOME, default: /codex-home)",
+      "CODEX_HOME path for Codex SDK (env: CODEX_HOME, default: <workdir>/.task-orchestrator/codex-home)",
     )
     .option("--codex-model <name>", "Model override for Codex (env: CODEX_MODEL)")
     .option("--workdir <path>", "Working directory for commands (default: current directory)")
@@ -142,7 +142,9 @@ function buildConfig(opts: CliOptions): WorkerConfig {
     workingDirectory,
   );
   const codexHome = resolvePath(
-    opts.codexHome ?? envOrUndefined("CODEX_HOME") ?? "/codex-home",
+    opts.codexHome ??
+      envOrUndefined("CODEX_HOME") ??
+      path.join(workingDirectory, ".task-orchestrator", "codex-home"),
     workingDirectory,
   );
 

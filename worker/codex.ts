@@ -13,10 +13,13 @@ export type CodexRunnerOptions = {
   workingDirectory: string;
   sandboxMode?: SandboxMode;
   approvalPolicy?: ApprovalMode;
+  threadId?: string;
 };
 
 export class CodexRunner {
   private thread: Thread;
+  private readonly resumedThreadId?: string;
+  private hasNotifiedThreadStart = false;
 
   constructor(opts: CodexRunnerOptions) {
     const env: Record<string, string> = {};
@@ -35,13 +38,39 @@ export class CodexRunner {
       threadOptions.model = opts.model;
     }
 
-    this.thread = codex.startThread(threadOptions);
+    this.resumedThreadId = opts.threadId;
+    this.thread = opts.threadId
+      ? codex.resumeThread(opts.threadId, threadOptions)
+      : codex.startThread(threadOptions);
   }
 
-  async streamPrompt(input: string, onEvent: (event: ThreadEvent) => void): Promise<void> {
+  getThreadId(): string | null {
+    return this.thread.id;
+  }
+
+  async streamPrompt(
+    input: string,
+    handlers: {
+      onEvent: (event: ThreadEvent) => void;
+      onThreadStarted?: (threadId: string) => Promise<void> | void;
+      onThreadResumed?: (threadId: string) => Promise<void> | void;
+    },
+  ): Promise<void> {
+    if (this.resumedThreadId && this.thread.id) {
+      await handlers.onThreadResumed?.(this.thread.id);
+    }
+
     const { events } = await this.thread.runStreamed(input);
     for await (const event of events) {
-      onEvent(event);
+      if (
+        event.type === "thread.started" &&
+        !this.resumedThreadId &&
+        !this.hasNotifiedThreadStart
+      ) {
+        this.hasNotifiedThreadStart = true;
+        await handlers.onThreadStarted?.(event.thread_id);
+      }
+      handlers.onEvent(event);
     }
   }
 }

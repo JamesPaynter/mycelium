@@ -82,22 +82,34 @@ function printTaskTable(rows: TaskStatusRow[]): void {
     "Branch".length,
     ...rows.map((r) => (r.branch ? r.branch.length : 1)),
   );
+  const hasThreadIds = rows.some((r) => r.threadId);
+  const threadWidth = hasThreadIds
+    ? Math.max("Thread".length, ...rows.map((r) => (r.threadId ? r.threadId.length : 1)))
+    : 0;
 
-  console.log(
-    `  ${pad("ID", idWidth)}  ${pad("Status", statusWidth)}  ${pad(
-      "Attempts",
-      attemptsWidth,
-    )}  ${pad("Branch", branchWidth)}`,
-  );
+  const headerParts = [
+    pad("ID", idWidth),
+    pad("Status", statusWidth),
+    pad("Attempts", attemptsWidth),
+    pad("Branch", branchWidth),
+  ];
+  if (hasThreadIds) {
+    headerParts.push(pad("Thread", threadWidth));
+  }
+  console.log(`  ${headerParts.join("  ")}`);
 
   for (const row of rows) {
     const branch = row.branch ?? "-";
-    console.log(
-      `  ${pad(row.id, idWidth)}  ${pad(row.status, statusWidth)}  ${pad(
-        `${row.attempts}`,
-        attemptsWidth,
-      )}  ${pad(branch, branchWidth)}`,
-    );
+    const values = [
+      pad(row.id, idWidth),
+      pad(row.status, statusWidth),
+      pad(`${row.attempts}`, attemptsWidth),
+      pad(branch, branchWidth),
+    ];
+    if (hasThreadIds) {
+      values.push(pad(row.threadId ?? "-", threadWidth));
+    }
+    console.log(`  ${values.join("  ")}`);
   }
 }
 

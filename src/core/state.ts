@@ -23,6 +23,7 @@ export const TaskStateSchema = z.object({
   started_at: z.string().optional(),
   completed_at: z.string().optional(),
   last_error: z.string().optional(),
+  thread_id: z.string().optional(),
 });
 
 export type TaskState = z.infer<typeof TaskStateSchema>;

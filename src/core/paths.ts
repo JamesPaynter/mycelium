@@ -149,7 +149,11 @@ export function workerCodexHomeDir(
   projectName: string,
   runId: string,
   taskId: string,
-  taskSlug: string,
+  _taskSlug: string,
 ): string {
-  return path.join(runWorkspaceDir(projectName, runId), "codex", `${taskId}-${taskSlug}`);
+  return path.join(
+    taskWorkspaceDir(projectName, runId, taskId),
+    ".task-orchestrator",
+    "codex-home",
+  );
 }

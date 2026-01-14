@@ -12,6 +12,7 @@ import {
   type JsonObject,
   type WorkerLogger,
 } from "./logging.js";
+import { WorkerStateStore } from "./state.js";
 
 // =============================================================================
 // TYPES & CONSTANTS
@@ -91,15 +92,30 @@ export async function runWorker(config: WorkerConfig, logger?: WorkerLogger): Pr
     });
   }
 
+  await fs.mkdir(config.codexHome, { recursive: true });
+
+  const workerState = new WorkerStateStore(config.workingDirectory);
+  await workerState.load();
+
+  const startingAttempt = workerState.nextAttempt;
+  if (startingAttempt > config.maxRetries) {
+    throw new Error(
+      `No attempts remaining: next attempt ${startingAttempt} exceeds max retries ${config.maxRetries}`,
+    );
+  }
+
   const codex = new CodexRunner({
     codexHome: config.codexHome,
     model: config.codexModel,
     workingDirectory: config.workingDirectory,
+    threadId: workerState.threadId,
   });
 
   let lastDoctorOutput = "";
+  let loggedResumeEvent = false;
 
-  for (let attempt = 1; attempt <= config.maxRetries; attempt += 1) {
+  for (let attempt = startingAttempt; attempt <= config.maxRetries; attempt += 1) {
+    await workerState.recordAttemptStart(attempt);
     log.log({ type: "turn.start", attempt });
 
     const prompt =
@@ -112,13 +128,32 @@ export async function runWorker(config: WorkerConfig, logger?: WorkerLogger): Pr
           })
         : buildRetryPrompt({ spec, lastDoctorOutput, attempt });
 
-    await codex.streamPrompt(prompt, (event) =>
-      log.log({
-        type: "codex.event",
-        attempt,
-        payload: { event } as JsonObject,
-      }),
-    );
+    await codex.streamPrompt(prompt, {
+      onThreadResumed: (threadId) => {
+        if (!loggedResumeEvent) {
+          log.log({
+            type: "codex.thread.resumed",
+            attempt,
+            payload: { thread_id: threadId },
+          });
+          loggedResumeEvent = true;
+        }
+      },
+      onThreadStarted: async (threadId) => {
+        await workerState.recordThreadId(threadId);
+        log.log({
+          type: "codex.thread.started",
+          attempt,
+          payload: { thread_id: threadId },
+        });
+      },
+      onEvent: (event) =>
+        log.log({
+          type: "codex.event",
+          attempt,
+          payload: { event } as JsonObject,
+        }),
+    });
 
     log.log({ type: "turn.complete", attempt });
 
