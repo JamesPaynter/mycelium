@@ -1,5 +1,7 @@
 import { z } from "zod";
 
+import { DEFAULT_TEST_PATHS } from "./test-paths.js";
+
 // =============================================================================
 // SCHEMAS
 // =============================================================================
@@ -75,6 +77,8 @@ export const ProjectConfigSchema = z
     // Optional: run once in the worker container before Codex starts.
     // Example: ["npm ci", "npm test -- --help"]
     bootstrap: z.array(z.string()).default([]),
+
+    test_paths: z.array(z.string()).default(DEFAULT_TEST_PATHS),
 
     resources: z.array(ResourceSchema).min(1),
 

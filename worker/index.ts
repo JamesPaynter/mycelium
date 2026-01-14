@@ -20,10 +20,12 @@ type CliOptions = {
   maxRetries?: number;
   doctorTimeout?: number;
   bootstrap?: string[];
+  defaultTestPaths?: string[];
   runLogsDir?: string;
   codexHome?: string;
   codexModel?: string;
   workdir?: string;
+  checkpointCommits?: boolean;
 };
 
 export async function main(argv: string[]): Promise<void> {
@@ -53,6 +55,15 @@ export async function main(argv: string[]): Promise<void> {
       (v) => parseInt(v, 10),
     )
     .option("--bootstrap <cmd...>", "Bootstrap commands to run before Codex (env: BOOTSTRAP_CMDS)")
+    .option(
+      "--default-test-paths <path...>",
+      "Default test path globs when the manifest omits test_paths (env: DEFAULT_TEST_PATHS)",
+    )
+    .option(
+      "--checkpoint-commits <true|false>",
+      "Enable periodic checkpoint commits (env: CHECKPOINT_COMMITS, default true)",
+      (v) => parseBoolean(v, "CHECKPOINT_COMMITS"),
+    )
     .option(
       "--run-logs-dir <path>",
       "Directory for doctor/bootstrap logs (env: RUN_LOGS_DIR, default: /run-logs)",
@@ -136,6 +147,8 @@ function buildConfig(opts: CliOptions): WorkerConfig {
   );
 
   const bootstrapCmds = opts.bootstrap ?? parseBootstrap(envOrUndefined("BOOTSTRAP_CMDS"));
+  const defaultTestPaths =
+    opts.defaultTestPaths ?? parseStringArray(envOrUndefined("DEFAULT_TEST_PATHS"), "DEFAULT_TEST_PATHS");
 
   const runLogsDir = resolvePath(
     opts.runLogsDir ?? envOrUndefined("RUN_LOGS_DIR") ?? "/run-logs",
@@ -147,6 +160,12 @@ function buildConfig(opts: CliOptions): WorkerConfig {
       path.join(workingDirectory, ".task-orchestrator", "codex-home"),
     workingDirectory,
   );
+  const checkpointCommits =
+    getBooleanOption(
+      opts.checkpointCommits,
+      envOrUndefined("CHECKPOINT_COMMITS"),
+      "CHECKPOINT_COMMITS",
+    ) ?? true;
 
   return {
     taskId,
@@ -158,10 +177,12 @@ function buildConfig(opts: CliOptions): WorkerConfig {
     doctorTimeoutSeconds,
     maxRetries,
     bootstrapCmds,
+    defaultTestPaths,
     runLogsDir,
     codexHome,
     codexModel: opts.codexModel ?? envOrUndefined("CODEX_MODEL") ?? undefined,
     workingDirectory,
+    checkpointCommits,
   };
 }
 
@@ -186,8 +207,29 @@ function getIntOption(
   return undefined;
 }
 
+function getBooleanOption(
+  cliValue: boolean | undefined,
+  envValue: string | undefined,
+  label: string,
+): boolean | undefined {
+  if (cliValue !== undefined) return cliValue;
+  if (envValue !== undefined) return parseBoolean(envValue, label);
+  return undefined;
+}
+
+function parseBoolean(value: string, label: string): boolean {
+  const normalized = value.trim().toLowerCase();
+  if (["true", "1", "yes", "y", "on"].includes(normalized)) return true;
+  if (["false", "0", "no", "n", "off"].includes(normalized)) return false;
+  throw new Error(`${label} must be true or false.`);
+}
+
 function parseBootstrap(raw: string | undefined): string[] {
-  if (!raw) return [];
+  return parseStringArray(raw, "BOOTSTRAP_CMDS") ?? [];
+}
+
+function parseStringArray(raw: string | undefined, label: string): string[] | undefined {
+  if (!raw) return undefined;
   try {
     const parsed = JSON.parse(raw);
     if (Array.isArray(parsed) && parsed.every((item) => typeof item === "string")) {
@@ -196,7 +238,7 @@ function parseBootstrap(raw: string | undefined): string[] {
   } catch {
     // handled below
   }
-  throw new Error("BOOTSTRAP_CMDS must be a JSON array of strings.");
+  throw new Error(`${label} must be a JSON array of strings.`);
 }
 
 function resolvePath(input: string, baseDir: string): string {

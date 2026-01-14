@@ -14,6 +14,8 @@ describe("computeRescopeFromCompliance", () => {
     locks: { reads: [], writes: ["backend"] },
     files: { reads: [], writes: ["src/app.ts"] },
     affected_tests: [],
+    test_paths: [],
+    tdd_mode: "off",
     verify: { doctor: "npm test" },
   };
 

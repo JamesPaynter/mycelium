@@ -11,12 +11,13 @@ import { JsonlLogger } from "./logger.js";
 import { plannerHomeDir } from "./paths.js";
 import { renderPromptTemplate } from "./prompts.js";
 import {
-  TaskManifestSchema,
+  TaskManifestWithSpecSchema,
   formatManifestIssues,
   normalizeTaskManifest,
   type TaskWithSpec,
   validateResourceLocks,
 } from "./task-manifest.js";
+import { normalizeTestPaths } from "./test-paths.js";
 import { writeTasksToDirectory } from "./task-writer.js";
 import { ensureDir, readTextFile } from "./utils.js";
 import { OpenAiClient } from "../llm/openai.js";
@@ -66,6 +67,8 @@ const PlannerOutputJsonSchema = {
             required: ["reads", "writes"],
             additionalProperties: false,
           },
+          test_paths: { type: "array", items: { type: "string" } },
+          tdd_mode: { type: "string", enum: ["off", "strict"] },
           affected_tests: { type: "array", items: { type: "string" } },
           verify: {
             type: "object",
@@ -86,6 +89,8 @@ const PlannerOutputJsonSchema = {
           "dependencies",
           "locks",
           "files",
+          "test_paths",
+          "tdd_mode",
           "affected_tests",
           "verify",
           "spec",
@@ -100,7 +105,7 @@ const PlannerOutputJsonSchema = {
 
 const PlannerResponseSchema = z.object({
   tasks: z
-    .array(TaskManifestSchema.extend({ spec: z.string().min(1) }))
+    .array(TaskManifestWithSpecSchema)
     .min(1, "Planner must return at least one task."),
 });
 
@@ -226,6 +231,18 @@ function validatePlannerTasks(tasks: TaskWithSpec[], resources: string[]): strin
 
     if (!task.verify.doctor.trim()) {
       taskIssues.push("verify.doctor is required");
+    }
+    if (task.tdd_mode === "strict") {
+      const testPaths = normalizeTestPaths(task.test_paths);
+      if (testPaths.length === 0) {
+        taskIssues.push("test_paths must be provided when tdd_mode is strict");
+      }
+      if (task.affected_tests.length === 0) {
+        taskIssues.push("affected_tests must be provided when tdd_mode is strict");
+      }
+      if (!task.verify.fast?.trim()) {
+        taskIssues.push("verify.fast is required when tdd_mode is strict");
+      }
     }
 
     const deps = task.dependencies ?? [];

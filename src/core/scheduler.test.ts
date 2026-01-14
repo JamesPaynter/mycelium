@@ -99,6 +99,8 @@ function createTask(
       locks: { reads: locks.reads ?? [], writes: locks.writes ?? [] },
       files: { reads: [], writes: [] },
       affected_tests: [],
+      test_paths: [],
+      tdd_mode: "off",
       verify: { doctor: "echo ok" },
     },
     taskDir: `/tasks/${id}`,

@@ -52,6 +52,7 @@ Edit `~/.task-orchestrator/projects/my-project.yaml` and set:
 - `main_branch`
 - `doctor`
 - `manifest_enforcement` (off|warn|block, defaults to warn)
+- `test_paths` (glob patterns considered tests; defaults cover `__tests__`, `tests/`, and `*.test|spec.*`)
 - `resources`
 
 Notes:

@@ -25,6 +25,8 @@ describe("writeTasksToDirectory", () => {
         locks: { reads: ["backend"], writes: [] },
         files: { reads: ["src/a.ts"], writes: ["src/a.ts", "src/a.ts"] },
         affected_tests: ["tests/a.test.ts", "tests/a.test.ts"],
+        test_paths: ["tests/a.test.ts", "tests/a.test.ts"],
+        tdd_mode: "strict",
         verify: { doctor: "npm test", fast: "npm test -- foo" },
         spec: "Do the thing\n\n- Step one",
       },
@@ -47,6 +49,8 @@ describe("writeTasksToDirectory", () => {
       writes: ["src/a.ts"],
     });
     expect(manifest.affected_tests).toEqual(["tests/a.test.ts"]);
+    expect(manifest.test_paths).toEqual(["tests/a.test.ts"]);
+    expect(manifest.tdd_mode).toBe("strict");
 
     const specPath = path.join(targetDir, "001-sample-task", "spec.md");
     const spec = await fse.readFile(specPath, "utf8");

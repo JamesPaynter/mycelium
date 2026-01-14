@@ -3,6 +3,7 @@ import path from "node:path";
 
 import { execa, execaCommand } from "execa";
 
+import { isTestPath, resolveTestPaths } from "../src/core/test-paths.js";
 import { CodexRunner } from "./codex.js";
 import {
   createStdoutLogger,
@@ -22,6 +23,9 @@ export type TaskManifest = {
   id: string;
   name: string;
   verify?: { doctor?: string; fast?: string };
+  tdd_mode?: "off" | "strict";
+  test_paths?: string[];
+  affected_tests?: string[];
   [key: string]: unknown;
 };
 
@@ -40,6 +44,7 @@ export type WorkerConfig = {
   codexModel?: string;
   workingDirectory: string;
   checkpointCommits: boolean;
+  defaultTestPaths?: string[];
 };
 
 const DOCTOR_PROMPT_LIMIT = 12_000;
@@ -98,10 +103,10 @@ export async function runWorker(config: WorkerConfig, logger?: WorkerLogger): Pr
   const workerState = new WorkerStateStore(config.workingDirectory);
   await workerState.load();
 
-  const startingAttempt = workerState.nextAttempt;
-  if (startingAttempt > config.maxRetries) {
+  let attempt = workerState.nextAttempt;
+  if (attempt > config.maxRetries) {
     throw new Error(
-      `No attempts remaining: next attempt ${startingAttempt} exceeds max retries ${config.maxRetries}`,
+      `No attempts remaining: next attempt ${attempt} exceeds max retries ${config.maxRetries}`,
     );
   }
 
@@ -112,51 +117,72 @@ export async function runWorker(config: WorkerConfig, logger?: WorkerLogger): Pr
     threadId: workerState.threadId,
   });
 
+  const strictTddEnabled = manifest.tdd_mode === "strict";
+  const testPaths = resolveTestPaths(manifest.test_paths, config.defaultTestPaths);
+
+  let fastFailureOutput: string | null = null;
   let lastDoctorOutput = "";
   let loggedResumeEvent = false;
 
-  for (let attempt = startingAttempt; attempt <= config.maxRetries; attempt += 1) {
-    await workerState.recordAttemptStart(attempt);
-    log.log({ type: "turn.start", attempt });
-
-    const prompt =
-      attempt === 1
-        ? buildInitialPrompt({
-            spec,
-            manifest,
-            manifestPath: config.manifestPath,
-            taskBranch: config.taskBranch,
-          })
-        : buildRetryPrompt({ spec, lastDoctorOutput, attempt });
-
-    await codex.streamPrompt(prompt, {
-      onThreadResumed: (threadId) => {
-        if (!loggedResumeEvent) {
-          log.log({
-            type: "codex.thread.resumed",
-            attempt,
-            payload: { thread_id: threadId },
-          });
-          loggedResumeEvent = true;
-        }
-      },
-      onThreadStarted: async (threadId) => {
-        await workerState.recordThreadId(threadId);
-        log.log({
-          type: "codex.thread.started",
-          attempt,
-          payload: { thread_id: threadId },
-        });
-      },
-      onEvent: (event) =>
-        log.log({
-          type: "codex.event",
-          attempt,
-          payload: { event } as JsonObject,
-        }),
+  if (strictTddEnabled) {
+    const stageAResult = await runStrictTddStageA({
+      attempt,
+      taskId: config.taskId,
+      manifest,
+      manifestPath: config.manifestPath,
+      spec,
+      taskBranch: config.taskBranch,
+      codex,
+      workerState,
+      log,
+      loggedResumeEvent,
+      workingDirectory: config.workingDirectory,
+      checkpointCommits: config.checkpointCommits,
+      testPaths,
+      fastCommand: manifest.verify?.fast,
+      doctorTimeoutSeconds: config.doctorTimeoutSeconds,
+      runLogsDir: config.runLogsDir,
+      commandEnv,
     });
+    attempt = stageAResult.nextAttempt;
+    fastFailureOutput = stageAResult.fastOutput;
+    loggedResumeEvent = stageAResult.loggedResumeEvent;
+  }
 
-    log.log({ type: "turn.complete", attempt });
+  let isFirstImplementationAttempt = true;
+  let stageBStarted = false;
+
+  for (; attempt <= config.maxRetries; attempt += 1) {
+    if (strictTddEnabled && !stageBStarted) {
+      log.log({
+        type: "tdd.stage.start",
+        attempt,
+        payload: { stage: "B", mode: "strict" },
+      });
+      stageBStarted = true;
+    }
+
+    const prompt = isFirstImplementationAttempt
+      ? buildInitialPrompt({
+          spec,
+          manifest,
+          manifestPath: config.manifestPath,
+          taskBranch: config.taskBranch,
+          strictTddContext: strictTddEnabled
+            ? { stage: "implementation", testPaths, fastFailureOutput: fastFailureOutput ?? undefined }
+            : undefined,
+        })
+      : buildRetryPrompt({ spec, lastDoctorOutput, failedAttempt: attempt - 1 });
+
+    loggedResumeEvent = await runCodexTurn({
+      attempt,
+      codex,
+      log,
+      workerState,
+      loggedResumeEvent,
+      prompt,
+    });
+    isFirstImplementationAttempt = false;
 
     if (config.checkpointCommits) {
       await maybeCheckpointCommit({
@@ -181,7 +207,7 @@ export async function runWorker(config: WorkerConfig, logger?: WorkerLogger): Pr
 
     log.log({ type: "doctor.start", attempt, payload: doctorPayload });
 
-    const doctor = await runDoctor({
+    const doctor = await runVerificationCommand({
       command: config.doctorCmd,
       cwd: config.workingDirectory,
       timeoutSeconds: config.doctorTimeoutSeconds,
@@ -193,6 +219,9 @@ export async function runWorker(config: WorkerConfig, logger?: WorkerLogger): Pr
 
     if (doctor.exitCode === 0) {
       log.log({ type: "doctor.pass", attempt });
+      if (strictTddEnabled) {
+        log.log({ type: "tdd.stage.pass", attempt, payload: { stage: "B", mode: "strict" } });
+      }
       await maybeCommit({
         cwd: config.workingDirectory,
         manifest,
@@ -220,6 +249,9 @@ export async function runWorker(config: WorkerConfig, logger?: WorkerLogger): Pr
     }
   }
 
+  if (strictTddEnabled) {
+    log.log({ type: "tdd.stage.fail", payload: { stage: "B", reason: "max_retries" } });
+  }
   log.log({ type: "task.failed", payload: { attempts: config.maxRetries } });
   throw new Error(`Max retries exceeded (${config.maxRetries})`);
 }
@@ -233,31 +265,70 @@ function buildInitialPrompt(args: {
   manifest: TaskManifest;
   manifestPath: string;
   taskBranch?: string;
+  strictTddContext?: {
+    stage: "tests" | "implementation";
+    testPaths: string[];
+    fastFailureOutput?: string;
+  };
 }): string {
   const manifestJson = JSON.stringify(args.manifest, null, 2);
   const branchLine = args.taskBranch ? `Task branch: ${args.taskBranch}` : null;
+  const stageContext =
+    args.strictTddContext?.stage === "tests"
+      ? [
+          "Strict TDD Stage A (tests-only): add failing tests first.",
+          args.strictTddContext.testPaths.length > 0
+            ? `Limit edits to tests matching:\n- ${args.strictTddContext.testPaths.join("\n- ")}`
+            : undefined,
+          "Do not modify production code until Stage B.",
+        ]
+          .filter(Boolean)
+          .join("\n")
+      : args.strictTddContext?.stage === "implementation" && args.strictTddContext.fastFailureOutput
+        ? [
+            "Strict TDD Stage B: tests are already failing from Stage A.",
+            "Keep the test changes stable and implement code to make them pass.",
+            `verify.fast output (truncated):\n${args.strictTddContext.fastFailureOutput}`,
+          ].join("\n\n")
+        : args.strictTddContext?.stage === "implementation"
+          ? "Strict TDD Stage B: tests already exist; focus on implementation until the doctor command passes."
+          : null;
+
+  const rules = [
+    "Rules:",
+    "- Prefer test-driven development: add/adjust tests first, confirm they fail for the right reason, then implement.",
+    "- Keep changes minimal and aligned with existing patterns.",
+    "- Run the provided verification commands in the spec and ensure the doctor command passes.",
+    "- If doctor fails, iterate until it passes.",
+  ];
+
+  if (args.strictTddContext?.stage === "tests") {
+    rules.unshift("- Stage A: edit tests only; production code changes are not allowed yet.");
+  }
+  if (args.strictTddContext?.stage === "implementation") {
+    rules.unshift("- Stage B: keep existing tests intact and implement code to satisfy them.");
+  }
 
   const sections = [
     "You are a coding agent working in a git repository.",
     `Task manifest (${args.manifestPath}):\n${manifestJson}`,
     branchLine,
+    stageContext,
     `Task spec:\n${args.spec.trim()}`,
-    [
-      "Rules:",
-      "- Prefer test-driven development: add/adjust tests first, confirm they fail for the right reason, then implement.",
-      "- Keep changes minimal and aligned with existing patterns.",
-      "- Run the provided verification commands in the spec and ensure the doctor command passes.",
-      "- If doctor fails, iterate until it passes.",
-    ].join("\n"),
+    rules.join("\n"),
   ];
 
   return sections.filter((part) => Boolean(part)).join("\n\n");
 }
 
-function buildRetryPrompt(args: { spec: string; lastDoctorOutput: string; attempt: number }): string {
+function buildRetryPrompt(args: {
+  spec: string;
+  lastDoctorOutput: string;
+  failedAttempt: number;
+}): string {
   const doctorText = args.lastDoctorOutput.trim() || "<no doctor output captured>";
   return [
-    `The doctor command failed on attempt ${args.attempt}.`,
+    `The doctor command failed on attempt ${args.failedAttempt}.`,
     "",
     "Doctor output:",
     doctorText,
@@ -290,6 +361,181 @@ async function loadTaskInputs(specPath: string, manifestPath: string): Promise<{
   }
 
   return { spec: specRaw, manifest };
+}
+
+async function runStrictTddStageA(args: {
+  attempt: number;
+  taskId: string;
+  manifest: TaskManifest;
+  manifestPath: string;
+  spec: string;
+  taskBranch?: string;
+  codex: CodexRunner;
+  workerState: WorkerStateStore;
+  log: WorkerLogger;
+  loggedResumeEvent: boolean;
+  workingDirectory: string;
+  checkpointCommits: boolean;
+  testPaths: string[];
+  fastCommand?: string;
+  doctorTimeoutSeconds?: number;
+  runLogsDir: string;
+  commandEnv: NodeJS.ProcessEnv;
+}): Promise<{ nextAttempt: number; fastOutput: string; loggedResumeEvent: boolean }> {
+  const fastCommand = args.fastCommand?.trim();
+  if (!fastCommand) {
+    args.log.log({
+      type: "tdd.stage.fail",
+      attempt: args.attempt,
+      payload: { stage: "A", reason: "missing_fast_command" },
+    });
+    throw new Error("Strict TDD mode requires verify.fast to be set, but none was provided.");
+  }
+
+  if (args.testPaths.length === 0) {
+    args.log.log({
+      type: "tdd.stage.fail",
+      attempt: args.attempt,
+      payload: { stage: "A", reason: "missing_test_paths" },
+    });
+    throw new Error("Strict TDD mode requires test_paths (manifest or project defaults).");
+  }
+
+  args.log.log({
+    type: "tdd.stage.start",
+    attempt: args.attempt,
+    payload: { stage: "A", mode: "strict", test_paths: args.testPaths },
+  });
+
+  const beforeChanges = await listChangedPaths(args.workingDirectory);
+
+  const prompt = buildInitialPrompt({
+    spec: args.spec,
+    manifest: args.manifest,
+    manifestPath: args.manifestPath,
+    taskBranch: args.taskBranch,
+    strictTddContext: { stage: "tests", testPaths: args.testPaths },
+  });
+
+  const loggedResumeEvent = await runCodexTurn({
+    attempt: args.attempt,
+    codex: args.codex,
+    log: args.log,
+    workerState: args.workerState,
+    loggedResumeEvent: args.loggedResumeEvent,
+    prompt,
+  });
+
+  const afterChanges = await listChangedPaths(args.workingDirectory);
+  const newChanges = diffChangedPaths(beforeChanges, afterChanges);
+  const filteredChanges = filterInternalChanges(newChanges, args.workingDirectory, args.runLogsDir);
+  const nonTestChanges = filteredChanges.filter((file) => !isTestPath(file, args.testPaths));
+
+  if (nonTestChanges.length > 0) {
+    args.log.log({
+      type: "tdd.stage.fail",
+      attempt: args.attempt,
+      payload: { stage: "A", reason: "non_test_changes", files: nonTestChanges },
+    });
+    throw new Error(
+      `Strict TDD Stage A failed: changes outside test_paths detected (${nonTestChanges.join(", ")}).`,
+    );
+  }
+
+  if (args.checkpointCommits) {
+    await maybeCheckpointCommit({
+      cwd: args.workingDirectory,
+      taskId: args.taskId,
+      attempt: args.attempt,
+      log: args.log,
+      workerState: args.workerState,
+    });
+  } else {
+    args.log.log({
+      type: "git.checkpoint.skip",
+      attempt: args.attempt,
+      payload: { reason: "disabled" },
+    });
+  }
+
+  const fast = await runVerificationCommand({
+    command: fastCommand,
+    cwd: args.workingDirectory,
+    timeoutSeconds: args.doctorTimeoutSeconds,
+    env: args.commandEnv,
+  });
+
+  const fastOutput = fast.output.trim();
+  writeRunLog(args.runLogsDir, `verify-fast-${safeAttemptName(args.attempt)}.log`, fastOutput + "\n");
+
+  if (fast.exitCode === 0) {
+    args.log.log({
+      type: "tdd.stage.fail",
+      attempt: args.attempt,
+      payload: { stage: "A", reason: "fast_passed" },
+    });
+    throw new Error("Strict TDD Stage A expected verify.fast to fail, but it passed.");
+  }
+
+  args.log.log({
+    type: "tdd.stage.pass",
+    attempt: args.attempt,
+    payload: {
+      stage: "A",
+      mode: "strict",
+      exit_code: fast.exitCode,
+      files_changed: filteredChanges.length,
+    },
+  });
+
+  return {
+    nextAttempt: args.attempt + 1,
+    fastOutput: fastOutput.slice(0, DOCTOR_PROMPT_LIMIT),
+    loggedResumeEvent,
+  };
+}
+
+async function runCodexTurn(args: {
+  attempt: number;
+  prompt: string;
+  codex: CodexRunner;
+  log: WorkerLogger;
+  workerState: WorkerStateStore;
+  loggedResumeEvent: boolean;
+}): Promise<boolean> {
+  await args.workerState.recordAttemptStart(args.attempt);
+  args.log.log({ type: "turn.start", attempt: args.attempt });
+
+  let hasLoggedResume = args.loggedResumeEvent;
+  await args.codex.streamPrompt(args.prompt, {
+    onThreadResumed: (threadId) => {
+      if (!hasLoggedResume) {
+        args.log.log({
+          type: "codex.thread.resumed",
+          attempt: args.attempt,
+          payload: { thread_id: threadId },
+        });
+        hasLoggedResume = true;
+      }
+    },
+    onThreadStarted: async (threadId) => {
+      await args.workerState.recordThreadId(threadId);
+      args.log.log({
+        type: "codex.thread.started",
+        attempt: args.attempt,
+        payload: { thread_id: threadId },
+      });
+    },
+    onEvent: (event) =>
+      args.log.log({
+        type: "codex.event",
+        attempt: args.attempt,
+        payload: { event } as JsonObject,
+      }),
+  });
+
+  args.log.log({ type: "turn.complete", attempt: args.attempt });
+  return hasLoggedResume;
 }
 
 async function runBootstrap(args: {
@@ -346,7 +592,7 @@ async function runBootstrap(args: {
   args.log.log({ type: "bootstrap.complete" });
 }
 
-async function runDoctor(args: {
+async function runVerificationCommand(args: {
   command: string;
   cwd: string;
   timeoutSeconds?: number;
@@ -386,6 +632,47 @@ async function ensureGitIdentity(cwd: string, log: WorkerLogger): Promise<void> 
     await execa("git", ["config", "user.email", "task-orchestrator@localhost"], { cwd });
     log.log({ type: "git.identity.set", payload: { field: "user.email" } });
   }
+}
+
+async function listChangedPaths(cwd: string): Promise<string[]> {
+  const status = await execa("git", ["status", "--porcelain"], {
+    cwd,
+    stdio: "pipe",
+  });
+
+  return status.stdout
+    .split("\n")
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0)
+    .map((line) => {
+      const pathText = line.length > 3 ? line.slice(3).trim() : line;
+      const target = pathText.includes(" -> ")
+        ? pathText.split(" -> ").pop() ?? pathText
+        : pathText;
+      return normalizeToPosix(target);
+    })
+    .filter((file) => file.length > 0);
+}
+
+function diffChangedPaths(before: string[], after: string[]): string[] {
+  const beforeSet = new Set(before);
+  return after.filter((file) => !beforeSet.has(file)).sort();
+}
+
+function filterInternalChanges(files: string[], workingDirectory: string, runLogsDir: string): string[] {
+  const logsRelative = normalizeToPosix(path.relative(workingDirectory, runLogsDir));
+  return files.filter((file) => {
+    if (file.startsWith(".task-orchestrator/")) return false;
+    if (file.startsWith(".git/")) return false;
+    if (logsRelative && !logsRelative.startsWith("..") && logsRelative !== ".") {
+      if (file === logsRelative || file.startsWith(`${logsRelative}/`)) return false;
+    }
+    return true;
+  });
+}
+
+function normalizeToPosix(input: string): string {
+  return input.replace(/\\/g, "/");
 }
 
 // =============================================================================

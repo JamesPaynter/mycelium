@@ -25,6 +25,8 @@ Return JSON only with this shape:
         "reads": ["path/to/file"],
         "writes": ["path/to/file"]
       },
+      "test_paths": ["tests/**/*", "**/__tests__/**"],
+      "tdd_mode": "off",
       "affected_tests": ["path/to/test"],
       "verify": {
         "doctor": "{{doctor_command}}",
@@ -43,7 +45,8 @@ Return JSON only with this shape:
 5. Use the dependencies array to enforce ordering when one task relies on another.
 6. Specs must include file paths, symbol names, patterns to follow, edge cases, and verification commands.
 7. Identify affected tests; if new tests are needed, name them and include them in files.writes.
-8. Do not add commentary; output valid JSON that matches the schema exactly.
+8. When `tdd_mode` is `strict`, include test_paths, populate affected_tests, and describe the tests-first plan before implementation steps.
+9. Do not add commentary; output valid JSON that matches the schema exactly.
 
 ## Inputs
 ### Implementation Plan

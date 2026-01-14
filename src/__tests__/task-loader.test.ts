@@ -80,6 +80,20 @@ describe("loadTaskSpecs", () => {
     expect(errors[0].issues.some((i) => i.includes("description"))).toBe(true);
     expect(errors[0].issues.some((i) => i.includes("estimated_minutes"))).toBe(true);
   });
+
+  it("requires verify.fast when tdd_mode is strict", async () => {
+    const { root, tasksDir } = createTasksDir();
+
+    writeTask(tasksDir, "004", {
+      ...baseManifest,
+      id: "004",
+      tdd_mode: "strict",
+      test_paths: ["tests/**"],
+      verify: { doctor: "npm test" },
+    });
+
+    await expect(loadTaskSpecs(root, ".tasks")).rejects.toBeInstanceOf(TaskError);
+  });
 });
 
 function createTasksDir(): { root: string; tasksDir: string } {

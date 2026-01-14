@@ -27,6 +27,13 @@ doctor_timeout: 900
 bootstrap:
   - npm ci
 
+# Paths considered tests (used for strict TDD enforcement)
+test_paths:
+  - "**/__tests__/**"
+  - "**/tests/**"
+  - "**/*.test.*"
+  - "**/*.spec.*"
+
 # Define abstract resources for safe scheduling
 resources:
   - name: backend

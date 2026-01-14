@@ -5,6 +5,7 @@ import yaml from "js-yaml";
 import type { ZodIssue } from "zod";
 
 import { ProjectConfigSchema, type ProjectConfig } from "./config.js";
+import { normalizeTestPaths, DEFAULT_TEST_PATHS } from "./test-paths.js";
 import { ConfigError } from "./errors.js";
 
 type ExpandContext = {
@@ -96,10 +97,12 @@ export function loadProjectConfig(configPath: string): ProjectConfig {
 
   const cfg = parsed.data;
   const configDir = path.dirname(absolutePath);
+  const normalizedTestPaths = normalizeTestPaths(cfg.test_paths);
 
   // Normalize relative paths against the config directory for portability.
   return {
     ...cfg,
+    test_paths: normalizedTestPaths.length > 0 ? normalizedTestPaths : DEFAULT_TEST_PATHS,
     repo_path: path.resolve(configDir, cfg.repo_path),
     docker: {
       ...cfg.docker,

@@ -1339,6 +1339,7 @@ export async function runProject(
               DOCTOR_TIMEOUT: config.doctor_timeout ? String(config.doctor_timeout) : undefined,
               MAX_RETRIES: String(config.max_retries),
               CHECKPOINT_COMMITS: config.worker.checkpoint_commits ? "true" : "false",
+              DEFAULT_TEST_PATHS: JSON.stringify(config.test_paths ?? []),
               BOOTSTRAP_CMDS:
                 config.bootstrap.length > 0 ? JSON.stringify(config.bootstrap) : undefined,
               CODEX_MODEL: config.worker.model,
@@ -1452,6 +1453,7 @@ export async function runProject(
               codexModel: config.worker.model,
               checkpointCommits: config.worker.checkpoint_commits,
               workingDirectory: workspace,
+              defaultTestPaths: config.test_paths,
             },
             workerLogger,
           );

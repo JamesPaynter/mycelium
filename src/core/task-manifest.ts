@@ -1,5 +1,6 @@
-import { z, type ZodIssue } from "zod";
+import { z, type RefinementCtx, type ZodIssue } from "zod";
 
+import { normalizeTestPaths } from "./test-paths.js";
 import { slugify } from "./utils.js";
 
 export const LocksSchema = z
@@ -23,7 +24,9 @@ export const VerifySchema = z
   })
   .strict();
 
-export const TaskManifestSchema = z
+const TddModeSchema = z.enum(["off", "strict"]);
+
+export const TaskManifestBaseSchema = z
   .object({
     id: z.string().min(1),
     name: z.string().min(1),
@@ -33,9 +36,29 @@ export const TaskManifestSchema = z
     locks: LocksSchema.default({ reads: [], writes: [] }),
     files: FilesSchema.default({ reads: [], writes: [] }),
     affected_tests: z.array(z.string()).default([]),
+    test_paths: z.array(z.string()).default([]),
+    tdd_mode: TddModeSchema.default("off"),
     verify: VerifySchema,
   })
   .strict();
+
+type TaskManifestBase = z.infer<typeof TaskManifestBaseSchema>;
+
+function applyTddRequirements(manifest: TaskManifestBase, ctx: RefinementCtx): void {
+  if (manifest.tdd_mode === "strict" && !manifest.verify.fast?.trim()) {
+    ctx.addIssue({
+      code: "custom",
+      path: ["verify", "fast"],
+      message: "verify.fast is required when tdd_mode=strict",
+    });
+  }
+}
+
+export const TaskManifestSchema = TaskManifestBaseSchema.superRefine(applyTddRequirements);
+
+export const TaskManifestWithSpecSchema = TaskManifestBaseSchema.extend({
+  spec: z.string().min(1),
+}).superRefine(applyTddRequirements);
 
 export type TaskManifest = z.infer<typeof TaskManifestSchema>;
 
@@ -47,7 +70,7 @@ export type TaskSpec = {
   slug: string;
 };
 
-export type TaskWithSpec = TaskManifest & { spec: string };
+export type TaskWithSpec = z.infer<typeof TaskManifestWithSpecSchema>;
 
 export type NormalizedLocks = {
   reads: string[];
@@ -151,6 +174,8 @@ export function normalizeTaskManifest(manifest: TaskManifest): TaskManifest {
   const locks = normalizeLocks(manifest.locks);
   const files = normalizeFiles(manifest.files);
   const affectedTests = normalizeStringList(manifest.affected_tests);
+  const testPaths = normalizeTestPaths(manifest.test_paths);
+  const tddMode = manifest.tdd_mode ?? "off";
 
   const doctor = manifest.verify.doctor.trim();
   const fast = manifest.verify.fast?.trim();
@@ -163,6 +188,8 @@ export function normalizeTaskManifest(manifest: TaskManifest): TaskManifest {
     locks,
     files,
     affected_tests: affectedTests,
+    test_paths: testPaths,
+    tdd_mode: tddMode,
     verify: fast ? { doctor, fast } : { doctor },
   };
 }
