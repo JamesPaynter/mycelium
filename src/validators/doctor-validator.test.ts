@@ -100,6 +100,7 @@ describe("runDoctorValidator", () => {
       mainBranch: "main",
       doctorCommand: "npm test",
       trigger: "cadence",
+      doctorCanary: { status: "expected_fail", exitCode: 1, output: "canary failed" },
       config: validatorConfig,
       orchestratorLog,
       llmClient: llm,
@@ -110,12 +111,18 @@ describe("runDoctorValidator", () => {
     expect(result?.effective).toBe(true);
     expect(llm.lastPrompt).toContain("Tests failed");
     expect(llm.lastPrompt).toContain("README.md");
+    expect(llm.lastPrompt).toContain("Doctor canary");
 
     const reportDir = path.join(validatorsLogsDir(projectName, runId), "doctor-validator");
     const reportFiles = await fse.readdir(reportDir);
     expect(reportFiles.length).toBe(1);
     const report = await fse.readJson(path.join(reportDir, reportFiles[0]));
     expect(report.result.effective).toBe(true);
+    expect(report.meta.doctor_canary).toEqual({
+      status: "expected_fail",
+      exitCode: 1,
+      output: "canary failed",
+    });
     const doctorRunPaths = (report.meta.doctor_runs as Array<{ logPath: string }>).map(
       (run) => run.logPath,
     );

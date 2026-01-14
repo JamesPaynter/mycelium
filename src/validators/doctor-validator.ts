@@ -29,6 +29,11 @@ type DoctorRunSample = {
   truncated: boolean;
 };
 
+export type DoctorCanaryResult =
+  | { status: "expected_fail"; exitCode: number; output: string }
+  | { status: "unexpected_pass"; exitCode: number; output: string }
+  | { status: "skipped"; reason: string };
+
 type ValidationContext = {
   doctorCommand: string;
   diffSummary: string;
@@ -36,11 +41,16 @@ type ValidationContext = {
   trigger: DoctorValidatorTrigger;
   triggerNotes?: string;
   integrationDoctorOutput?: string;
+  doctorCanary?: DoctorCanaryResult;
 };
 
 export type DoctorValidationReport = z.infer<typeof DoctorValidationSchema>;
 
-export type DoctorValidatorTrigger = "cadence" | "integration_doctor_failed" | "manual";
+export type DoctorValidatorTrigger =
+  | "cadence"
+  | "integration_doctor_failed"
+  | "doctor_canary_failed"
+  | "manual";
 
 export type DoctorValidatorArgs = {
   projectName: string;
@@ -51,6 +61,7 @@ export type DoctorValidatorArgs = {
   trigger: DoctorValidatorTrigger;
   triggerNotes?: string;
   integrationDoctorOutput?: string;
+  doctorCanary?: DoctorCanaryResult;
   config?: DoctorValidatorConfig;
   orchestratorLog: JsonlLogger;
   logger?: JsonlLogger;
@@ -68,6 +79,7 @@ const DOCTOR_RUN_SAMPLE_LIMIT = 6;
 const DOCTOR_LOG_CHAR_LIMIT = 2_000;
 const DIFF_SUMMARY_LIMIT = 2_000;
 const INTEGRATION_OUTPUT_LIMIT = 3_000;
+const DOCTOR_CANARY_LOG_LIMIT = 2_000;
 
 const DoctorValidationSchema = z
   .object({
@@ -176,6 +188,7 @@ export async function runDoctorValidator(
       recent_doctor_runs: formatDoctorRunsForPrompt(context.doctorRuns),
       recent_changes: context.diffSummary,
       doctor_expectations: buildDoctorExpectations(context),
+      doctor_canary: formatDoctorCanaryForPrompt(context.doctorCanary),
     });
 
     const client = args.llmClient ?? createValidatorClient(cfg);
@@ -247,6 +260,7 @@ async function buildValidationContext(args: DoctorValidatorArgs): Promise<Valida
   const integrationDoctorOutput = args.integrationDoctorOutput
     ? truncate(args.integrationDoctorOutput, INTEGRATION_OUTPUT_LIMIT).text
     : undefined;
+  const doctorCanary = normalizeDoctorCanary(args.doctorCanary);
 
   return {
     doctorCommand: args.doctorCommand,
@@ -255,6 +269,7 @@ async function buildValidationContext(args: DoctorValidatorArgs): Promise<Valida
     trigger: args.trigger,
     triggerNotes: args.triggerNotes,
     integrationDoctorOutput,
+    doctorCanary,
   };
 }
 
@@ -404,6 +419,7 @@ function buildDoctorExpectations(context: ValidationContext): string {
   if (context.integrationDoctorOutput) {
     lines.push("Integration doctor output (most recent):", context.integrationDoctorOutput);
   }
+  lines.push(formatDoctorCanaryForPrompt(context.doctorCanary));
 
   return lines.join("\n");
 }
@@ -462,6 +478,7 @@ async function persistReport(
       integration_doctor_output: context.integrationDoctorOutput ?? null,
       trigger_notes: context.triggerNotes ?? null,
       finish_reason: finishReason ?? null,
+      doctor_canary: context.doctorCanary ?? null,
     },
   });
 }
@@ -512,6 +529,39 @@ function truncate(text: string, limit: number): { text: string; truncated: boole
     return { text, truncated: false };
   }
   return { text: `${text.slice(0, limit)}\n... [truncated]`, truncated: true };
+}
+
+function formatDoctorCanaryForPrompt(canary?: DoctorCanaryResult): string {
+  if (!canary) {
+    return "Doctor canary: not yet recorded. Add ORCH_CANARY handling to your doctor wrapper.";
+  }
+
+  if (canary.status === "skipped") {
+    return `Doctor canary: skipped (${canary.reason}).`;
+  }
+
+  const lines = [
+    canary.status === "unexpected_pass"
+      ? "Doctor canary: DID NOT fail when ORCH_CANARY=1 (unexpected pass)."
+      : "Doctor canary: failed as expected when ORCH_CANARY=1.",
+    `Exit code: ${canary.exitCode}`,
+  ];
+
+  if (canary.output.trim().length > 0) {
+    lines.push("Output:", canary.output);
+  }
+
+  return lines.join("\n");
+}
+
+function normalizeDoctorCanary(canary?: DoctorCanaryResult): DoctorCanaryResult | undefined {
+  if (!canary) return undefined;
+  if (canary.status === "skipped") return canary;
+
+  return {
+    ...canary,
+    output: truncate(canary.output, DOCTOR_CANARY_LOG_LIMIT).text,
+  };
 }
 
 function parseJson(raw: string): unknown {

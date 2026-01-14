@@ -2,9 +2,9 @@
 
 ## Status
 - [x] Scoped
-- [ ] In Progress
-- [ ] Implemented
-- [ ] Verified
+- [x] In Progress
+- [x] Implemented
+- [x] Verified
 
 ## Summary
 Add a mechanical canary mechanism to validate the doctor command is actually being run and can fail when expected.
@@ -14,13 +14,12 @@ Add a mechanical canary mechanism to validate the doctor command is actually bei
 - Tier: **standard**
 
 ## Files Changing
-...
-- [ ] Define an optional canary protocol:
-- [ ]   - Orchestrator runs doctor once normally.
-- [ ]   - Then runs doctor with `ORCH_CANARY=1` and expects failure.
-- [ ] Document the requirement: doctor command should be a wrapper script (recommended) that exits 1 when ORCH_CANARY=1.
-- [ ] If canary run unexpectedly passes: emit `doctor.canary.failed` and (if configured) block further merges.
-- [ ] Wire into Doctor Validator: include canary result in the validator inputs/report.
+- [x] Define an optional canary protocol:
+  - [x] Orchestrator runs doctor once normally.
+  - [x] Then runs doctor with `ORCH_CANARY=1` and expects failure.
+- [x] Document the requirement: doctor command should be a wrapper script (recommended) that exits 1 when ORCH_CANARY=1.
+- [x] If canary run unexpectedly passes: emit `doctor.canary.failed` and (if configured) block further merges.
+- [x] Wire into Doctor Validator: include canary result in the validator inputs/report.
 
 ## Verification
 - Manual: configure a project doctor wrapper that checks ORCH_CANARY and confirm canary fails as expected.

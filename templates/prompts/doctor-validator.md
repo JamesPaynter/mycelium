@@ -7,6 +7,9 @@ You are a doctor validation agent. Assess whether the configured doctor command 
 ## Doctor Command
 {{doctor_command}}
 
+## Doctor Canary
+{{doctor_canary}}
+
 ## Trigger & Expectations
 {{doctor_expectations}}
 

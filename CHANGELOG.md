@@ -10,6 +10,7 @@
 - Added resume handling that reattaches running worker containers via labels, replays logs from history, reconciles exited/missing containers, and emits new container lifecycle events.
 - Persisted worker Codex sessions in workspace scope with `.task-orchestrator` state (thread ids, attempts), CODEX_HOME in the workspace volume, thread-aware run-state/status output, and new codex thread start/resume events.
 - Added automatic rescope handling for manifest violations, including a new `rescope_required` status, rescope log events, manifest updates for missing locks/files, and task requeueing with updated scheduler locks.
+- Added doctor canary enforcement: rerun doctor with `ORCH_CANARY=1`, emit `doctor.canary.*` events, feed results into doctor validator reports, and block merges when the canary unexpectedly passes.
 
 ## 2026-01-11
 - Added non-blocking test validator agent with JSONL logging, per-task reports, and executor integration.

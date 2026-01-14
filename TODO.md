@@ -7,7 +7,7 @@
 - [x] [032 - Manifest compliance enforcement + access requests](docs/tasks/archive/032-manifest-compliance-and-access-requests/spec.md) (Effort <L>, Tier <pro>)
 - [x] [033 - Auto-rescope tickets when access expands](docs/tasks/archive/033-auto-rescope-and-rerun/spec.md) (Effort <L>, Tier <pro>)
 - [x] [034 - Make validators blocking + human review queue](docs/tasks/archive/034-make-validators-blocking/spec.md) (Effort <L>, Tier <pro>)
-- [ ] [035 - Doctor canary check (prove doctor is executed)](docs/tasks/active/035-doctor-canary-check/spec.md) (Effort <M>, Tier <standard>)
+- [x] [035 - Doctor canary check (prove doctor is executed)](docs/tasks/archive/035-doctor-canary-check/spec.md) (Effort <M>, Tier <standard>)
 - [ ] [036 - Strict TDD mode (tests-first enforcement)](docs/tasks/active/036-strict-tdd-mode/spec.md) (Effort <L>, Tier <pro>)
 - [ ] [037 - Autopilot supervisor command (LLM-driven operator)](docs/tasks/active/037-autopilot-supervisor-command/spec.md) (Effort <L>, Tier <pro>)
 - [ ] [038 - Cost + token tracking with budgets](docs/tasks/active/038-cost-tracking-and-budgets/spec.md) (Effort <M>, Tier <standard>)

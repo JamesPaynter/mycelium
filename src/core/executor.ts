@@ -68,6 +68,7 @@ import { prepareTaskWorkspace } from "./workspaces.js";
 import {
   runDoctorValidator,
   type DoctorValidationReport,
+  type DoctorCanaryResult,
   type DoctorValidatorTrigger,
 } from "../validators/doctor-validator.js";
 import { runTestValidator, type TestValidationReport } from "../validators/test-validator.js";
@@ -316,6 +317,7 @@ export async function runProject(
   let doctorValidatorLastCount = completed.size + failed.size;
   let lastIntegrationDoctorOutput: string | undefined;
   let lastIntegrationDoctorExitCode: number | undefined;
+  let lastIntegrationDoctorCanary: DoctorCanaryResult | undefined;
 
   const refreshStatusSets = (): void => {
     const sets = buildStatusSets(state);
@@ -647,6 +649,7 @@ export async function runProject(
   > {
     const hadPendingResets = params.results.some((r) => !r.success && r.resetToPending);
     const rescopeFailures: { taskId: string; reason: string }[] = [];
+    let doctorCanaryResult: DoctorCanaryResult | undefined;
     for (const r of params.results) {
       if (!r.success) {
         if (r.resetToPending) {
@@ -854,6 +857,7 @@ export async function runProject(
         runId,
         mainBranch: config.main_branch,
         doctorCommand: config.doctor,
+        doctorCanary: lastIntegrationDoctorCanary,
         trigger: "cadence",
         triggerNotes: `Cadence reached after ${finishedCount} tasks (interval ${doctorValidatorRunEvery})`,
         config: doctorValidatorConfig,
@@ -967,10 +971,99 @@ export async function runProject(
         );
         integrationDoctorPassed = doctorOk;
 
+        if (doctorOk) {
+          logOrchestratorEvent(orchLog, "doctor.canary.start", { batch_id: params.batchId });
+          doctorCanaryResult = await runDoctorCanary({
+            command: config.doctor,
+            cwd: repoPath,
+            timeoutSeconds: config.doctor_timeout,
+          });
+          lastIntegrationDoctorCanary = doctorCanaryResult;
+
+          if (doctorCanaryResult.status === "unexpected_pass") {
+            logOrchestratorEvent(orchLog, "doctor.canary.failed", {
+              batch_id: params.batchId,
+              exit_code: doctorCanaryResult.exitCode,
+              message: "Doctor exited 0 with ORCH_CANARY=1 (expected non-zero).",
+              output_preview: doctorCanaryResult.output.slice(0, 500),
+            });
+          } else if (doctorCanaryResult.status === "expected_fail") {
+            logOrchestratorEvent(orchLog, "doctor.canary.pass", {
+              batch_id: params.batchId,
+              exit_code: doctorCanaryResult.exitCode,
+              output_preview: doctorCanaryResult.output.slice(0, 500),
+            });
+          }
+        } else {
+          doctorCanaryResult = { status: "skipped", reason: "Integration doctor failed" };
+          lastIntegrationDoctorCanary = doctorCanaryResult;
+        }
+
         if (!doctorOk) {
           state.status = "failed";
           stopReason = "integration_doctor_failed";
         }
+      }
+    }
+
+    const canaryUnexpectedPass = doctorCanaryResult?.status === "unexpected_pass";
+    if (
+      doctorValidatorEnabled &&
+      doctorValidatorConfig &&
+      canaryUnexpectedPass &&
+      successfulTasks.length > 0
+    ) {
+      const doctorOutcome = await runDoctorValidatorWithReport({
+        projectName,
+        repoPath,
+        runId,
+        mainBranch: config.main_branch,
+        doctorCommand: config.doctor,
+        doctorCanary: doctorCanaryResult,
+        trigger: "doctor_canary_failed",
+        triggerNotes: "Doctor exited successfully with ORCH_CANARY=1 (expected non-zero).",
+        config: doctorValidatorConfig,
+        orchestratorLog: orchLog,
+        logger: doctorValidatorLog ?? undefined,
+      });
+
+      doctorValidatorLastCount = completed.size + failed.size;
+
+      if (doctorOutcome) {
+        const relativeReport = relativeReportPath(projectName, runId, doctorOutcome.reportPath);
+        for (const r of successfulTasks) {
+          setValidatorResult(state, r.taskId, {
+            validator: "doctor",
+            status: doctorOutcome.status,
+            mode: doctorValidatorMode,
+            summary: doctorOutcome.summary ?? undefined,
+            report_path: relativeReport,
+            trigger: doctorOutcome.trigger,
+          });
+
+          if (shouldBlockValidator(doctorValidatorMode, doctorOutcome.status)) {
+            markTaskNeedsHumanReview(state, r.taskId, {
+              validator: "doctor",
+              reason:
+                doctorOutcome.summary && doctorOutcome.summary.length > 0
+                  ? `Doctor validator blocked merge: ${doctorOutcome.summary}`
+                  : "Doctor validator blocked merge (mode=block)",
+              summary: doctorOutcome.summary ?? undefined,
+              reportPath: relativeReport,
+            });
+            state.status = "failed";
+            stopReason = "validator_blocked";
+            logOrchestratorEvent(orchLog, "validator.block", {
+              validator: "doctor",
+              taskId: r.taskId,
+              mode: doctorValidatorMode,
+              status: doctorOutcome.status,
+              trigger: doctorOutcome.trigger ?? "unknown",
+            });
+          }
+        }
+        await stateStore.save(state);
+        refreshStatusSets();
       }
     }
 
@@ -1013,6 +1106,7 @@ export async function runProject(
         runId,
         mainBranch: config.main_branch,
         doctorCommand: config.doctor,
+        doctorCanary: lastIntegrationDoctorCanary,
         trigger: "integration_doctor_failed",
         triggerNotes: `Integration doctor failed for batch ${params.batchId} (exit code ${lastIntegrationDoctorExitCode ?? -1})`,
         integrationDoctorOutput: lastIntegrationDoctorOutput,
@@ -1443,6 +1537,7 @@ async function runDoctorValidatorWithReport(args: {
   runId: string;
   mainBranch: string;
   doctorCommand: string;
+  doctorCanary?: DoctorCanaryResult;
   trigger: DoctorValidatorTrigger;
   triggerNotes?: string;
   integrationDoctorOutput?: string;
@@ -1462,6 +1557,7 @@ async function runDoctorValidatorWithReport(args: {
       runId: args.runId,
       mainBranch: args.mainBranch,
       doctorCommand: args.doctorCommand,
+      doctorCanary: args.doctorCanary,
       trigger: args.trigger,
       triggerNotes: args.triggerNotes,
       integrationDoctorOutput: args.integrationDoctorOutput,
@@ -1475,9 +1571,15 @@ async function runDoctorValidatorWithReport(args: {
 
   const reportPath = await findLatestReport(reportDir, before);
   if (doctorResult) {
+    const status: ValidatorStatus =
+      args.doctorCanary?.status === "unexpected_pass"
+        ? "fail"
+        : doctorResult.effective
+          ? "pass"
+          : "fail";
     return {
-      status: doctorResult.effective ? "pass" : "fail",
-      summary: summarizeDoctorReport(doctorResult),
+      status,
+      summary: summarizeDoctorReport(doctorResult, args.doctorCanary),
       reportPath,
       trigger: args.trigger,
     };
@@ -1567,6 +1669,31 @@ async function findLatestReport(reportDir: string, before: string[]): Promise<st
   return newest?.fullPath ?? null;
 }
 
+const DOCTOR_CANARY_OUTPUT_LIMIT = 4_000;
+
+async function runDoctorCanary(args: {
+  command: string;
+  cwd: string;
+  timeoutSeconds?: number;
+}): Promise<DoctorCanaryResult> {
+  const res = await execaCommand(args.command, {
+    cwd: args.cwd,
+    shell: true,
+    reject: false,
+    env: { ...process.env, ORCH_CANARY: "1" },
+    timeout: args.timeoutSeconds ? args.timeoutSeconds * 1000 : undefined,
+  });
+
+  const exitCode = res.exitCode ?? -1;
+  const output = limitText(`${res.stdout}\n${res.stderr}`.trim(), DOCTOR_CANARY_OUTPUT_LIMIT);
+
+  if (exitCode === 0) {
+    return { status: "unexpected_pass", exitCode, output };
+  }
+
+  return { status: "expected_fail", exitCode, output };
+}
+
 function summarizeTestReport(report: TestValidationReport): string {
   const parts = [report.summary];
   if (report.concerns.length > 0) {
@@ -1578,7 +1705,10 @@ function summarizeTestReport(report: TestValidationReport): string {
   return parts.filter(Boolean).join(" | ");
 }
 
-function summarizeDoctorReport(report: DoctorValidationReport): string {
+function summarizeDoctorReport(
+  report: DoctorValidationReport,
+  canary?: DoctorCanaryResult,
+): string {
   const parts = [
     `Effective: ${report.effective ? "yes" : "no"}`,
     `Coverage: ${report.coverage_assessment}`,
@@ -1589,12 +1719,30 @@ function summarizeDoctorReport(report: DoctorValidationReport): string {
   if (report.recommendations.length > 0) {
     parts.push(`Recs: ${report.recommendations.length}`);
   }
+  if (canary) {
+    parts.push(formatDoctorCanarySummary(canary));
+  }
   return parts.join(" | ");
 }
 
 function formatErrorMessage(err: unknown): string {
   if (err instanceof Error) return err.message;
   return String(err);
+}
+
+function formatDoctorCanarySummary(canary: DoctorCanaryResult): string {
+  if (canary.status === "skipped") {
+    return `Canary: skipped (${canary.reason})`;
+  }
+
+  return canary.status === "unexpected_pass"
+    ? "Canary: unexpected pass with ORCH_CANARY=1"
+    : "Canary: failed as expected with ORCH_CANARY=1";
+}
+
+function limitText(text: string, limit: number): string {
+  if (text.length <= limit) return text;
+  return `${text.slice(0, limit)}\n... [truncated]`;
 }
 
 function buildStatusSets(state: RunState): { completed: Set<string>; failed: Set<string> } {

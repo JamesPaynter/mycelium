@@ -97,6 +97,11 @@ task-orchestrator run --project my-project
 
 - Add `--local-worker` to run workers on the host when Docker is unavailable.
 
+## Doctor command expectations
+
+- Use a wrapper script for `doctor` and make it exit non-zero when `ORCH_CANARY=1`.
+- The orchestrator reruns doctor with `ORCH_CANARY=1` after a pass; a zero exit on this canary logs `doctor.canary.failed` and blocks merges when the doctor validator mode is `block`.
+
 ## MVP acceptance checklist
 
 - `plan` writes task manifests to your tasks directory (default `.tasks/`) from a real implementation plan.

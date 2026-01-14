@@ -54,6 +54,7 @@ describe("renderPromptTemplate", () => {
       recent_doctor_runs: "Attempt 1: PASS",
       recent_changes: "src/sample.ts: added validation",
       doctor_expectations: "Should catch regressions in validation layer",
+      doctor_canary: "Doctor canary is configured to fail with ORCH_CANARY=1",
     });
 
     expect(doctorValidator).toContain("doctor validation agent");
