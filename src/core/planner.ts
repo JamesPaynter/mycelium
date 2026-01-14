@@ -5,6 +5,7 @@ import { execa } from "execa";
 import fse from "fs-extra";
 import { z } from "zod";
 
+import { ensureCodexAuthForHome } from "./codexAuth.js";
 import type { PlannerConfig, ProjectConfig, ResourceConfig } from "./config.js";
 import { JsonlLogger } from "./logger.js";
 import { plannerHomeDir } from "./paths.js";
@@ -72,7 +73,7 @@ const PlannerOutputJsonSchema = {
               doctor: { type: "string" },
               fast: { type: "string" },
             },
-            required: ["doctor"],
+            required: ["doctor", "fast"],
             additionalProperties: false,
           },
           spec: { type: "string" },
@@ -82,6 +83,7 @@ const PlannerOutputJsonSchema = {
           "name",
           "description",
           "estimated_minutes",
+          "dependencies",
           "locks",
           "files",
           "affected_tests",
@@ -134,7 +136,7 @@ export async function planFromImplementationPlan(args: {
 
     log?.log({ type: "planner.start", payload: { project: projectName, input: inputAbs } });
 
-    const client = createPlannerClient(config.planner, projectName, repoPath);
+    const client = createPlannerClient(config.planner, projectName, repoPath, log);
     const completion = await client.complete<PlannerOutput>(prompt, {
       schema: PlannerOutputJsonSchema,
       temperature: config.planner.temperature,
@@ -295,6 +297,7 @@ function createPlannerClient(
   cfg: PlannerConfig,
   projectName: string,
   repoPath: string,
+  log?: JsonlLogger,
 ): LlmClient {
   if (cfg.provider === "openai") {
     return new OpenAiClient({
@@ -310,6 +313,7 @@ function createPlannerClient(
       model: cfg.model,
       codexHome,
       workingDirectory: repoPath,
+      log,
     });
   }
 
@@ -320,21 +324,45 @@ class CodexPlannerClient implements LlmClient {
   private readonly model: string;
   private readonly codexHome: string;
   private readonly workingDirectory: string;
+  private readonly log?: JsonlLogger;
 
-  constructor(args: { model: string; codexHome: string; workingDirectory: string }) {
+  constructor(args: {
+    model: string;
+    codexHome: string;
+    workingDirectory: string;
+    log?: JsonlLogger;
+  }) {
     this.model = args.model;
     this.codexHome = args.codexHome;
     this.workingDirectory = args.workingDirectory;
+    this.log = args.log;
   }
 
   async complete<TParsed = unknown>(
     prompt: string,
     options: LlmCompletionOptions = {},
   ): Promise<LlmCompletionResult<TParsed>> {
-    await ensureDir(this.codexHome);
-    await writePlannerCodexConfig(path.join(this.codexHome, "config.toml"), this.model);
+    const codexHome = this.codexHome;
+    await ensureDir(codexHome);
+    await writePlannerCodexConfig(path.join(codexHome, "config.toml"), this.model);
 
-    const codex = new Codex({ env: { CODEX_HOME: this.codexHome } });
+    // If the user authenticated via `codex login`, auth material typically lives under
+    // ~/.codex/auth.json (file-based storage). Because we run with a custom CODEX_HOME,
+    // we copy that auth file into this planner CODEX_HOME when no API key is provided.
+    const auth = await ensureCodexAuthForHome(codexHome);
+    this.log?.log({
+      type: "codex.auth",
+      mode: auth.mode,
+      source: auth.mode === "env" ? auth.var : "auth.json",
+    });
+
+    const env: Record<string, string> = { CODEX_HOME: codexHome };
+    if (process.env.CODEX_API_KEY) env.CODEX_API_KEY = process.env.CODEX_API_KEY;
+    if (process.env.OPENAI_API_KEY) env.OPENAI_API_KEY = process.env.OPENAI_API_KEY;
+    if (process.env.OPENAI_BASE_URL) env.OPENAI_BASE_URL = process.env.OPENAI_BASE_URL;
+    if (process.env.OPENAI_ORGANIZATION) env.OPENAI_ORGANIZATION = process.env.OPENAI_ORGANIZATION;
+  
+    const codex = new Codex({ env });
     const thread = codex.startThread({ workingDirectory: this.workingDirectory });
 
     const result = await thread.run(prompt, { outputSchema: options.schema as any });

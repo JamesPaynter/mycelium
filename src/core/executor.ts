@@ -17,6 +17,7 @@ import { streamContainerLogs } from "../docker/streams.js";
 import { ensureCleanWorkingTree, checkout } from "../git/git.js";
 import { mergeTaskBranches } from "../git/merge.js";
 import { buildTaskBranchName } from "../git/branches.js";
+import { ensureCodexAuthForHome } from "./codexAuth.js";
 
 import type { ProjectConfig } from "./config.js";
 import { JsonlLogger, logOrchestratorEvent, logRunResume, logTaskReset } from "./logger.js";
@@ -352,6 +353,15 @@ export async function runProject(
           approvalPolicy: "never",
           sandboxMode: "danger-full-access",
         });
+        // If the user authenticated via `codex login`, auth material typically lives under
+        // ~/.codex/auth.json (file-based storage). Because we run each worker with a custom
+        // CODEX_HOME, we copy that auth file into this per-task CODEX_HOME when no API key is provided.
+        const auth = await ensureCodexAuthForHome(codexHome);
+        logOrchestratorEvent(orchLog, "codex.auth", {
+          taskId,
+          mode: auth.mode,
+          source: auth.mode === "env" ? auth.var : "auth.json",
+        });
 
         logOrchestratorEvent(orchLog, "workspace.prepare.start", { taskId, workspace });
         const workspacePrep = await prepareTaskWorkspace({
@@ -395,7 +405,8 @@ export async function runProject(
           image: workerImage,
           env: {
             // Credentials / routing (passed through from the host).
-            CODEX_API_KEY: process.env.CODEX_API_KEY,
+            CODEX_API_KEY: process.env.CODEX_API_KEY ?? process.env.OPENAI_API_KEY,
+            OPENAI_API_KEY: process.env.OPENAI_API_KEY,
             OPENAI_BASE_URL: process.env.OPENAI_BASE_URL,
             OPENAI_ORGANIZATION: process.env.OPENAI_ORGANIZATION,
 
