@@ -52,6 +52,7 @@ Edit `~/.task-orchestrator/projects/my-project.yaml` and set:
 - `main_branch`
 - `doctor`
 - `manifest_enforcement` (off|warn|block, defaults to warn)
+- `budgets` (mode warn|block; `max_tokens_per_task` and/or `max_cost_per_run`)
 - `test_paths` (glob patterns considered tests; defaults cover `__tests__`, `tests/`, and `*.test|spec.*`)
 - `resources`
 

@@ -49,10 +49,13 @@ export type RunStatusSummary = {
   status: RunStatus;
   startedAt: string;
   updatedAt: string;
+  tokensUsed: number;
+  estimatedCost: number;
   batchCounts: BatchStatusCounts;
   taskCounts: TaskStatusCounts;
   tasks: TaskStatusRow[];
   humanReview: HumanReviewRow[];
+  topSpenders: TaskSpendRow[];
 };
 
 export type HumanReviewRow = {
@@ -61,6 +64,12 @@ export type HumanReviewRow = {
   reason: string;
   summary: string | null;
   reportPath: string | null;
+};
+
+export type TaskSpendRow = {
+  id: string;
+  tokensUsed: number;
+  estimatedCost: number;
 };
 
 export class StateStore {
@@ -139,10 +148,13 @@ export function summarizeRunState(state: RunState): RunStatusSummary {
     status: state.status,
     startedAt: state.started_at,
     updatedAt: state.updated_at,
+    tokensUsed: state.tokens_used ?? 0,
+    estimatedCost: state.estimated_cost ?? 0,
     batchCounts: summarizeBatchStatuses(state.batches),
     taskCounts: summarizeTaskStatuses(state.tasks),
     tasks: buildTaskStatusRows(state.tasks),
     humanReview: buildHumanReviewRows(state.tasks),
+    topSpenders: buildTopSpenders(state.tasks),
   };
 }
 
@@ -245,6 +257,26 @@ function buildHumanReviewRows(tasks: Record<string, TaskState>): HumanReviewRow[
       };
     })
     .sort((a, b) => a.id.localeCompare(b.id, undefined, { numeric: true, sensitivity: "base" }));
+}
+
+function buildTopSpenders(tasks: Record<string, TaskState>, limit = 5): TaskSpendRow[] {
+  return Object.entries(tasks)
+    .map(([id, task]) => ({
+      id,
+      tokensUsed: task.tokens_used ?? 0,
+      estimatedCost: task.estimated_cost ?? 0,
+    }))
+    .filter((row) => row.tokensUsed > 0 || row.estimatedCost > 0)
+    .sort((a, b) => {
+      if (b.estimatedCost !== a.estimatedCost) {
+        return b.estimatedCost - a.estimatedCost;
+      }
+      if (b.tokensUsed !== a.tokensUsed) {
+        return b.tokensUsed - a.tokensUsed;
+      }
+      return a.id.localeCompare(b.id, undefined, { numeric: true, sensitivity: "base" });
+    })
+    .slice(0, limit);
 }
 
 async function writeStateFile(

@@ -17,6 +17,10 @@ manifest_enforcement: warn
 max_parallel: 3
 max_retries: 20
 timeout_minutes: 120
+budgets:
+  mode: warn
+  max_tokens_per_task: 200000
+  max_cost_per_run: 25
 
 # Wrap doctor in a script that exits non-zero when ORCH_CANARY=1 so the orchestrator can prove it runs.
 doctor: "npm test"

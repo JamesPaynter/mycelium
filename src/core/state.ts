@@ -57,6 +57,18 @@ export const HumanReviewSchema = z
   .strict();
 export type HumanReview = z.infer<typeof HumanReviewSchema>;
 
+export const AttemptUsageSchema = z
+  .object({
+    attempt: z.number().int().nonnegative(),
+    input_tokens: z.number().int().nonnegative(),
+    cached_input_tokens: z.number().int().nonnegative(),
+    output_tokens: z.number().int().nonnegative(),
+    total_tokens: z.number().int().nonnegative(),
+    estimated_cost: z.number().nonnegative(),
+  })
+  .strict();
+export type AttemptUsage = z.infer<typeof AttemptUsageSchema>;
+
 export const TaskStateSchema = z.object({
   status: TaskStatusSchema,
   batch_id: z.number().int().optional(),
@@ -72,6 +84,9 @@ export const TaskStateSchema = z.object({
   checkpoint_commits: z.array(CheckpointCommitSchema).default([]),
   validator_results: z.array(ValidatorResultSchema).default([]),
   human_review: HumanReviewSchema.optional(),
+  tokens_used: z.number().int().nonnegative().default(0),
+  estimated_cost: z.number().nonnegative().default(0),
+  usage_by_attempt: z.array(AttemptUsageSchema).default([]),
 });
 
 export type TaskState = z.infer<typeof TaskStateSchema>;
@@ -99,6 +114,8 @@ export const RunStateSchema = z.object({
   status: RunStatusSchema,
   batches: z.array(BatchStateSchema),
   tasks: z.record(TaskStateSchema),
+  tokens_used: z.number().int().nonnegative().default(0),
+  estimated_cost: z.number().nonnegative().default(0),
 });
 
 export type RunState = z.infer<typeof RunStateSchema>;
@@ -119,6 +136,9 @@ export function createRunState(args: {
       checkpoint_commits: [],
       validator_results: [],
       human_review: undefined,
+      tokens_used: 0,
+      estimated_cost: 0,
+      usage_by_attempt: [],
     };
   }
 
@@ -132,6 +152,8 @@ export function createRunState(args: {
     status: "running",
     batches: [],
     tasks,
+    tokens_used: 0,
+    estimated_cost: 0,
   };
 }
 

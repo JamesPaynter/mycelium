@@ -20,6 +20,7 @@ export async function statusCommand(
 
   const summary = summarizeRunState(resolved.state);
   printRunSummary(summary);
+  printBudgetSummary(summary);
   printHumanReviewQueue(summary.humanReview);
   printTaskTable(summary.tasks);
 }
@@ -42,6 +43,39 @@ function printRunSummary(summary: RunStatusSummary): void {
   console.log("");
   console.log(formatBatchCounts(summary));
   console.log(formatTaskCounts(summary));
+  console.log("");
+}
+
+function printBudgetSummary(summary: RunStatusSummary): void {
+  const tokensText = summary.tokensUsed.toLocaleString();
+  console.log(`Tokens: ${tokensText}  Cost: ${formatCost(summary.estimatedCost)}`);
+  console.log("Top spenders:");
+
+  if (summary.topSpenders.length === 0) {
+    console.log("  (no token usage recorded)");
+    console.log("");
+    return;
+  }
+
+  const idWidth = Math.max("ID".length, ...summary.topSpenders.map((r) => r.id.length));
+  const tokenWidth = Math.max(
+    "Tokens".length,
+    ...summary.topSpenders.map((r) => `${r.tokensUsed}`.length),
+  );
+  const costWidth = Math.max(
+    "Cost".length,
+    ...summary.topSpenders.map((r) => formatCost(r.estimatedCost).length),
+  );
+
+  console.log(
+    `  ${pad("ID", idWidth)}  ${pad("Tokens", tokenWidth)}  ${pad("Cost", costWidth)}`,
+  );
+
+  for (const row of summary.topSpenders) {
+    console.log(
+      `  ${pad(row.id, idWidth)}  ${pad(`${row.tokensUsed}`, tokenWidth)}  ${pad(formatCost(row.estimatedCost), costWidth)}`,
+    );
+  }
   console.log("");
 }
 
@@ -151,4 +185,8 @@ function printTaskTable(rows: TaskStatusRow[]): void {
 
 function pad(value: string, width: number): string {
   return value.padEnd(width, " ");
+}
+
+function formatCost(value: number): string {
+  return `$${value.toFixed(4)}`;
 }

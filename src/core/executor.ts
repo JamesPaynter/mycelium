@@ -26,11 +26,19 @@ import type {
   ValidatorMode,
 } from "./config.js";
 import {
+  DEFAULT_COST_PER_1K_TOKENS,
+  detectBudgetBreaches,
+  parseTaskTokenUsage,
+  recomputeRunUsage,
+  type TaskUsageUpdate,
+} from "./budgets.js";
+import {
   JsonlLogger,
   logJsonLineOrRaw,
   logOrchestratorEvent,
   logRunResume,
   logTaskReset,
+  type JsonObject,
 } from "./logger.js";
 import { loadTaskSpecs } from "./task-loader.js";
 import type { TaskSpec } from "./task-manifest.js";
@@ -152,6 +160,7 @@ export async function runProject(
   const workerImage = config.docker.image;
   const docker = useDocker ? dockerClient() : null;
   const manifestPolicy: ManifestEnforcementPolicy = config.manifest_enforcement ?? "warn";
+  const costPer1kTokens = DEFAULT_COST_PER_1K_TOKENS;
 
   // Prepare directories
   await ensureDir(orchestratorHome());
@@ -261,6 +270,31 @@ export async function runProject(
 
   // Create or resume run state
   let state: RunState;
+  const backfillUsageFromLogs = (): boolean => {
+    let updated = false;
+    const beforeTokens = state.tokens_used ?? 0;
+    const beforeCost = state.estimated_cost ?? 0;
+    for (const task of tasks) {
+      const taskState = state.tasks[task.manifest.id];
+      if (!taskState) continue;
+
+      const hasUsage =
+        (taskState.tokens_used ?? 0) > 0 ||
+        (taskState.usage_by_attempt && taskState.usage_by_attempt.length > 0);
+      if (hasUsage) continue;
+
+      const update = refreshTaskUsage(task.manifest.id, task.slug);
+      if (update) {
+        updated = true;
+      }
+    }
+
+    const totals = recomputeRunUsage(state);
+    if (totals.tokensUsed !== beforeTokens || totals.estimatedCost !== beforeCost) {
+      updated = true;
+    }
+    return updated;
+  };
   const stateExists = await stateStore.exists();
   if (stateExists) {
     state = await stateStore.load();
@@ -283,10 +317,18 @@ export async function runProject(
           checkpoint_commits: [],
           validator_results: [],
           human_review: undefined,
+          tokens_used: 0,
+          estimated_cost: 0,
+          usage_by_attempt: [],
         };
       }
     }
     await stateStore.save(state);
+
+    const usageBackfilled = backfillUsageFromLogs();
+    if (usageBackfilled) {
+      await stateStore.save(state);
+    }
 
     const runningTasks = Object.values(state.tasks).filter((t) => t.status === "running").length;
     logRunResume(orchLog, {
@@ -393,6 +435,50 @@ export async function runProject(
       logOrchestratorEvent(orchLog, "worker.state.read_error", { taskId, message });
       return false;
     }
+  };
+
+  const refreshTaskUsage = (taskId: string, taskSlug: string): TaskUsageUpdate | null => {
+    const taskState = state.tasks[taskId];
+    if (!taskState) return null;
+
+    const previousTokens = taskState.tokens_used ?? 0;
+    const previousCost = taskState.estimated_cost ?? 0;
+    const eventsPath = taskEventsLogPath(projectName, runId, taskId, taskSlug);
+    const usage = parseTaskTokenUsage(eventsPath, costPer1kTokens);
+
+    taskState.usage_by_attempt = usage.attempts;
+    taskState.tokens_used = usage.tokensUsed;
+    taskState.estimated_cost = usage.estimatedCost;
+
+    return { taskId, previousTokens, previousCost, usage };
+  };
+
+  const logBudgetBreaches = (
+    breaches: ReturnType<typeof detectBudgetBreaches>,
+  ): "budget_block" | undefined => {
+    let stop: "budget_block" | undefined;
+
+    for (const breach of breaches) {
+      const payload: JsonObject = {
+        scope: breach.scope,
+        kind: breach.kind,
+        limit: breach.limit,
+        value: breach.value,
+        mode: breach.mode,
+      };
+      if (breach.taskId) {
+        payload.task_id = breach.taskId;
+      }
+
+      const eventType = breach.mode === "block" ? "budget.block" : "budget.warn";
+      logOrchestratorEvent(orchLog, eventType, payload);
+
+      if (breach.mode === "block") {
+        stop = "budget_block";
+      }
+    }
+
+    return stop;
   };
 
   const buildSuccessfulTaskSummaries = (batchTasks: TaskSpec[]): TaskSuccessResult[] => {
@@ -645,8 +731,26 @@ export async function runProject(
     batchTasks: TaskSpec[];
     results: TaskRunResult[];
   }): Promise<
-    "merge_conflict" | "integration_doctor_failed" | "manifest_enforcement_blocked" | "validator_blocked" | undefined
+    | "merge_conflict"
+    | "integration_doctor_failed"
+    | "manifest_enforcement_blocked"
+    | "validator_blocked"
+    | "budget_block"
+    | undefined
   > {
+    const runUsageBefore = {
+      tokensUsed: state.tokens_used ?? 0,
+      estimatedCost: state.estimated_cost ?? 0,
+    };
+    const usageUpdates: TaskUsageUpdate[] = [];
+    for (const result of params.results) {
+      const update = refreshTaskUsage(result.taskId, result.taskSlug);
+      if (update) {
+        usageUpdates.push(update);
+      }
+    }
+    const runUsageAfter = recomputeRunUsage(state);
+
     const hadPendingResets = params.results.some((r) => !r.success && r.resetToPending);
     const rescopeFailures: { taskId: string; reason: string }[] = [];
     let doctorCanaryResult: DoctorCanaryResult | undefined;
@@ -841,7 +945,20 @@ export async function runProject(
       | "integration_doctor_failed"
       | "manifest_enforcement_blocked"
       | "validator_blocked"
+      | "budget_block"
       | undefined;
+
+    const budgetBreaches = detectBudgetBreaches({
+      budgets: config.budgets,
+      taskUpdates: usageUpdates,
+      runBefore: runUsageBefore,
+      runAfter: runUsageAfter,
+    });
+    const budgetStop = budgetBreaches.length > 0 ? logBudgetBreaches(budgetBreaches) : undefined;
+    if (budgetStop) {
+      stopReason = budgetStop;
+      state.status = "failed";
+    }
 
     const finishedCount = completed.size + failed.size;
     const shouldRunDoctorValidatorCadence =
@@ -850,7 +967,12 @@ export async function runProject(
       doctorValidatorRunEvery !== undefined &&
       finishedCount - doctorValidatorLastCount >= doctorValidatorRunEvery;
 
-    if (doctorValidatorEnabled && doctorValidatorConfig && shouldRunDoctorValidatorCadence) {
+    if (
+      doctorValidatorEnabled &&
+      doctorValidatorConfig &&
+      shouldRunDoctorValidatorCadence &&
+      !stopReason
+    ) {
       const doctorOutcome = await runDoctorValidatorWithReport({
         projectName,
         repoPath,
@@ -904,7 +1026,7 @@ export async function runProject(
       }
     }
 
-    if (blockedTasks.size > 0) {
+    if (blockedTasks.size > 0 && !stopReason) {
       stopReason = "validator_blocked";
       state.status = "failed";
     }
@@ -914,7 +1036,7 @@ export async function runProject(
 
     const successfulTasks = buildSuccessfulTaskSummaries(params.batchTasks);
 
-    if (rescopeFailures.length > 0) {
+    if (rescopeFailures.length > 0 && !stopReason) {
       stopReason = "manifest_enforcement_blocked";
     }
 
@@ -1011,7 +1133,8 @@ export async function runProject(
       doctorValidatorEnabled &&
       doctorValidatorConfig &&
       canaryUnexpectedPass &&
-      successfulTasks.length > 0
+      successfulTasks.length > 0 &&
+      !stopReason
     ) {
       const doctorOutcome = await runDoctorValidatorWithReport({
         projectName,
@@ -1099,7 +1222,12 @@ export async function runProject(
     const shouldRunDoctorValidatorSuspicious =
       doctorValidatorEnabled && doctorValidatorConfig && integrationDoctorPassed === false;
 
-    if (doctorValidatorEnabled && doctorValidatorConfig && shouldRunDoctorValidatorSuspicious) {
+    if (
+      doctorValidatorEnabled &&
+      doctorValidatorConfig &&
+      shouldRunDoctorValidatorSuspicious &&
+      !stopReason
+    ) {
       const doctorOutcome = await runDoctorValidatorWithReport({
         projectName,
         repoPath,
