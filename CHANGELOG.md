@@ -1,6 +1,7 @@
 # Changelog
 
 ## 2026-01-15
+- Added Anthropic LLM provider support for planner/validators with structured outputs, config auth fields, and docs covering provider selection.
 - Hardened worker containers with a non-root `worker` user, configurable memory/CPU/PIDs limits, optional no-network mode, and logging that records applied security settings.
 - Archived current TODO list snapshot to docs/history/todo-2026-01-15.md; backlog remains complete.
 - Added manifest compliance enforcement (git diff vs integration), `access.requested` logging, per-task compliance reports, and optional block-to-rescope handling.

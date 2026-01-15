@@ -71,14 +71,23 @@ Add this to your **target repo** `.gitignore`:
 
 ### 5) Set credentials
 
-Codex SDK uses `CODEX_API_KEY`. If you switch the planner or validators to OpenAI,
-set `OPENAI_API_KEY` instead.
+Codex SDK uses `CODEX_API_KEY`. If you switch the planner or validators to OpenAI, set `OPENAI_API_KEY`
+(and optionally `OPENAI_BASE_URL`). For Anthropic, set `ANTHROPIC_API_KEY` (or provide
+`anthropic_api_key`/`anthropic_base_url` in your planner/validator config blocks).
 
 ```bash
 export CODEX_API_KEY=...
 # or
 export OPENAI_API_KEY=...
+# or
+export ANTHROPIC_API_KEY=...
 ```
+
+LLM provider settings live in your project config:
+
+- `planner.provider`: codex (default), openai, or anthropic
+- `test_validator.provider` / `doctor_validator.provider`: openai (default) or anthropic
+- Use provider-appropriate models (e.g., `claude-3-5-sonnet-latest` for Anthropic)
 
 ### 6) Plan (creates `.tasks/`)
 

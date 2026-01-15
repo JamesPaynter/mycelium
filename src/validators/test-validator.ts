@@ -12,6 +12,7 @@ import type { TaskSpec } from "../core/task-manifest.js";
 import { writeJsonFile } from "../core/utils.js";
 import type { LlmClient, LlmCompletionResult } from "../llm/client.js";
 import { LlmError } from "../llm/client.js";
+import { AnthropicClient } from "../llm/anthropic.js";
 import { OpenAiClient } from "../llm/openai.js";
 import { listChangedFiles } from "../git/changes.js";
 
@@ -391,6 +392,16 @@ function createValidatorClient(cfg: ValidatorConfig): LlmClient {
       model: cfg.model,
       defaultTemperature: cfg.temperature ?? 0,
       defaultTimeoutMs: secondsToMs(cfg.timeout_seconds),
+    });
+  }
+
+  if (cfg.provider === "anthropic") {
+    return new AnthropicClient({
+      model: cfg.model,
+      defaultTemperature: cfg.temperature ?? 0,
+      defaultTimeoutMs: secondsToMs(cfg.timeout_seconds),
+      apiKey: cfg.anthropic_api_key,
+      baseURL: cfg.anthropic_base_url,
     });
   }
 

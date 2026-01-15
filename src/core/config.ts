@@ -23,6 +23,8 @@ const PlannerSchema = z
     model: z.string().min(1),
     temperature: z.number().min(0).max(2).optional(),
     timeout_seconds: z.number().int().positive().optional(),
+    anthropic_api_key: z.string().min(1).optional(),
+    anthropic_base_url: z.string().min(1).optional(),
   })
   .strict();
 
@@ -42,6 +44,8 @@ const ValidatorSchema = z
     model: z.string().min(1),
     temperature: z.number().min(0).max(2).optional(),
     timeout_seconds: z.number().int().positive().optional(),
+    anthropic_api_key: z.string().min(1).optional(),
+    anthropic_base_url: z.string().min(1).optional(),
   })
   .strict();
 

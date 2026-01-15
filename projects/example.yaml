@@ -60,6 +60,8 @@ resources:
 planner:
   provider: codex
   model: o3
+  # For Anthropic, set provider to "anthropic", set model to a Claude variant,
+  # and add anthropic_api_key / anthropic_base_url if you prefer config-based auth.
 
 worker:
   model: gpt-5.1-codex-max
@@ -75,6 +77,7 @@ doctor_validator:
   provider: openai
   model: o3
   run_every_n_tasks: 10
+  # Anthropic works here too (set provider to "anthropic" and provide a Claude model).
 
 # Docker worker image (paths resolve relative to this file when not absolute)
 docker:

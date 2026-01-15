@@ -11,6 +11,7 @@ import { renderPromptTemplate } from "../core/prompts.js";
 import { writeJsonFile } from "../core/utils.js";
 import type { LlmClient, LlmCompletionResult } from "../llm/client.js";
 import { LlmError } from "../llm/client.js";
+import { AnthropicClient } from "../llm/anthropic.js";
 import { OpenAiClient } from "../llm/openai.js";
 
 // =============================================================================
@@ -518,6 +519,16 @@ function createValidatorClient(cfg: DoctorValidatorConfig): LlmClient {
       model: cfg.model,
       defaultTemperature: cfg.temperature ?? 0,
       defaultTimeoutMs: secondsToMs(cfg.timeout_seconds),
+    });
+  }
+
+  if (cfg.provider === "anthropic") {
+    return new AnthropicClient({
+      model: cfg.model,
+      defaultTemperature: cfg.temperature ?? 0,
+      defaultTimeoutMs: secondsToMs(cfg.timeout_seconds),
+      apiKey: cfg.anthropic_api_key,
+      baseURL: cfg.anthropic_base_url,
     });
   }
 

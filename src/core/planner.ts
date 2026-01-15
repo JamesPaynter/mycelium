@@ -20,6 +20,7 @@ import {
 import { normalizeTestPaths } from "./test-paths.js";
 import { writeTasksToDirectory } from "./task-writer.js";
 import { ensureDir, readTextFile } from "./utils.js";
+import { AnthropicClient } from "../llm/anthropic.js";
 import { OpenAiClient } from "../llm/openai.js";
 import {
   LlmClient,
@@ -321,6 +322,16 @@ export function createPlannerClient(
       model: cfg.model,
       defaultTemperature: cfg.temperature,
       defaultTimeoutMs: secondsToMs(cfg.timeout_seconds),
+    });
+  }
+
+  if (cfg.provider === "anthropic") {
+    return new AnthropicClient({
+      model: cfg.model,
+      defaultTemperature: cfg.temperature,
+      defaultTimeoutMs: secondsToMs(cfg.timeout_seconds),
+      apiKey: cfg.anthropic_api_key,
+      baseURL: cfg.anthropic_base_url,
     });
   }
 

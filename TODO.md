@@ -12,7 +12,7 @@
 - [x] [037 - Autopilot supervisor command (LLM-driven operator)](docs/tasks/archive/037-autopilot-supervisor-command/spec.md) (Effort <L>, Tier <pro>)
 - [x] [038 - Cost + token tracking with budgets](docs/tasks/archive/038-cost-tracking-and-budgets/spec.md) (Effort <M>, Tier <standard>)
 - [x] [039 - Docker hardening: non-root, limits, optional no-network](docs/tasks/archive/039-docker-hardening-and-limits/spec.md) (Effort <M>, Tier <standard>)
-- [ ] [040 - Add Anthropic provider (planner/validators)](docs/tasks/active/040-add-anthropic-provider/spec.md) (Effort <M>, Tier <standard>)
+- [x] [040 - Add Anthropic provider (planner/validators)](docs/tasks/archive/040-add-anthropic-provider/spec.md) (Effort <M>, Tier <standard>)
 - [ ] [041 - Advanced log queries + summaries (timeline, follow, failure digest)](docs/tasks/active/041-advanced-log-queries-and-summaries/spec.md) (Effort <L>, Tier <pro>)
 - [ ] [042 - Integration test harness + CI regression runs](docs/tasks/active/042-integration-test-harness-and-ci/spec.md) (Effort <L>, Tier <standard>)
 - [ ] ALL_TASKS_COMPLETE
