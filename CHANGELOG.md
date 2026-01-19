@@ -1,6 +1,7 @@
 # Changelog
 
 ## 2026-01-19
+- Added a Docker-mode mock smoke test (gated by `RUN_DOCKER_TESTS`) plus a `scripts/docker-smoke.sh` helper that builds the worker image, runs the fixture project through Docker, and verifies container logs/merge output.
 - Rebased documentation on current runtime behavior: rebuilt README, planning docs, and compliance checklist with implemented vs future tables; refreshed MVP scope to reflect autopilot/manifest enforcement/validators/resume reality.
 
 ## 2026-01-18
