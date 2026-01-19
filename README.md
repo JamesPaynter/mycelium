@@ -24,6 +24,15 @@ npm run dev -- autopilot --project <project-name> --local-worker --max-parallel 
 6) Check progress: `npm run dev -- status --project <project-name>` and `npm run dev -- logs timeline --use-index`.  
 7) Resume a paused run (after Ctrl+C or crash): `npm run dev -- resume --project <project-name> --run-id <id> [--local-worker]`.
 
+## Worker Docker image
+- Canonical worker build lives at `templates/Dockerfile` (shipped in the npm package) and is the only Dockerfile we support for worker runs.
+- Build/publish locally with `npm run docker:build-worker` or `docker build -f templates/Dockerfile -t mycelium-worker:latest .`.
+- `npm run dev -- init` writes `.mycelium/config.yaml` pointing at this Dockerfile; keep custom images in sync with it if you copy elsewhere.
+
+## Packaging smoke test
+- `npm run pack:smoke` builds, runs `npm pack`, installs the tarball into a temp project, asserts required templates/binaries exist, and runs `mycelium --help` + `mycelium plan --help`.
+- Script output includes the temp tarball path if you want to inspect the package contents manually.
+
 ## CLI essentials
 | Command | Purpose |
 | --- | --- |

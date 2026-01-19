@@ -28,7 +28,8 @@
     "start": "node dist/index.js",
     "worker": "node dist/worker/index.js",
     "worker:dev": "tsx worker/index.ts",
-    "docker:build-worker": "docker build -f templates/Dockerfile -t task-orchestrator-worker:latest .",
+    "pack:smoke": "bash scripts/pack-smoke.sh",
+    "docker:build-worker": "docker build -f templates/Dockerfile -t mycelium-worker:latest .",
     "test": "vitest run"
   },
   "dependencies": {

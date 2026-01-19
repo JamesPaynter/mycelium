@@ -1,6 +1,7 @@
 # Changelog
 
 ## 2026-01-19
+- Simplified packaging: consolidated on `templates/Dockerfile` as the canonical worker image, documented the build path, and added a pack/install smoke script that asserts templates and binaries ship in the npm tarball.
 - Added graceful SIGINT/SIGTERM handling for `run`/`resume`/`autopilot`: logs `run.stop`, flushes state, leaves containers running by default (flag to stop them), updated docs/runbook, and a mock stop/resume test to keep runs resumable.
 - Added a resume crash-recovery drill: mock Codex resume signalling, a Docker-gated Vitest that kills the orchestrator mid-run and reattaches on `resume`, and a manual runbook at docs/ops/resume-drill.md.
 - Added a Docker-mode mock smoke test (gated by `RUN_DOCKER_TESTS`) plus a `scripts/docker-smoke.sh` helper that builds the worker image, runs the fixture project through Docker, and verifies container logs/merge output.
