@@ -1,183 +1,59 @@
-# Task Orchestrator (MVP Repo)
+# Mycelium task orchestrator
 
-This repository is a **working starting point** for the “Task Orchestrator” system you specified:
+LLM-driven planner and Docker-isolated Codex workers that plan tasks, run them in parallel, and recover from failures with persisted state.
 
-- **Orchestrator** (Node/TypeScript CLI)
-- **Workers** (Codex SDK inside Docker)
-- **Safe parallel batching** based on declared resource locks
-- **Structured JSONL logging** and on-disk run state
+## What works today
+- Autopilot interviews operators, drafts planning artifacts, runs the planner, and kicks off `run` with live status polling.
+- `plan`/`run`/`resume` use per-task workspaces, manifest enforcement (`off|warn|block`), auto-rescope for undeclared writes, and merge completed branches into the integration branch.
+- Validator agents (test + doctor) support `mode: warn|block`, attach per-task reports, and gate merges when block-mode trips; doctor validator also runs when integration doctor fails or the canary misbehaves.
+- Strict TDD worker flow: optional Stage A (tests-only) with `verify.fast`, Stage B implementation + doctor retries, checkpoint commits, and worker state tracking (thread ids, checkpoints) to improve resume.
+- Budgets compute token/cost usage from Codex events and emit `budget.warn`/`budget.block` events; block mode halts runs when limits are crossed.
+- Logs/state live under `.mycelium` by default (set by the CLI); `logs` can stream raw JSONL or query a SQLite index for timelines/failure digests.
 
-It is intentionally an MVP: it runs end-to-end, but it does not yet implement every advanced validator/resume behavior in your full spec.
-
-## What’s implemented
-
-- `plan` — generate `.tasks/...` from an implementation plan via **Codex SDK** structured output
-- `run` — load `.tasks`, build conflict-free batches, spawn **Docker** workers in parallel, stream logs, merge successful branches, run integration doctor
-- Manifest compliance check after each task with structured `access.requested` events (warn/block via `manifest_enforcement`)
-- `status` — show run + task status from persisted state
-- `logs` — query/follow logs, show timelines/failure digests, and summarize tasks (LLM optional)
-- `clean` — remove containers/workspaces/logs for a run
-
-## Quick start
-
-### 1) Install
-
+## Run an autopilot pass
+1) Install deps: `npm install` (Node 20+).  
+2) Build (optional for dev mode): `npm run build`.  
+3) In the target repo, initialize config: `npm run dev -- init` → `.mycelium/config.yaml`.  
+4) Edit `.mycelium/config.yaml` (set `repo_path`, `doctor`, resources, models, budgets, validator modes, Docker image).  
+5) Start autopilot from the target repo:
 ```bash
-git clone <this-repo>
-cd task-orchestrator
-npm install
-npm run build
+npm run dev -- autopilot --project <project-name> --local-worker --max-parallel 1
+# Add --plan-input <path> to override the default .mycelium/planning/002-implementation/implementation-plan.md
+# Omit --local-worker to use Docker; the image auto-builds unless --no-build-image is set.
 ```
+6) Check progress: `npm run dev -- status --project <project-name>` and `npm run dev -- logs timeline --use-index`.  
+7) Resume a paused run: `npm run dev -- resume --project <project-name> --run-id <id> [--local-worker]`.
 
-### 2) Build the worker image
+## CLI essentials
+| Command | Purpose |
+| --- | --- |
+| `autopilot` | Interview → draft planning artifacts → plan → run (with transcripts in `.mycelium/planning/sessions/`). |
+| `plan --input <plan.md>` | Generate `.mycelium/tasks/**` manifests/specs from an implementation plan. |
+| `run [--tasks 001,002]` | Execute tasks (Docker by default, `--local-worker` for host mode), enforce manifest policy, merge batches, run integration doctor. |
+| `resume [--run-id <id>]` | Reload run state, reattach to running containers when present, reset missing ones to pending, and continue. |
+| `status` | Summarize run state (task counts, human-review queue, budgets). |
+| `logs [query|search|timeline|failures|doctor|summarize]` | Inspect JSONL logs directly or via SQLite index (`--use-index`). |
+| `clean` | Remove workspaces/containers/logs for a run (`--dry-run` and `--force` available). |
 
-```bash
-npm run docker:build-worker
-```
+## Config quick reference
+- Planner/worker models: set `planner` and `worker` blocks (providers: `openai`, `anthropic`, `codex`, `mock`; `reasoning_effort` supported).
+- Resources: `resources[].paths` drive scheduler locks; manifests declare `locks.reads/writes` and `files.reads/writes`.
+- Manifest enforcement: `manifest_enforcement: off|warn|block`; violations emit `access.requested` and trigger auto-rescope (adds locks/files, resets task to pending) when possible.
+- Validators: `test_validator` and `doctor_validator` respect `enabled` + `mode` (`warn|block`); doctor validator cadence via `run_every_n_tasks` and also when integration doctor fails or the canary passes unexpectedly.
+- Budgets: `budgets.mode warn|block` with `max_tokens_per_task` / `max_cost_per_run`; defaults warn.
+- Docker: `docker.image`, `dockerfile`, `build_context`, `user`, `network_mode`, `memory_mb`, `cpu_quota`, `pids_limit`; `--local-worker` skips Docker.
+- Layout: `.mycelium/tasks` + `.mycelium/planning` live in the target repo; logs/state default to `<repo>/.mycelium/{logs,state}`; workspaces live under `~/.mycelium/workspaces/<project>/run-<id>/task-<id>`.
 
-This builds `task-orchestrator-worker:latest` from `templates/Dockerfile`. Override the image tag or Dockerfile path in your project config if you need a custom worker base.
+## Runtime behavior
+- Each task gets its own cloned workspace; manifests/specs are copied in before execution.
+- Resume: run state is persisted after every mutation; `resume` reattaches to labeled containers when they still exist (streams historical logs), otherwise resets those tasks to pending; worker state restores Codex thread ids and checkpoint commits when available.
+- Doctors: per-task doctor runs each attempt; integration doctor runs after each batch; canary reruns doctor with `ORCH_CANARY=1` and feeds doctor validator when it passes unexpectedly.
+- Strict TDD: when `tdd_mode: "strict"` and `verify.fast` is set, Stage A requires failing tests first; Stage B implements until doctor passes; non-test changes in Stage A fail the attempt.
+- Manifest rescope: undeclared writes generate compliance reports and `task.rescope.*` events; successful rescope updates the manifest/locks and retries the task.
+- Log summaries: `logs summarize --task <id>` prints validator summaries; add `--llm` to use the configured LLM summaries when enabled.
 
-### 3) Create a project config
-
-Copy `projects/example.yaml` to your orchestrator home:
-
-```bash
-mkdir -p ~/.task-orchestrator/projects
-cp projects/example.yaml ~/.task-orchestrator/projects/my-project.yaml
-```
-
-Edit `~/.task-orchestrator/projects/my-project.yaml` and set:
-
-- `repo_path`
-- `main_branch`
-- `doctor`
-- `manifest_enforcement` (off|warn|block, defaults to warn)
-- `budgets` (mode warn|block; `max_tokens_per_task` and/or `max_cost_per_run`)
-- `test_paths` (glob patterns considered tests; defaults cover `__tests__`, `tests/`, and `*.test|spec.*`)
-- `resources`
-
-Notes:
-
-- `${VARS}` in the YAML are expanded from your environment.
-- Relative paths are resolved from the directory that contains your config file.
-
-### 4) Ensure `.tasks/` is ignored in your target repo
-
-Add this to your **target repo** `.gitignore`:
-
-```
-.tasks/
-```
-
-### 5) Set credentials
-
-Codex SDK uses `CODEX_API_KEY`. If you switch the planner or validators to OpenAI, set `OPENAI_API_KEY`
-(and optionally `OPENAI_BASE_URL`). For Anthropic, set `ANTHROPIC_API_KEY` (or provide
-`anthropic_api_key`/`anthropic_base_url` in your planner/validator config blocks).
-
-```bash
-export CODEX_API_KEY=...
-# or
-export OPENAI_API_KEY=...
-# or
-export ANTHROPIC_API_KEY=...
-```
-
-LLM provider settings live in your project config:
-
-- `planner.provider`: codex (default), openai, or anthropic
-- `test_validator.provider` / `doctor_validator.provider`: openai (default) or anthropic
-- Use provider-appropriate models (e.g., `claude-3-5-sonnet-latest` for Anthropic)
-
-### 6) Plan (creates `.tasks/`)
-
-```bash
-task-orchestrator plan \
-  --project my-project \
-  --input docs/planning/002-implementation/implementation-plan.md
-```
-
-- Add `--dry-run` to preview task ids without writing files.
-- Add `--output <dir>` to change where `.tasks/` are written (defaults to your repo `tasks_dir`).
-
-### 7) Run
-
-```bash
-task-orchestrator run --project my-project
-```
-
-- Add `--local-worker` to run workers on the host when Docker is unavailable.
-
-### Autopilot (LLM supervisor)
-
-```bash
-task-orchestrator autopilot --project my-project
-```
-
-- Interactive supervisor that interviews you, drafts `docs/planning/**` artifacts, runs the planner, and starts a run with periodic status logs.
-- Transcripts land in `docs/planning/sessions/<timestamp>-autopilot.md`; default plan input is `docs/planning/002-implementation/implementation-plan.md`.
-- Flags: `--skip-run` to stop after planning, `--dry-run` to plan batches without starting workers, `--max-questions` to cap the interview.
-
-## Doctor command expectations
-
-- Use a wrapper script for `doctor` and make it exit non-zero when `ORCH_CANARY=1`.
-- The orchestrator reruns doctor with `ORCH_CANARY=1` after a pass; a zero exit on this canary logs `doctor.canary.failed` and blocks merges when the doctor validator mode is `block`.
-
-## MVP acceptance checklist
-
-- `plan` writes task manifests to your tasks directory (default `.tasks/`) from a real implementation plan.
-- `run` executes workers (Docker or `--local-worker`), bootstraps per task, and loops until both per-task doctor and integration doctor pass.
-- Successful task branches merge into the integration branch with no pending `running` tasks or merge conflicts.
-- Integration doctor runs on the integration branch with the same command you expect in CI.
-- Logs and state land under `~/.task-orchestrator/logs` and `~/.task-orchestrator/.state`; `status` and `logs` surface the run without digging through files.
-- `clean` removes workspaces, containers, and logs once the run is archived.
-
-## Worker image config
-
-- Defaults: `docker.image` → `task-orchestrator-worker:latest`, `docker.dockerfile` → `templates/Dockerfile`, `docker.build_context` → `.`, `docker.user` → `worker` (non-root), `docker.network_mode` → `bridge`.
-- Point `docker.image` at a prebuilt image to skip local builds, or set `docker.dockerfile`/`docker.build_context` to build from your own Dockerfile.
-- Resource/network knobs: `docker.memory_mb`, `docker.cpu_quota` (uses a 100000 CPU period), `docker.pids_limit`, and `docker.network_mode` (`bridge` or `none`).
-- For `network_mode: none`, make sure dependencies are already present (vendored or cached) or install them in `bootstrap` before Codex starts, since worker traffic will be disabled.
-- `templates/codex-config.toml` shows the flat Codex config written to `CODEX_HOME` for workers.
-
-## Development
-
-- Node 20+
-- `npm run lint` — ESLint (TypeScript + Node)
-- `npm run format:check` — verify Prettier formatting
-- `npm run format` — apply Prettier formatting
-- `npm run build` — compile TypeScript to `dist/`
-- `npm run typecheck` — strict type checking without emit
-- `npm test` — run the Node test runner
-- `npm start -- --help` — execute the built CLI entrypoint
-
-## Repo layout
-
-- `src/` — orchestrator CLI + core engine
-- `worker/` — Codex worker that runs inside Docker
-- `templates/Dockerfile` — worker image definition (installs Codex CLI)
-- `templates/codex-config.toml` — example Codex config for `CODEX_HOME`
-- `projects/example.yaml` — example per-project config
-
-## MVP scope & non-goals
-
-- Dedicated per-task clones live at `~/.task-orchestrator/workspaces/<project>/run-<run-id>/task-<task-id>`; tasks never share a working tree, and manifests are copied into each workspace before execution.
-- Resume is **Level 1**: resuming resets `running` tasks to `pending` and reruns them; no container or Codex thread reattachment.
-- Validator agents support modes (`off | warn | block`) with a human-review queue; default `warn` keeps advisory behavior, while `block` skips merges when validators fail. `locks.reads/writes` guide scheduling only, and workers have full filesystem access inside their containers.
-- See `docs/mvp-scope.md` for details and future upgrades.
-
-## Notes / assumptions
-
-- This MVP assumes your target repo is a **git repo** and `main_branch` exists (it will create it if missing).
-- Workers use **full clones** into `~/.task-orchestrator/workspaces/...` for isolation.
-- Scheduling is based on **declared** `locks.reads/writes`. Enforcement is at the scheduler level (not file-system enforcement).
-
-## Known gaps vs your full spec (by design for MVP)
-
-- **Resume Level 1 only** — resuming resets `running` tasks to `pending` and reruns them; no container/thread reattachment.
-- **Validator agents default to warn** — validators can be set to `block` to skip merges and queue human review; doctor validator still runs on cadence/suspicion.
-- **Runtime sandboxing** is not enforced; manifest compliance runs post-task (warn/block) but filesystem access is still wide open during execution.
-- **Branch push restrictions** are not implemented (this design merges locally).
-- No Web UI.
-
-If you want, I can extend this MVP into a “v1” that fills the major gaps (validators, stronger resume semantics, optional remote push, and explicit project bootstrap lifecycles).
+## Limits and future work
+- No filesystem sandbox inside workers; manifest enforcement is post-task (warn/block) rather than live denial.
+- Git operations are local; no remote push/branch protection integration yet.
+- Resume is best-effort: no in-task checkpoints beyond git commits, and container reattach only works while the container still exists.
+- No web UI; CLI + JSONL/SQLite logs are the primary interfaces.

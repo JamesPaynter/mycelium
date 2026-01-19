@@ -1,4 +1,4 @@
-## Task Orchestrator — Complete System Specification
+## Mycelium — Complete System Specification
 
 ---
 
@@ -129,6 +129,21 @@ Designed to run unattended for 12-24 hours with crash recovery, structured loggi
 
 ---
 
+# 3.1 Implementation Reality (Jan 2026)
+
+| Area | Implemented | Future / Notes |
+| --- | --- | --- |
+| Planning | `autopilot` interviews → drafts planning artifacts → runs planner → starts `run` (or stops with `--skip-run`). Planner writes manifests/specs to `.mycelium/tasks`. | UI/remote supervision. |
+| Execution | Per-task clones, Docker by default (`--local-worker` available), scheduler honors locks + `max_parallel`, integration doctor + canary per batch. | Distributed/remote workers. |
+| Resume | State persisted per mutation; `resume` reattaches to labeled containers when present and syncs worker thread ids/checkpoints; missing containers reset to pending. | Mid-task checkpoint replay beyond git commits. |
+| Manifest enforcement | warn/block policies with compliance reports, `access.requested` events, auto-rescope (adds locks/files, requeues) when possible. | Live filesystem sandboxing. |
+| Validators | Test + doctor validators with `mode: warn|block`, cadence + canary triggers for doctor validator, human-review queue in block mode. | Additional validator types. |
+| Budgets | Token/cost budgets with warn/block modes fed by Codex usage logs. | More pricing sources/limits. |
+| Logging | JSONL orchestrator/task logs, validator/doctor reports, optional SQLite log index powering `logs timeline|failures` plus file fallback. | Rich visualization/UI. |
+| Worker safety | Strict TDD (Stage A/B with `verify.fast`), checkpoint commits, worker state (thread ids/checkpoints) under `.mycelium/worker-state.json`. | — |
+
+---
+
 # 4. Components
 
 ## 4.1 Orchestrator
@@ -173,7 +188,7 @@ Designed to run unattended for 12-24 hours with crash recovery, structured loggi
 
 **Provider:** OpenAI or Anthropic (configurable per project)
 
-**Model:** Configurable (e.g., `o3`, `claude-opus-4-5-20250514`)
+**Model:** Configurable (e.g., `gpt-5.2`, `claude-opus-4-5-20250514`)
 
 ---
 
@@ -200,7 +215,7 @@ Designed to run unattended for 12-24 hours with crash recovery, structured loggi
 
 **Provider:** OpenAI (Codex SDK)
 
-**Model:** Configurable (e.g., `gpt-5.1-codex-max`)
+**Model:** Configurable (e.g., `gpt-5.2-codex`)
 
 **Max retries:** Configurable per project, default 20
 
@@ -299,7 +314,7 @@ The planning phases produce structured artifacts that are preserved permanently.
 
 **Artifacts produced:**
 ```
-docs/planning/000-discovery/
+.mycelium/planning/000-discovery/
 ├── requirements.md        # What we need to build
 ├── research-notes.md      # Findings from research
 └── api-findings.md        # Relevant API docs, SDK versions, capabilities
@@ -320,7 +335,7 @@ docs/planning/000-discovery/
 
 **Artifacts produced:**
 ```
-docs/planning/001-architecture/
+.mycelium/planning/001-architecture/
 ├── architecture.md        # System design
 ├── decisions.md           # Key decisions and rationale
 └── infrastructure.md      # Infrastructure requirements
@@ -338,7 +353,7 @@ docs/planning/001-architecture/
 
 **Artifacts produced:**
 ```
-docs/planning/002-implementation/
+.mycelium/planning/002-implementation/
 ├── implementation-plan.md  # The plan that feeds into Planner
 └── risk-assessment.md      # Known risks and mitigations
 ```
@@ -348,7 +363,7 @@ docs/planning/002-implementation/
 Every planning session is preserved:
 
 ```
-docs/planning/sessions/
+.mycelium/planning/sessions/
 ├── 2025-01-11-discovery.md           # Transcript or summary
 ├── 2025-01-11-architecture.md
 ├── 2025-01-12-architecture-rev.md    # Revision session
@@ -486,12 +501,17 @@ function buildBatches(tasks):
 ## 7.1 Project Configuration
 
 ```yaml
-# Location: ~/.task-orchestrator/projects/<project-name>.yaml
+# Location: <repo>/.mycelium/config.yaml (or ~/.mycelium/projects/<project-name>.yaml)
 
 # === Repository ===
 repo_path: /absolute/path/to/repo
 main_branch: development-codex    # Integration branch
 task_branch_prefix: agent/        # Task branches: agent/001-task-name
+tasks_dir: .mycelium/tasks        # Task specs live here
+planning_dir: .mycelium/planning  # Planning artifacts live here
+versioning:
+  commit_planning: true           # Commit planning artifacts
+  commit_tasks: true              # Commit generated tasks
 
 # === Execution Limits ===
 max_parallel: 10                  # Max concurrent containers
@@ -512,18 +532,22 @@ doctor: "make test && make lint"  # Command that must pass
 # === Models ===
 planner:
   provider: openai                # openai | anthropic
-  model: o3
+  model: gpt-5.2
+  reasoning_effort: xhigh
 
 worker:
-  model: gpt-5.1-codex-max
+  model: gpt-5.2-codex
+  reasoning_effort: xhigh
 
 test_validator:
   provider: openai
-  model: o3
+  model: gpt-5.2
+  reasoning_effort: xhigh
 
 doctor_validator:
   provider: openai
-  model: o3
+  model: gpt-5.2
+  reasoning_effort: xhigh
 ```
 
 ## 7.2 Task Manifest
@@ -795,22 +819,22 @@ logs/
 
 ```bash
 # Get all events for a task
-task-orchestrator logs query --task 001
+mycelium logs query --task 001
 
 # Get all failures in a run
-task-orchestrator logs query --type "*.fail"
+mycelium logs query --type "*.fail"
 
 # Get doctor output for specific attempt
-task-orchestrator logs doctor --task 002 --attempt 2
+mycelium logs doctor --task 002 --attempt 2
 
 # Search for error pattern
-task-orchestrator logs search "ImportError"
+mycelium logs search "ImportError"
 
 # Summarize what happened in failed task (uses LLM)
-task-orchestrator logs summarize --task 002
+mycelium logs summarize --task 002
 
 # Get timeline of a run
-task-orchestrator logs timeline
+mycelium logs timeline
 ```
 
 ---
@@ -989,7 +1013,7 @@ if (config.cleanupOnSuccess && exitCode === 0) {
 # /workspace/.codex/config.toml
 
 [model]
-name = "gpt-5.1-codex-max"
+name = "gpt-5.2-codex"
 
 [permissions]
 auto_approve = true
@@ -1018,9 +1042,9 @@ const doctorCmd = process.env.DOCTOR_CMD;
 const maxRetries = parseInt(process.env.MAX_RETRIES || "20");
 
 // Load task spec
-const spec = fs.readFileSync(`/workspace/.tasks/${taskId}/spec.md`, "utf-8");
+const spec = fs.readFileSync(`/workspace/.mycelium/tasks/${taskId}/spec.md`, "utf-8");
 const manifest = JSON.parse(
-  fs.readFileSync(`/workspace/.tasks/${taskId}/manifest.json`, "utf-8")
+  fs.readFileSync(`/workspace/.mycelium/tasks/${taskId}/manifest.json`, "utf-8")
 );
 
 // Initialize Codex
@@ -1124,129 +1148,37 @@ function logEvent(event) {
 
 ## 11.2 Access Request Handling
 
-When worker discovers it needs a file not in manifest:
-
-1. Worker logs `access.requested` event
-2. Worker continues executing (doesn't block)
-3. If the access was critical, doctor will fail
-4. On retry, orchestrator can update manifest
-5. Worker retries with knowledge of what was needed
-
-This is "fail forward" — no pause/resume complexity.
+- Compliance runs **after** each task: diff vs integration branch + manifest/resource map.
+- Violations emit `manifest.compliance.*` and `access.requested` events with file + resource details.
+- Policy drives behavior:
+  - `off` → skip compliance
+  - `warn` → log but allow merge
+  - `block` → log + block merge
+- Auto-rescope: orchestrator attempts to add missing locks/files to the manifest and resets the task to `pending`; failures mark `needs_rescope`/`needs_human_review`.
+- Runtime filesystem access inside the container is unrestricted; enforcement is scheduler/merge-time only.
 
 ---
 
 # 12. Validation System
 
-## 12.1 Test Validator
+## 12.1 Test Validator (implemented)
+- Runs after a task completes and passes doctor.
+- Inputs: changed tests/code + task metadata.
+- Config: `test_validator.enabled` (default true) + `mode: warn|block` + provider/model/temperature/timeout.
+- Output: per-task report under `validators/test-validator/`; `mode=block` marks `needs_human_review`, `warn` logs advisory only.
+- Surfaced via `logs summarize --task <id>` (LLM summaries optional via `log_summaries`).
 
-**Purpose:** Ensure changed tests are legitimate, not tautological or useless.
+## 12.2 Doctor Validator (implemented)
+- Triggers:
+  - Cadence: every `run_every_n_tasks`.
+  - Suspicion: integration doctor fails.
+  - Canary: doctor unexpectedly passes with `ORCH_CANARY=1`.
+- Config: `doctor_validator.enabled` (default true), `mode: warn|block`, provider/model/temperature/timeout.
+- Output: report under `validators/doctor-validator/`; block mode flags tasks for human review and stops merges.
 
-**Trigger:** After task completion, before merge
-
-**Implementation:**
-
-```typescript
-async function validateTests(taskId: string, changedTests: string[]): Promise<ValidationResult> {
-  if (changedTests.length === 0) {
-    return { pass: true, reason: "No tests changed" };
-  }
-  
-  const testCode = changedTests.map(f => ({
-    path: f,
-    content: fs.readFileSync(f, "utf-8")
-  }));
-  
-  const testedCode = await findTestedCode(changedTests);
-  
-  const prompt = `
-You are a test validation agent. Analyze these tests for quality issues.
-
-## Changed Tests
-${testCode.map(t => `### ${t.path}\n\`\`\`\n${t.content}\n\`\`\``).join("\n\n")}
-
-## Code Being Tested
-${testedCode.map(t => `### ${t.path}\n\`\`\`\n${t.content}\n\`\`\``).join("\n\n")}
-
-## Check For
-1. Tautological assertions (always pass regardless of code)
-2. Tests that don't actually test the new functionality
-3. Excessive mocking that defeats the purpose
-4. Missing edge cases that should be covered
-5. Tests that would pass even if the feature was broken
-
-## Output
-Return JSON:
-{
-  "pass": boolean,
-  "concerns": [
-    {
-      "file": "path/to/test.py",
-      "line": 42,
-      "issue": "Description of concern",
-      "severity": "high" | "medium" | "low"
-    }
-  ],
-  "summary": "Overall assessment"
-}
-`;
-
-  const result = await llm.complete(prompt, { outputSchema: validationSchema });
-  return result;
-}
-```
-
-**On failure:** Task flagged for human review. Branch not auto-merged.
-
-## 12.2 Doctor Validator
-
-**Purpose:** Ensure doctor command is actually effective.
-
-**Trigger:** 
-- Periodically during long runs
-- After suspicious patterns
-- On human request
-
-**Implementation:**
-
-```typescript
-async function validateDoctor(projectConfig: ProjectConfig): Promise<DoctorValidation> {
-  const recentRuns = await getRecentDoctorRuns(10);
-  const recentChanges = await getRecentChanges();
-  
-  const prompt = `
-You are a CI/CD validation agent. Assess whether this doctor command is effective.
-
-## Doctor Command
-${projectConfig.doctor}
-
-## Recent Doctor Runs
-${recentRuns.map(r => `Attempt ${r.attempt}: ${r.passed ? "PASS" : "FAIL"}\n${r.output.slice(0, 500)}`).join("\n\n")}
-
-## Recent Code Changes
-${recentChanges.map(c => `${c.file}: ${c.summary}`).join("\n")}
-
-## Check For
-1. Is the doctor command actually running relevant tests?
-2. Are there obvious gaps in coverage?
-3. Could broken code slip through?
-4. Is the command too slow or too fast (suspicious)?
-5. Are failures actionable or cryptic?
-
-## Output
-Return JSON:
-{
-  "effective": boolean,
-  "coverage_assessment": "good" | "partial" | "poor",
-  "concerns": ["..."],
-  "recommendations": ["..."]
-}
-`;
-
-  const result = await llm.complete(prompt, { outputSchema: doctorValidationSchema });
-  return result;
-}
-```
+## 12.3 Validator gating
+- Merge requires: task doctor pass, integration doctor pass, manifest enforcement satisfied (or rescope requeue), and no validator block failures.
+- Block modes set run status to failed and push tasks into the human-review queue with report paths recorded in run state/logs.
 
 ---
 
@@ -1375,72 +1307,32 @@ At batch merge:
 
 # 14. Directory Structure
 
-## 14.1 Orchestrator
+## 14.1 Runtime directories
+
+`MYCELIUM_HOME` defaults to `<repo>/.mycelium` when using the CLI (falls back to `~/.mycelium` if unset).
 
 ```
-~/.task-orchestrator/
-├── src/
-│   ├── index.ts                  # CLI entry point
-│   ├── cli/
-│   │   ├── plan.ts               # plan command
-│   │   ├── run.ts                # run command
-│   │   ├── resume.ts             # resume command
-│   │   ├── status.ts             # status command
-│   │   ├── logs.ts               # logs command
-│   │   └── clean.ts              # clean command
-│   ├── core/
-│   │   ├── planner.ts            # Planner LLM interface
-│   │   ├── scheduler.ts          # Batch building from locks
-│   │   ├── executor.ts           # Main execution loop
-│   │   ├── state.ts              # State persistence/recovery
-│   │   └── logger.ts             # JSONL logging
-│   ├── docker/
-│   │   ├── manager.ts            # Container lifecycle
-│   │   ├── builder.ts            # Image building
-│   │   └── streams.ts            # Log streaming
-│   ├── git/
-│   │   ├── branches.ts           # Branch management
-│   │   └── merge.ts              # Merge operations
-│   ├── validators/
-│   │   ├── test-validator.ts     # Test validation
-│   │   └── doctor-validator.ts   # Doctor validation
-│   └── llm/
-│       ├── client.ts             # LLM client abstraction
-│       ├── openai.ts             # OpenAI implementation
-│       └── anthropic.ts          # Anthropic implementation
-├── worker/
-│   ├── index.ts                  # Worker entry point
-│   ├── loop.ts                   # Main retry loop
-│   └── codex.ts                  # Codex SDK wrapper
-├── templates/
-│   ├── Dockerfile                # Base worker image
-│   ├── codex-config.toml         # Codex configuration
-│   └── prompts/
-│       ├── planner.md            # Planner prompt template
-│       ├── test-validator.md     # Test validator prompt
-│       └── doctor-validator.md   # Doctor validator prompt
-├── projects/                     # Project configurations
-│   └── example.yaml
-├── state/                        # Run state (per project)
-│   └── <project>/
-│       └── run-<id>.json
-├── logs/                         # Run logs (per project)
+<MYCELIUM_HOME>/
+├── logs/
 │   └── <project>/
 │       └── run-<id>/
 │           ├── orchestrator.jsonl
-│           └── tasks/
-│               └── <task-id>/
-│                   └── events.jsonl
-├── package.json
-├── tsconfig.json
-└── README.md
+│           ├── planner.jsonl
+│           ├── validators/
+│           └── tasks/<task-id>-<slug>/events.jsonl
+├── state/
+│   └── <project>/run-<id>.json
+├── workspaces/
+│   └── <project>/run-<id>/task-<task>/   # full clones mounted into containers
+└── codex/
+    └── <project>/planner/                # planner CODEX_HOME
 ```
 
 ## 14.2 Project Planning Artifacts
 
 ```
 <project-repo>/
-├── docs/
+├── .mycelium/
 │   └── planning/
 │       ├── 000-discovery/
 │       │   ├── requirements.md
@@ -1464,14 +1356,15 @@ At batch merge:
 
 ```
 <project-repo>/
-├── .tasks/
-│   ├── 001-add-health-endpoint/
-│   │   ├── manifest.json
-│   │   └── spec.md
-│   ├── 002-fix-frontend-form/
-│   │   ├── manifest.json
-│   │   └── spec.md
-│   └── .../
+├── .mycelium/
+│   └── tasks/
+│       ├── 001-add-health-endpoint/
+│       │   ├── manifest.json
+│       │   └── spec.md
+│       ├── 002-fix-frontend-form/
+│       │   ├── manifest.json
+│       │   └── spec.md
+│       └── .../
 └── ...
 ```
 
@@ -1481,15 +1374,39 @@ At batch merge:
 
 ## 15.1 Commands
 
+### autopilot
+
+Interview → draft planning artifacts → run planner → start a run (or stop after planning with `--skip-run`). Transcripts land in `.mycelium/planning/sessions/`.
+
+```bash
+mycelium autopilot \
+  --project faangmatch \
+  --local-worker \
+  --max-parallel 1
+# Add --plan-input /path/to/implementation-plan.md to override the default .mycelium/planning/002-implementation/implementation-plan.md
+# Use --dry-run to plan batches without starting containers
+```
+
+**Options:**
+- `--project` — Project name
+- `--plan-input` / `--plan-output` — Override planning paths
+- `--run-id` — Run/transcript id (default: timestamp)
+- `--max-questions` — Interview cap (default: 5)
+- `--max-parallel` — Override run parallelism
+- `--dry-run` — Run in dry-run mode (plan batches, no workers)
+- `--skip-run` — Stop after planning/tasks generation
+- `--local-worker` — Run workers on host (skip Docker)
+- `--no-build-image` — Skip auto-build when Docker image missing
+
 ### plan
 
 Create tickets from implementation plan.
 
 ```bash
-task-orchestrator plan \
+mycelium plan \
   --project faangmatch \
-  --input docs/planning/002-implementation/implementation-plan.md \
-  --output .tasks/
+  --input .mycelium/planning/002-implementation/implementation-plan.md \
+  --output .mycelium/tasks/
 ```
 
 **Options:**
@@ -1503,14 +1420,17 @@ task-orchestrator plan \
 Execute all pending tickets.
 
 ```bash
-task-orchestrator run \
+mycelium run \
   --project faangmatch
 ```
 
 **Options:**
 - `--project` — Project name
+- `--run-id` — Override run id (default: timestamp)
 - `--tasks` — Specific task IDs to run (default: all pending)
 - `--max-parallel` — Override max parallel containers
+- `--local-worker` — Run workers on host instead of Docker
+- `--no-build-image` — Skip auto-build when image missing
 - `--dry-run` — Show execution plan without running
 
 ### resume
@@ -1518,7 +1438,7 @@ task-orchestrator run \
 Continue after crash.
 
 ```bash
-task-orchestrator resume \
+mycelium resume \
   --project faangmatch \
   --run-id 2025-01-11-001
 ```
@@ -1526,13 +1446,17 @@ task-orchestrator resume \
 **Options:**
 - `--project` — Project name
 - `--run-id` — Run ID to resume (default: latest)
+- `--max-parallel` — Override max parallel containers
+- `--local-worker` — Run workers on host instead of Docker
+- `--no-build-image` — Skip auto-build when image missing
+- `--dry-run` — Plan batches without running containers
 
 ### status
 
 Check current run status.
 
 ```bash
-task-orchestrator status \
+mycelium status \
   --project faangmatch
 ```
 
@@ -1564,19 +1488,19 @@ Query and view logs.
 
 ```bash
 # Tail live logs
-task-orchestrator logs --project faangmatch --follow
+mycelium logs --project faangmatch --follow
 
 # Query specific task
-task-orchestrator logs query --project faangmatch --task 002
+mycelium logs query --project faangmatch --task 002
 
 # Search across logs
-task-orchestrator logs search --project faangmatch "ImportError"
+mycelium logs search --project faangmatch "ImportError"
 
 # Get doctor output
-task-orchestrator logs doctor --project faangmatch --task 002 --attempt 2
+mycelium logs doctor --project faangmatch --task 002 --attempt 2
 
 # Summarize failed task (uses LLM)
-task-orchestrator logs summarize --project faangmatch --task 002
+mycelium logs summarize --project faangmatch --task 002
 ```
 
 ### clean
@@ -1584,7 +1508,7 @@ task-orchestrator logs summarize --project faangmatch --task 002
 Remove completed branches and containers.
 
 ```bash
-task-orchestrator clean \
+mycelium clean \
   --project faangmatch \
   --keep-logs  # Don't delete logs
 ```
@@ -1838,10 +1762,15 @@ async function executeWithRetry(
 ## 18.1 Minimal Project Config
 
 ```yaml
-# ~/.task-orchestrator/projects/my-project.yaml
+# <repo>/.mycelium/config.yaml
 
 repo_path: ~/projects/my-project
 main_branch: development-codex
+tasks_dir: .mycelium/tasks
+planning_dir: .mycelium/planning
+versioning:
+  commit_planning: true
+  commit_tasks: true
 doctor: "npm test"
 
 resources:
@@ -1854,21 +1783,28 @@ resources:
 
 planner:
   provider: openai
-  model: o3
+  model: gpt-5.2
+  reasoning_effort: xhigh
 
 worker:
-  model: gpt-5.1-codex-max
+  model: gpt-5.2-codex
+  reasoning_effort: xhigh
 ```
 
 ## 18.2 Full Project Config
 
 ```yaml
-# ~/.task-orchestrator/projects/faangmatch.yaml
+# <repo>/.mycelium/config.yaml
 
 # === Repository ===
 repo_path: ~/projects/faangmatch
 main_branch: development-codex
 task_branch_prefix: agent/
+tasks_dir: .mycelium/tasks
+planning_dir: .mycelium/planning
+versioning:
+  commit_planning: true
+  commit_tasks: true
 
 # === Execution Limits ===
 max_parallel: 10
@@ -1920,26 +1856,30 @@ doctor_timeout: 300  # seconds
 
 # === Docker ===
 docker:
-  image: task-orchestrator-worker:latest
-  build_context: ~/.task-orchestrator/templates
+  image: mycelium-worker:latest
+  build_context: ~/.mycelium/templates
   
 # === Models ===
 planner:
   provider: openai
-  model: o3
+  model: gpt-5.2
+  reasoning_effort: xhigh
   temperature: 0.2
 
 worker:
-  model: gpt-5.1-codex-max
+  model: gpt-5.2-codex
+  reasoning_effort: xhigh
   
 test_validator:
   provider: openai
-  model: o3
+  model: gpt-5.2
+  reasoning_effort: xhigh
   enabled: true
 
 doctor_validator:
   provider: openai
-  model: o3
+  model: gpt-5.2
+  reasoning_effort: xhigh
   enabled: true
   run_every_n_tasks: 10
 
@@ -1982,7 +1922,7 @@ Not in scope for initial implementation, but designed for:
 
 # 20. Summary
 
-The Task Orchestrator is a complete system for autonomous code execution:
+Mycelium is a complete system for autonomous code execution:
 
 **Human Phase (30-120 minutes):**
 1. Discovery — Research and requirements

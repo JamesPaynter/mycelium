@@ -1,18 +1,9 @@
 # TODO
 
-- [x] [028 - Pilot run + acceptance checklist](docs/tasks/archive/028-pilot-run-and-acceptance/spec.md) (Effort <S>, Tier <mini>)
-- [x] [029 - Resume Level 2: reattach to running containers](docs/tasks/archive/029-resume-level-2-reattach-containers/spec.md) (Effort <L>, Tier <standard>)
-- [x] [030 - Resume Level 3: resume Codex thread inside worker](docs/tasks/archive/030-resume-level-3-resume-codex-thread/spec.md) (Effort <L>, Tier <pro>)
-- [x] [031 - Worker checkpoint commits (reduce lost work)](docs/tasks/archive/031-worker-checkpoint-commits/spec.md) (Effort <M>, Tier <standard>)
-- [x] [032 - Manifest compliance enforcement + access requests](docs/tasks/archive/032-manifest-compliance-and-access-requests/spec.md) (Effort <L>, Tier <pro>)
-- [x] [033 - Auto-rescope tickets when access expands](docs/tasks/archive/033-auto-rescope-and-rerun/spec.md) (Effort <L>, Tier <pro>)
-- [x] [034 - Make validators blocking + human review queue](docs/tasks/archive/034-make-validators-blocking/spec.md) (Effort <L>, Tier <pro>)
-- [x] [035 - Doctor canary check (prove doctor is executed)](docs/tasks/archive/035-doctor-canary-check/spec.md) (Effort <M>, Tier <standard>)
-- [x] [036 - Strict TDD mode (tests-first enforcement)](docs/tasks/archive/036-strict-tdd-mode/spec.md) (Effort <L>, Tier <pro>)
-- [x] [037 - Autopilot supervisor command (LLM-driven operator)](docs/tasks/archive/037-autopilot-supervisor-command/spec.md) (Effort <L>, Tier <pro>)
-- [x] [038 - Cost + token tracking with budgets](docs/tasks/archive/038-cost-tracking-and-budgets/spec.md) (Effort <M>, Tier <standard>)
-- [x] [039 - Docker hardening: non-root, limits, optional no-network](docs/tasks/archive/039-docker-hardening-and-limits/spec.md) (Effort <M>, Tier <standard>)
-- [x] [040 - Add Anthropic provider (planner/validators)](docs/tasks/archive/040-add-anthropic-provider/spec.md) (Effort <M>, Tier <standard>)
-- [x] [041 - Advanced log queries + summaries (timeline, follow, failure digest)](docs/tasks/archive/041-advanced-log-queries-and-summaries/spec.md) (Effort <L>, Tier <pro>)
-- [x] [042 - Integration test harness + CI regression runs](docs/tasks/archive/042-integration-test-harness-and-ci/spec.md) (Effort <L>, Tier <standard>)
-- [x] ALL_TASKS_COMPLETE
+- [x] [049 - Docs parity and spec rebaseline](docs/tasks/archive/049-docs-parity-and-spec-rebaseline/spec.md) (Effort <M>, Tier <standard>)
+- [ ] [050 - Docker-mode end-to-end smoke test](docs/tasks/active/050-docker-mode-e2e-smoke-test/spec.md) (Effort <L>, Tier <standard>)
+- [ ] [051 - Resume and crash recovery acceptance suite (reattach + thread resume)](docs/tasks/active/051-resume-and-crash-recovery-acceptance-suite/spec.md) (Effort <L>, Tier <pro>)
+- [ ] [052 - Graceful stop semantics (SIGINT/SIGTERM) and reliable resume](docs/tasks/active/052-signal-handling-and-clean-stop/spec.md) (Effort <M>, Tier <standard>)
+- [ ] [053 - Template & packaging cleanup (reduce ambiguity)](docs/tasks/active/053-template-and-packaging-cleanup/spec.md) (Effort <M>, Tier <standard>)
+- [ ] [054 - Spec traceability matrix and acceptance checklist](docs/tasks/active/054-spec-traceability-matrix-and-acceptance-checklist/spec.md) (Effort <M>, Tier <standard>)
+- [ ] ALL_TASKS_COMPLETE

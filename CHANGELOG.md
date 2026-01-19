@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026-01-19
+- Rebased documentation on current runtime behavior: rebuilt README, planning docs, and compliance checklist with implemented vs future tables; refreshed MVP scope to reflect autopilot/manifest enforcement/validators/resume reality.
+
+## 2026-01-18
+- Archived current TODO list snapshot to docs/history/todo-2026-01-18.md and reset TODO for new work.
+
 ## 2026-01-15
 - Added mock LLM mode plus a toy fixture repo + integration test that runs `plan`/`run` (max_parallel=2) end-to-end, and wired GitHub Actions CI to run build/tests with Docker available.
 - Added operator-grade log tooling: multi-source `logs --follow`, indexed `logs timeline`/`logs failures`, and enhanced `logs summarize` with doctor/Codex context plus optional LLM summaries.
@@ -13,10 +19,10 @@
 ## 2026-01-14
 - Added worker checkpoint commits (configurable), checkpoint-to-run-state syncing, and tests covering worker loop and checkpoint merge helpers.
 - Added resume handling that reattaches running worker containers via labels, replays logs from history, reconciles exited/missing containers, and emits new container lifecycle events.
-- Persisted worker Codex sessions in workspace scope with `.task-orchestrator` state (thread ids, attempts), CODEX_HOME in the workspace volume, thread-aware run-state/status output, and new codex thread start/resume events.
+- Persisted worker Codex sessions in workspace scope with `.mycelium` state (thread ids, attempts), CODEX_HOME in the workspace volume, thread-aware run-state/status output, and new codex thread start/resume events.
 - Added automatic rescope handling for manifest violations, including a new `rescope_required` status, rescope log events, manifest updates for missing locks/files, and task requeueing with updated scheduler locks.
 - Added doctor canary enforcement: rerun doctor with `ORCH_CANARY=1`, emit `doctor.canary.*` events, feed results into doctor validator reports, and block merges when the canary unexpectedly passes.
-- Added an `autopilot` supervisor CLI that interviews operators, drafts planning artifacts, runs the planner, kicks off runs with status polling, and saves transcripts under `docs/planning/sessions/`.
+- Added an `autopilot` supervisor CLI that interviews operators, drafts planning artifacts, runs the planner, kicks off runs with status polling, and saves transcripts under `.mycelium/planning/sessions/`.
 
 ## 2026-01-11
 - Added non-blocking test validator agent with JSONL logging, per-task reports, and executor integration.
