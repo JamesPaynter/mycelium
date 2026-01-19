@@ -107,6 +107,7 @@ class MockCodexRunner {
   private readonly manifestPath?: string;
   private readonly workingDirectory: string;
   private readonly taskId?: string;
+  private readonly resumedFromState: boolean;
   private turn = 0;
 
   constructor(opts: CodexRunnerOptions) {
@@ -114,6 +115,7 @@ class MockCodexRunner {
     this.manifestPath = opts.manifestPath;
     this.workingDirectory = opts.workingDirectory;
     this.taskId = opts.taskId;
+    this.resumedFromState = Boolean(opts.threadId);
   }
 
   getThreadId(): string | null {
@@ -130,10 +132,12 @@ class MockCodexRunner {
   ): Promise<void> {
     this.turn += 1;
 
-    if (this.turn === 1) {
-      await handlers.onThreadStarted?.(this.threadId);
-    } else {
+    const isResumeTurn = this.resumedFromState || this.turn > 1;
+
+    if (isResumeTurn) {
       await handlers.onThreadResumed?.(this.threadId);
+    } else {
+      await handlers.onThreadStarted?.(this.threadId);
     }
 
     await this.applyMockChanges(input);
