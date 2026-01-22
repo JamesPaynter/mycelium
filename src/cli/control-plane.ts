@@ -59,24 +59,24 @@ export function registerControlPlaneCommand(program: Command): void {
   components
     .command("list")
     .description("List known components")
-    .action(async (_opts, command) => {
-      await handleComponentsList(command);
+    .action(async (...args) => {
+      await handleComponentsList(resolveCommandFromArgs(args));
     });
 
   components
     .command("show")
     .description("Show component details")
     .argument("<id>", "Component id")
-    .action(async (id, command) => {
-      await handleComponentsShow(id, command);
+    .action(async (id, ...rest) => {
+      await handleComponentsShow(String(id), resolveCommandFromArgs(rest));
     });
 
   controlPlane
     .command("owner")
     .description("Show owning component for a path")
     .argument("<path>", "Path to inspect")
-    .action(async (targetPath, command) => {
-      await handleOwnerLookup(targetPath, command);
+    .action(async (targetPath, ...rest) => {
+      await handleOwnerLookup(String(targetPath), resolveCommandFromArgs(rest));
     });
 
   controlPlane
@@ -151,6 +151,10 @@ function createErrorAction(
 function resolveOutputOptions(command: Command): ControlPlaneOutputOptions {
   const flags = resolveControlPlaneFlags(command);
   return { useJson: flags.useJson, prettyJson: flags.prettyJson };
+}
+
+function resolveCommandFromArgs(args: unknown[]): Command {
+  return args[args.length - 1] as Command;
 }
 
 

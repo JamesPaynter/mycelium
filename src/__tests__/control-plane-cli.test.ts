@@ -144,4 +144,29 @@ describe("control-plane CLI", () => {
     expect(result.length).toBeGreaterThan(0);
     expect(result.map((component) => component.id)).toContain("acme-web-app");
   });
+
+  it("auto-builds the model for owner lookups", async () => {
+    const repoDir = await createTempRepoFromFixture();
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => undefined);
+
+    await runCli([
+      "node",
+      "mycelium",
+      "cp",
+      "owner",
+      "apps/web/src/index.ts",
+      "--json",
+      "--repo",
+      repoDir,
+    ]);
+
+    const jsonLine = logSpy.mock.calls.map((call) => call.join(" ")).pop() ?? "";
+    const payload = JSON.parse(jsonLine) as {
+      ok: boolean;
+      result?: { owner?: { component?: { id?: string } } };
+    };
+
+    expect(payload.ok).toBe(true);
+    expect(payload.result?.owner?.component?.id).toBe("acme-web-app");
+  });
 });
