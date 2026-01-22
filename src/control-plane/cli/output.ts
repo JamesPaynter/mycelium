@@ -2,6 +2,7 @@ export const CONTROL_PLANE_ERROR_CODES = {
   modelNotBuilt: "MODEL_NOT_BUILT",
   notImplemented: "NOT_IMPLEMENTED",
   modelStoreError: "MODEL_STORE_ERROR",
+  symbolRefsUnavailable: "SYMBOL_REFS_UNAVAILABLE",
 } as const;
 
 export type ControlPlaneErrorCode =

@@ -15,7 +15,7 @@
 - [ ] [058 - Component dependency edges + deps/rdeps queries](.mycelium/tasks/058-component-dependency-edges-deps-rdeps-queries/spec.md) (Effort <L>, Tier <pro>)
 - [ ] [059 - Blast radius query](.mycelium/tasks/059-blast-radius-query/spec.md) (Effort <M>, Tier <standard>)
 - [ ] [060 - TypeScript symbol index (definitions)](.mycelium/tasks/060-typescript-symbol-index-definitions/spec.md) (Effort <L>, Tier <pro>)
-- [ ] [061 - TypeScript symbol references](.mycelium/tasks/061-typescript-symbol-references/spec.md) (Effort <L>, Tier <pro>)
+- [x] [061 - TypeScript symbol references](.mycelium/tasks/061-typescript-symbol-references/spec.md) (Effort <L>, Tier <pro>)
 - [ ] [062 - Make navigation tools agent-native](.mycelium/tasks/062-make-navigation-tools-agent-native/spec.md) (Effort <M>, Tier <standard>)
 - [ ] [063 - Fixture repo + golden tests](.mycelium/tasks/063-fixture-repo-golden-tests/spec.md) (Effort <M>, Tier <standard>)
 - [ ] [064 - Docker-mode smoke test for Control Plane tools](.mycelium/tasks/064-docker-mode-smoke-test-for-control-plane-tools/spec.md) (Effort <M>, Tier <standard>)

@@ -1,5 +1,8 @@
 # Changelog
 
+## 2026-01-22
+- Added TypeScript symbol reference lookup via the language service, plus `cp symbols refs` CLI options and tests.
+
 ## 2026-01-19
 - Added a spec traceability matrix that maps each core principle to code, automated tests, and manual drills; deprecated the old compliance checklist in favor of the matrix and linked it from the README.
 - Simplified packaging: consolidated on `templates/Dockerfile` as the canonical worker image, documented the build path, and added a pack/install smoke script that asserts templates and binaries ship in the npm tarball.
