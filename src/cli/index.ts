@@ -5,6 +5,7 @@ import { loadConfigForCli } from "./config.js";
 
 import { autopilotCommand } from "./autopilot.js";
 import { cleanCommand } from "./clean.js";
+import { registerControlPlaneCommand } from "./control-plane.js";
 import { initCommand } from "./init.js";
 import { registerLogsCommand } from "./logs.js";
 import { planProject } from "./plan.js";
@@ -44,6 +45,7 @@ export function buildCli(): Command {
     .option("-v, --verbose", "Verbose output", false);
 
   registerLogsCommand(program);
+  registerControlPlaneCommand(program);
 
   program
     .command("init")
