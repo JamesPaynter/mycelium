@@ -874,8 +874,8 @@ export async function runProject(
     } finally {
       if (logStream) {
         try {
-          await logStream.completed.catch(() => undefined);
           logStream.detach();
+          await logStream.completed.catch(() => undefined);
         } catch {
           // ignore
         }
