@@ -76,6 +76,13 @@ export type ControlPlaneSymbolDefinition = {
   component_id: string;
 };
 
+export type ControlPlaneSymbolReference = {
+  file: string;
+  range: ControlPlaneSymbolRange;
+  is_definition: boolean;
+  component_id: string;
+};
+
 export type ControlPlaneSymbolsTs = {
   definitions: ControlPlaneSymbolDefinition[];
 };
