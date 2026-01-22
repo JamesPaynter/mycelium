@@ -48,6 +48,7 @@ COPY package.json package-lock.json ./
 RUN npm ci --omit=dev
 
 COPY --from=build /app/dist ./dist
+COPY bin ./bin
 
 # Create non-root user for worker processes
 RUN if ! id -u worker >/dev/null 2>&1; then useradd -m -s /bin/bash worker; fi \
@@ -56,6 +57,7 @@ RUN if ! id -u worker >/dev/null 2>&1; then useradd -m -s /bin/bash worker; fi \
 
 USER worker
 ENV HOME=/home/worker
+ENV PATH="/app/bin:${PATH}"
 
 # Default workspace mount point
 WORKDIR /workspace

@@ -305,6 +305,16 @@ function buildInitialPrompt(args: {
     "- If doctor fails, iterate until it passes.",
   ];
 
+  const repoNavigation = [
+    "Repo navigation tools (use before grepping):",
+    "- mycelium cp components list",
+    "- mycelium cp owner <path>",
+    "- mycelium cp blast <path>",
+    "- mycelium cp symbols find <query>",
+    "- mycelium cp symbols def <symbol>",
+    "- mycelium cp symbols refs <symbol>",
+  ].join("\n");
+
   if (args.strictTddContext?.stage === "tests") {
     rules.unshift("- Stage A: edit tests only; production code changes are not allowed yet.");
   }
@@ -318,6 +328,7 @@ function buildInitialPrompt(args: {
     branchLine,
     stageContext,
     `Task spec:\n${args.spec.trim()}`,
+    repoNavigation,
     rules.join("\n"),
   ];
 
