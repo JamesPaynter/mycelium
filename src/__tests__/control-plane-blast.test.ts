@@ -50,6 +50,7 @@ function createModelWithEdges(edges: ControlPlaneDependencyEdge[]): {
       ownership,
       deps: { edges },
       symbols: [],
+      symbols_ts: { definitions: [] },
     },
     components,
   };

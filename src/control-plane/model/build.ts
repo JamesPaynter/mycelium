@@ -7,6 +7,7 @@ import path from "node:path";
 
 import { extractComponents } from "../extract/components.js";
 import { buildOwnershipIndex } from "../extract/ownership.js";
+import { extractTypeScriptSymbolDefinitions } from "../extract/symbols-ts/index.js";
 import { buildControlPlaneDependencies } from "./deps.js";
 import {
   createControlPlaneMetadata,
@@ -43,7 +44,7 @@ const EXTRACTOR_VERSIONS: ControlPlaneExtractorVersions = {
   components: "v1",
   ownership: "v1",
   deps: "v1",
-  symbols: "stub",
+  symbols_ts: "v1",
 };
 
 
@@ -92,11 +93,18 @@ export async function buildControlPlaneModel(
     const { components } = await extractComponents(repoRoot);
     const ownership = buildOwnershipIndex(components);
     const deps = await buildControlPlaneDependencies({ repoRoot, components });
+    const symbolResult = await extractTypeScriptSymbolDefinitions({
+      repoRoot,
+      components,
+      ownership,
+    });
 
     const model = createEmptyModel();
     model.components = components;
     model.ownership = ownership;
     model.deps = deps;
+    model.symbols_ts = { definitions: symbolResult.definitions };
+    emitSymbolWarnings(symbolResult.warnings);
     const modelHash = hashModel(model);
     const metadata = createControlPlaneMetadata({
       baseSha,
@@ -154,4 +162,14 @@ export async function getControlPlaneModelInfo(
 function hashModel(model: ControlPlaneModel): string {
   const payload = JSON.stringify(model, null, 2) + "\n";
   return crypto.createHash("sha256").update(payload).digest("hex");
+}
+
+function emitSymbolWarnings(warnings: string[]): void {
+  if (warnings.length === 0) {
+    return;
+  }
+
+  for (const warning of warnings) {
+    console.warn(`[control-plane] ${warning}`);
+  }
 }
