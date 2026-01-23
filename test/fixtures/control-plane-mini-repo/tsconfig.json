@@ -1,0 +1,19 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "strict": true,
+    "baseUrl": ".",
+    "paths": {
+      "@acme/utils": ["packages/utils/src/index.ts"],
+      "@acme/utils/*": ["packages/utils/src/*"],
+      "@acme/infra-terraform": ["infra/terraform/src/index.ts"]
+    }
+  },
+  "include": [
+    "apps/web/src/**/*.ts",
+    "packages/utils/src/**/*.ts",
+    "infra/terraform/src/**/*.ts"
+  ]
+}

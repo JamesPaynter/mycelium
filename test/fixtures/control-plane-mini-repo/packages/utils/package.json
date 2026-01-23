@@ -1,4 +1,7 @@
 {
   "name": "@acme/utils",
-  "private": true
+  "private": true,
+  "peerDependencies": {
+    "@acme/infra-terraform": "workspace:*"
+  }
 }

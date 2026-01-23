@@ -1,4 +1,10 @@
 {
   "name": "@acme/web-app",
-  "private": true
+  "private": true,
+  "dependencies": {
+    "@acme/utils": "workspace:*"
+  },
+  "devDependencies": {
+    "@acme/infra-terraform": "workspace:*"
+  }
 }
