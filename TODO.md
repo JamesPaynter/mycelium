@@ -13,7 +13,7 @@
 - [x] [056 - Commit-addressed model store + cp build/info](.mycelium/tasks/056-commit-addressed-model-store-cp-build-info/spec.md) (Effort <M>, Tier <standard>)
 - [ ] [057 - Component boundaries + file ownership queries](.mycelium/tasks/057-component-boundaries-file-ownership-queries/spec.md) (Effort <L>, Tier <standard>)
 - [ ] [058 - Component dependency edges + deps/rdeps queries](.mycelium/tasks/058-component-dependency-edges-deps-rdeps-queries/spec.md) (Effort <L>, Tier <pro>)
-- [ ] [059 - Blast radius query](.mycelium/tasks/059-blast-radius-query/spec.md) (Effort <M>, Tier <standard>)
+- [x] [059 - Blast radius query](.mycelium/tasks/059-blast-radius-query/spec.md) (Effort <M>, Tier <standard>)
 - [ ] [060 - TypeScript symbol index (definitions)](.mycelium/tasks/060-typescript-symbol-index-definitions/spec.md) (Effort <L>, Tier <pro>)
 - [x] [061 - TypeScript symbol references](.mycelium/tasks/061-typescript-symbol-references/spec.md) (Effort <L>, Tier <pro>)
 - [ ] [062 - Make navigation tools agent-native](.mycelium/tasks/062-make-navigation-tools-agent-native/spec.md) (Effort <M>, Tier <standard>)
