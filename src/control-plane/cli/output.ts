@@ -3,6 +3,7 @@ export const CONTROL_PLANE_ERROR_CODES = {
   notImplemented: "NOT_IMPLEMENTED",
   modelStoreError: "MODEL_STORE_ERROR",
   symbolRefsUnavailable: "SYMBOL_REFS_UNAVAILABLE",
+  policyEvalError: "POLICY_EVAL_ERROR",
 } as const;
 
 export type ControlPlaneErrorCode =

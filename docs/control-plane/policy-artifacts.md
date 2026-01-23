@@ -53,4 +53,28 @@ Each task writes one JSON report at:
 }
 ```
 
-`locks.derived` is only present when derived scope is computed.
+## Interpreting policy artifacts
+
+Use the policy report alongside the other control-plane artifacts to explain a decision:
+
+- `lock-derivation`: how write locks were derived from the manifest at the run base SHA.
+- `blast`: diff-based blast radius for the task branch or workspace changes.
+- `checkset`: scoped check selection, including fallback reasons and confidence.
+
+`locks.derived` is only present when lock derivation is computed (lock mode `shadow` or `derived`).
+
+## Reproduce with `cp policy eval`
+
+To reproduce a decision locally, run the policy eval command with the run base SHA and the task diff:
+
+```
+mycelium cp policy eval \
+  --repo <path> \
+  --base-sha <sha> \
+  --diff <base..head> \
+  --manifest <path-to-task-manifest.json> \
+  --json
+```
+
+If you omit `--manifest`, the CLI synthesizes a manifest from the diff paths.
+If you pass `--config`, policy eval uses that config; otherwise it loads the repo config when present.

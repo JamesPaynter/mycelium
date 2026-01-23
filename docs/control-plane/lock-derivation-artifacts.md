@@ -1,6 +1,6 @@
-# Derived Scope Artifacts (Shadow + Derived Modes)
+# Lock Derivation Artifacts (Shadow + Derived Modes)
 
-Derived scope is computed per task to compare declared locks/files with control-plane ownership.
+Lock derivation is computed per task to compare declared locks/files with control-plane ownership.
 The `control_plane.lock_mode` setting controls how it is used:
 
 - `declared`: no derived artifacts; scheduling uses manifest locks.
@@ -31,10 +31,10 @@ and owning roots, plus guidance to expand scope or split the task.
 Each task writes one JSON report at:
 
 ```
-.mycelium/reports/control-plane/derived-scope/<runId>/<taskId>.json
+.mycelium/reports/control-plane/lock-derivation/<runId>/<taskId>.json
 ```
 
-Orchestrator events include the `report_path` in `task.derived_scope`.
+Orchestrator events include the `report_path` in `task.lock_derivation`.
 
 ## Report shape
 

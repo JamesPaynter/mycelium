@@ -18,7 +18,7 @@ control_plane:
     # fallback_command: npm test
 ```
 
-- `mode=off`: no checkset artifacts, no behavior changes.
+- `mode=off`: artifacts are still written for transparency, but behavior does not change.
 - `mode=report`: write artifacts but keep the existing doctor command.
 - `mode=enforce`: override `DOCTOR_CMD` per task when scoped checks are safe.
 

@@ -150,7 +150,7 @@ export function taskComplianceReportPath(
   return path.join(taskLogsDir(projectName, runId, taskId, taskSlug), "compliance.json");
 }
 
-export function taskDerivedScopeReportPath(
+export function taskLockDerivationReportPath(
   repoPath: string,
   runId: string,
   taskId: string,
@@ -160,7 +160,7 @@ export function taskDerivedScopeReportPath(
     ".mycelium",
     "reports",
     "control-plane",
-    "derived-scope",
+    "lock-derivation",
     runId,
     `${taskId}.json`,
   );

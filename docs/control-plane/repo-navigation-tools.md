@@ -41,6 +41,7 @@ or
 
 - `MODEL_NOT_BUILT`: query requires a navigation model that is not available
 - `NOT_IMPLEMENTED`: the command is a stub (builder not wired yet)
+- `POLICY_EVAL_ERROR`: policy evaluation input or configuration error
 
 ## Phase A command surface
 
@@ -59,6 +60,7 @@ or
 ## Phase B extensions
 
 - `cp blast --run <runId> --task <taskId>` reads per-task blast artifacts (or recomputes deterministically if missing).
+- `cp policy eval --repo <path> --base-sha <sha> --diff <range>` evaluates policy decisions for a change set.
 
 ## Stub behavior
 

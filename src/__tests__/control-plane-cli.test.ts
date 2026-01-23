@@ -78,6 +78,37 @@ async function initGitRepo(repoDir: string): Promise<void> {
   await execa("git", ["commit", "-m", "init"], { cwd: repoDir });
 }
 
+async function writePolicyEvalManifest(repoDir: string): Promise<string> {
+  const taskDir = path.join(repoDir, ".mycelium", "tasks", "099-policy-eval");
+  await fs.mkdir(taskDir, { recursive: true });
+
+  const manifest = {
+    id: "099",
+    name: "Policy eval CLI test",
+    description: "Fixture manifest for policy eval CLI output.",
+    estimated_minutes: 10,
+    dependencies: [],
+    locks: { reads: [], writes: [] },
+    files: { reads: [], writes: ["apps/web/src/index.ts"] },
+    affected_tests: [],
+    test_paths: [],
+    tdd_mode: "off",
+    verify: { doctor: "npm test" },
+  };
+
+  const manifestPath = path.join(taskDir, "manifest.json");
+  await fs.writeFile(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`, "utf8");
+
+  return manifestPath;
+}
+
+async function commitPolicyEvalChange(repoDir: string): Promise<void> {
+  const targetPath = path.join(repoDir, "apps", "web", "src", "index.ts");
+  await fs.appendFile(targetPath, "\n// policy eval change\n", "utf8");
+  await execa("git", ["add", "-A"], { cwd: repoDir });
+  await execa("git", ["commit", "-m", "policy eval change"], { cwd: repoDir });
+}
+
 
 
 // =============================================================================
@@ -168,5 +199,58 @@ describe("control-plane CLI", () => {
 
     expect(payload.ok).toBe(true);
     expect(payload.result?.owner?.component?.id).toBe("acme-web-app");
+  });
+
+  it("evaluates policy decisions with JSON output", async () => {
+    const repoDir = await createTempRepoFromFixture();
+    const manifestPath = await writePolicyEvalManifest(repoDir);
+    await commitPolicyEvalChange(repoDir);
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => undefined);
+
+    await runCli([
+      "node",
+      "mycelium",
+      "cp",
+      "policy",
+      "eval",
+      "--json",
+      "--repo",
+      repoDir,
+      "--base-sha",
+      "HEAD~1",
+      "--diff",
+      "HEAD~1..HEAD",
+      "--manifest",
+      manifestPath,
+    ]);
+
+    const jsonLine = logSpy.mock.calls.map((call) => call.join(" ")).pop() ?? "";
+    const payload = JSON.parse(jsonLine) as {
+      ok: boolean;
+      result?: {
+        base_sha?: string;
+        diff?: string | null;
+        lock_derivation?: { derived_write_resources?: string[] };
+        blast_radius?: { changed_files?: string[]; touched_components?: string[] };
+        surface_detection?: { is_surface_change?: boolean; categories?: string[] };
+        tier?: number;
+        required_checks?: { selected_command?: string };
+      };
+    };
+
+    expect(payload.ok).toBe(true);
+    expect(payload.result?.base_sha).toEqual(expect.any(String));
+    expect(payload.result?.diff).toBe("HEAD~1..HEAD");
+    expect(payload.result?.lock_derivation?.derived_write_resources).toContain(
+      "component:acme-web-app",
+    );
+    expect(payload.result?.blast_radius?.changed_files).toContain(
+      "apps/web/src/index.ts",
+    );
+    expect(payload.result?.blast_radius?.touched_components).toContain("acme-web-app");
+    expect(payload.result?.surface_detection?.is_surface_change).toBe(true);
+    expect(payload.result?.surface_detection?.categories).toContain("public-entrypoint");
+    expect(payload.result?.tier).toEqual(expect.any(Number));
+    expect(payload.result?.required_checks?.selected_command).toBe("npm test");
   });
 });
