@@ -5,9 +5,61 @@
 export function createGardenView({ appState, actions }) {
   const container = document.getElementById("view-garden");
 
+
+  // =============================================================================
+  // CONFIG
+  // =============================================================================
+
+  const LANDMARK_DEFINITIONS = [
+    {
+      key: "spore",
+      label: "Spore Basket",
+      detail: "Pending",
+      countKey: "pending",
+    },
+    {
+      key: "compost",
+      label: "Compost Pile",
+      detail: "Failed",
+      countKey: "failed",
+    },
+    {
+      key: "harvest",
+      label: "Harvest Shelf",
+      detail: "Complete",
+      countKey: "complete",
+    },
+  ];
+
+  const SLOT_LAYOUT = {
+    columnCount: 5,
+    xMin: 22,
+    xMax: 86,
+    yStart: 48,
+    rowGap: 8,
+  };
+
+  const INITIAL_SLOT_COUNT = 12;
+  const SPAWN_ANIMATION_MS = 220;
+  const DESPAWN_ANIMATION_MS = 240;
+  const slotColumnPositions = buildSlotColumnPositions();
+
   const viewState = {
     isActive: true,
     latestSummary: null,
+    gardenSlots: buildInitialSlots(INITIAL_SLOT_COUNT),
+    slotByTaskId: new Map(),
+    taskIdBySlot: new Map(),
+    garden: null,
+    landmarks: null,
+    bed: null,
+    emptyState: null,
+    emptyTitleEl: null,
+    emptyCopyEl: null,
+    landmarkCountEls: new Map(),
+    mushroomByTaskId: new Map(),
+    spawnTimeouts: new Map(),
+    despawnTimeouts: new Map(),
   };
 
   return {
@@ -37,6 +89,9 @@ export function createGardenView({ appState, actions }) {
 
   function reset() {
     viewState.latestSummary = null;
+    resetSlotAllocator();
+    clearPendingMushroomTimers();
+    clearMushrooms();
     renderEmptyState();
   }
 
@@ -97,79 +152,97 @@ export function createGardenView({ appState, actions }) {
       return;
     }
 
+    ensureGardenFrame();
+
     const runningTasks = getRunningTasks(summary);
     const taskCounts = summary?.taskCounts ?? {};
     const emptyTitle = options.emptyTitle ?? "No running tasks yet.";
     const emptyCopy = options.emptyCopy ?? "Mushrooms appear as tasks move into running.";
+
+    updateLandmarkCounts(taskCounts);
+    updateEmptyState(emptyTitle, emptyCopy, runningTasks.length === 0);
+    syncSlotAssignments(runningTasks);
+    syncMushrooms(runningTasks);
+  }
+
+
+  // =============================================================================
+  // DOM FRAME
+  // =============================================================================
+
+  function ensureGardenFrame() {
+    if (!container || viewState.garden) {
+      return;
+    }
 
     container.innerHTML = "";
 
     const garden = document.createElement("div");
     garden.className = "garden";
 
-    const landmarks = renderLandmarks(taskCounts);
-    const bed = document.createElement("div");
-    bed.className = "garden-bed";
-
-    if (!runningTasks.length) {
-      const emptyState = document.createElement("div");
-      emptyState.className = "garden-empty";
-
-      const emptyTitleEl = document.createElement("div");
-      emptyTitleEl.className = "garden-empty-title";
-      emptyTitleEl.textContent = emptyTitle;
-
-      const emptyCopyEl = document.createElement("div");
-      emptyCopyEl.className = "garden-empty-copy";
-      emptyCopyEl.textContent = emptyCopy;
-
-      emptyState.append(emptyTitleEl, emptyCopyEl);
-      bed.appendChild(emptyState);
-    } else {
-      const fragment = document.createDocumentFragment();
-      runningTasks.forEach((task, index) => {
-        fragment.appendChild(createMushroom(task, index));
-      });
-      bed.appendChild(fragment);
-    }
-
-    garden.append(landmarks, bed);
-    container.appendChild(garden);
-  }
-
-  function renderLandmarks(taskCounts) {
     const landmarks = document.createElement("div");
     landmarks.className = "garden-landmarks";
 
-    const landmarkDefinitions = [
-      {
-        key: "spore",
-        label: "Spore Basket",
-        detail: "Pending",
-        count: taskCounts.pending,
-      },
-      {
-        key: "compost",
-        label: "Compost Pile",
-        detail: "Failed",
-        count: taskCounts.failed,
-      },
-      {
-        key: "harvest",
-        label: "Harvest Shelf",
-        detail: "Complete",
-        count: taskCounts.complete,
-      },
-    ];
-
-    for (const definition of landmarkDefinitions) {
-      landmarks.appendChild(createLandmark(definition));
+    viewState.landmarkCountEls.clear();
+    for (const definition of LANDMARK_DEFINITIONS) {
+      const { element, countEl } = createLandmark(definition);
+      viewState.landmarkCountEls.set(definition.key, countEl);
+      landmarks.appendChild(element);
     }
 
-    return landmarks;
+    const bed = document.createElement("div");
+    bed.className = "garden-bed";
+
+    const { emptyState, emptyTitleEl, emptyCopyEl } = createEmptyStateElements();
+    bed.appendChild(emptyState);
+
+    garden.append(landmarks, bed);
+    container.appendChild(garden);
+
+    viewState.garden = garden;
+    viewState.landmarks = landmarks;
+    viewState.bed = bed;
+    viewState.emptyState = emptyState;
+    viewState.emptyTitleEl = emptyTitleEl;
+    viewState.emptyCopyEl = emptyCopyEl;
   }
 
-  function createLandmark({ key, label, detail, count }) {
+  function createEmptyStateElements() {
+    const emptyState = document.createElement("div");
+    emptyState.className = "garden-empty";
+
+    const emptyTitleEl = document.createElement("div");
+    emptyTitleEl.className = "garden-empty-title";
+
+    const emptyCopyEl = document.createElement("div");
+    emptyCopyEl.className = "garden-empty-copy";
+
+    emptyState.append(emptyTitleEl, emptyCopyEl);
+
+    return { emptyState, emptyTitleEl, emptyCopyEl };
+  }
+
+  function updateLandmarkCounts(taskCounts) {
+    for (const definition of LANDMARK_DEFINITIONS) {
+      const countEl = viewState.landmarkCountEls.get(definition.key);
+      if (!countEl) {
+        continue;
+      }
+      countEl.textContent = formatCount(taskCounts?.[definition.countKey]);
+    }
+  }
+
+  function updateEmptyState(title, copy, isEmpty) {
+    if (!viewState.emptyState || !viewState.emptyTitleEl || !viewState.emptyCopyEl) {
+      return;
+    }
+
+    viewState.emptyTitleEl.textContent = title;
+    viewState.emptyCopyEl.textContent = copy;
+    viewState.emptyState.hidden = !isEmpty;
+  }
+
+  function createLandmark({ key, label, detail }) {
     const wrapper = document.createElement("div");
     wrapper.className = `garden-landmark landmark-${key}`;
 
@@ -181,7 +254,7 @@ export function createGardenView({ appState, actions }) {
 
     const countEl = document.createElement("div");
     countEl.className = "landmark-count";
-    countEl.textContent = formatCount(count);
+    countEl.textContent = "--";
 
     header.append(icon, countEl);
 
@@ -194,26 +267,156 @@ export function createGardenView({ appState, actions }) {
     detailEl.textContent = detail;
 
     wrapper.append(header, labelEl, detailEl);
-    return wrapper;
+    return { element: wrapper, countEl };
   }
 
-  function createMushroom(task, index) {
+
+  // =============================================================================
+  // SLOT ALLOCATION
+  // =============================================================================
+
+  function resetSlotAllocator() {
+    viewState.gardenSlots = buildInitialSlots(INITIAL_SLOT_COUNT);
+    viewState.slotByTaskId.clear();
+    viewState.taskIdBySlot.clear();
+  }
+
+  function syncSlotAssignments(runningTasks) {
+    const runningTaskIds = new Set(runningTasks.map((task) => String(task.id)));
+
+    for (const [taskId, slotIndex] of viewState.slotByTaskId.entries()) {
+      if (!runningTaskIds.has(taskId)) {
+        viewState.slotByTaskId.delete(taskId);
+        viewState.taskIdBySlot.delete(slotIndex);
+      }
+    }
+
+    ensureSlotCapacity(runningTaskIds.size);
+
+    for (const task of runningTasks) {
+      const taskId = String(task.id);
+      if (viewState.slotByTaskId.has(taskId)) {
+        continue;
+      }
+
+      const slotIndex = findFirstAvailableSlot();
+      if (slotIndex === null) {
+        continue;
+      }
+
+      viewState.slotByTaskId.set(taskId, slotIndex);
+      viewState.taskIdBySlot.set(slotIndex, taskId);
+    }
+  }
+
+  function ensureSlotCapacity(requiredCount) {
+    while (viewState.gardenSlots.length < requiredCount) {
+      const slotIndex = viewState.gardenSlots.length;
+      viewState.gardenSlots.push(buildSlotForIndex(slotIndex));
+    }
+  }
+
+  function findFirstAvailableSlot() {
+    for (let slotIndex = 0; slotIndex < viewState.gardenSlots.length; slotIndex += 1) {
+      if (!viewState.taskIdBySlot.has(slotIndex)) {
+        return slotIndex;
+      }
+    }
+
+    return null;
+  }
+
+  function buildInitialSlots(count) {
+    const slots = [];
+    for (let slotIndex = 0; slotIndex < count; slotIndex += 1) {
+      slots.push(buildSlotForIndex(slotIndex));
+    }
+    return slots;
+  }
+
+  function buildSlotForIndex(slotIndex) {
+    const columnIndex = slotIndex % SLOT_LAYOUT.columnCount;
+    const rowIndex = Math.floor(slotIndex / SLOT_LAYOUT.columnCount);
+    const xPct = slotColumnPositions[columnIndex] ?? 50;
+    const yPct = roundToTenth(SLOT_LAYOUT.yStart + rowIndex * SLOT_LAYOUT.rowGap);
+
+    return { xPct, yPct };
+  }
+
+  function buildSlotColumnPositions() {
+    if (SLOT_LAYOUT.columnCount <= 1) {
+      return [roundToTenth((SLOT_LAYOUT.xMin + SLOT_LAYOUT.xMax) / 2)];
+    }
+
+    const step = (SLOT_LAYOUT.xMax - SLOT_LAYOUT.xMin) / (SLOT_LAYOUT.columnCount - 1);
+    const positions = [];
+    for (let index = 0; index < SLOT_LAYOUT.columnCount; index += 1) {
+      positions.push(roundToTenth(SLOT_LAYOUT.xMin + step * index));
+    }
+
+    return positions;
+  }
+
+  function roundToTenth(value) {
+    return Math.round(value * 10) / 10;
+  }
+
+
+  // =============================================================================
+  // MUSHROOMS
+  // =============================================================================
+
+  function syncMushrooms(runningTasks) {
+    if (!viewState.bed) {
+      return;
+    }
+
+    const runningTaskIds = new Set(runningTasks.map((task) => String(task.id)));
+
+    for (const [taskId, mushroom] of viewState.mushroomByTaskId.entries()) {
+      if (!runningTaskIds.has(taskId)) {
+        startDespawn(taskId, mushroom);
+      }
+    }
+
+    for (const task of runningTasks) {
+      const taskId = String(task.id);
+      const mushroom = viewState.mushroomByTaskId.get(taskId);
+      const slotIndex = viewState.slotByTaskId.get(taskId);
+
+      if (mushroom) {
+        cancelDespawn(taskId, mushroom);
+        applySlotPosition(mushroom, slotIndex);
+        updateMushroomSelection(mushroom, taskId);
+        continue;
+      }
+
+      const newMushroom = createMushroom(task, slotIndex);
+      viewState.mushroomByTaskId.set(taskId, newMushroom);
+      viewState.bed.appendChild(newMushroom);
+      triggerSpawn(taskId, newMushroom);
+    }
+  }
+
+  function createMushroom(task, slotIndex) {
     const taskId = String(task.id);
     const mushroom = document.createElement("button");
     mushroom.type = "button";
     mushroom.className = "mushroom is-running";
     mushroom.dataset.taskId = taskId;
-    mushroom.style.setProperty("--bob-delay", `${(index % 6) * 0.12}s`);
     mushroom.title = `Task ${taskId} is running`;
     mushroom.setAttribute("aria-label", `Select task ${taskId}`);
-    if (taskId === appState.selectedTaskId) {
-      mushroom.classList.add("is-selected");
-    }
+
+    applySlotPosition(mushroom, slotIndex);
+    updateMushroomSelection(mushroom, taskId);
 
     mushroom.addEventListener("click", () => {
       actions.setSelectedTask(taskId);
       updateSelectedMushroom(taskId);
     });
+
+    const float = document.createElement("div");
+    float.className = "mushroom-float bob";
 
     const body = document.createElement("div");
     body.className = "mushroom-body";
@@ -234,9 +437,108 @@ export function createGardenView({ appState, actions }) {
     status.className = "mushroom-status";
     status.textContent = "WORKING...";
 
-    mushroom.append(body, label, status);
+    float.append(body, label, status);
+    mushroom.appendChild(float);
 
     return mushroom;
+  }
+
+  function applySlotPosition(mushroom, slotIndex) {
+    if (slotIndex === undefined || slotIndex === null) {
+      return;
+    }
+
+    const slot = viewState.gardenSlots[slotIndex];
+    if (!slot) {
+      return;
+    }
+
+    mushroom.style.setProperty("--slot-x", `${slot.xPct}%`);
+    mushroom.style.setProperty("--slot-y", `${slot.yPct}%`);
+    mushroom.style.setProperty("--bob-delay", `${(slotIndex % 6) * 0.12}s`);
+  }
+
+  function updateMushroomSelection(mushroom, taskId) {
+    const isSelected = String(taskId) === appState.selectedTaskId;
+    mushroom.classList.toggle("is-selected", isSelected);
+  }
+
+  function startDespawn(taskId, mushroom) {
+    if (viewState.despawnTimeouts.has(taskId)) {
+      return;
+    }
+
+    clearSpawnTimeout(taskId);
+    mushroom.classList.remove("spawn");
+    mushroom.classList.add("despawn");
+    mushroom.setAttribute("aria-hidden", "true");
+
+    const timeoutId = window.setTimeout(() => {
+      mushroom.remove();
+      viewState.mushroomByTaskId.delete(taskId);
+      viewState.despawnTimeouts.delete(taskId);
+    }, DESPAWN_ANIMATION_MS);
+
+    viewState.despawnTimeouts.set(taskId, timeoutId);
+  }
+
+  function cancelDespawn(taskId, mushroom) {
+    const timeoutId = viewState.despawnTimeouts.get(taskId);
+    if (!timeoutId) {
+      return;
+    }
+
+    window.clearTimeout(timeoutId);
+    viewState.despawnTimeouts.delete(taskId);
+    mushroom.classList.remove("despawn");
+    mushroom.removeAttribute("aria-hidden");
+  }
+
+  function triggerSpawn(taskId, mushroom) {
+    mushroom.classList.add("spawn");
+
+    const timeoutId = window.setTimeout(() => {
+      mushroom.classList.remove("spawn");
+      viewState.spawnTimeouts.delete(taskId);
+    }, SPAWN_ANIMATION_MS);
+
+    viewState.spawnTimeouts.set(taskId, timeoutId);
+  }
+
+  function clearSpawnTimeout(taskId) {
+    const timeoutId = viewState.spawnTimeouts.get(taskId);
+    if (!timeoutId) {
+      return;
+    }
+
+    window.clearTimeout(timeoutId);
+    viewState.spawnTimeouts.delete(taskId);
+  }
+
+  function clearMushrooms() {
+    if (!viewState.bed) {
+      viewState.mushroomByTaskId.clear();
+      return;
+    }
+
+    for (const mushroom of viewState.mushroomByTaskId.values()) {
+      mushroom.remove();
+    }
+
+    viewState.mushroomByTaskId.clear();
+  }
+
+  function clearPendingMushroomTimers() {
+    for (const timeoutId of viewState.spawnTimeouts.values()) {
+      window.clearTimeout(timeoutId);
+    }
+
+    for (const timeoutId of viewState.despawnTimeouts.values()) {
+      window.clearTimeout(timeoutId);
+    }
+
+    viewState.spawnTimeouts.clear();
+    viewState.despawnTimeouts.clear();
   }
 
 

@@ -364,16 +364,14 @@ body {
 .garden-bed {
   position: relative;
   z-index: 2;
-  min-height: 240px;
+  min-height: 280px;
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
-  gap: 20px;
-  align-items: end;
-  justify-items: center;
+  place-items: center;
 }
 
 .garden-empty {
-  grid-column: 1 / -1;
+  position: relative;
+  z-index: 3;
   max-width: 360px;
   text-align: center;
   padding: 18px 20px;
@@ -398,20 +396,58 @@ body {
   border: none;
   background: transparent;
   cursor: pointer;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 8px;
+  position: absolute;
+  left: var(--slot-x, 50%);
+  top: var(--slot-y, 65%);
+  transform: translate(-50%, -50%);
   padding: 4px 8px;
   font-family: inherit;
   color: var(--ink);
   text-align: center;
   transition: filter 0.2s ease;
+  z-index: 2;
+  will-change: transform, opacity;
 }
 
-.mushroom.is-running {
+.mushroom-float {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+}
+
+.bob {
   animation: bob 2.6s ease-in-out infinite;
   animation-delay: var(--bob-delay, 0s);
+}
+
+.mushroom.spawn {
+  animation: mushroom-spawn 0.22s ease both;
+}
+
+.mushroom.despawn {
+  animation: mushroom-despawn 0.24s ease both;
+  pointer-events: none;
+  z-index: 1;
+}
+
+.mushroom.despawn::after {
+  content: "";
+  position: absolute;
+  top: 6px;
+  left: 50%;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.7);
+  box-shadow:
+    -12px -6px 0 rgba(255, 255, 255, 0.55),
+    8px -10px 0 rgba(255, 255, 255, 0.45),
+    14px -2px 0 rgba(255, 255, 255, 0.35);
+  opacity: 0;
+  transform: translateX(-50%) scale(0.6);
+  animation: spore-puff 0.24s ease both;
+  pointer-events: none;
 }
 
 .mushroom:focus-visible {
@@ -934,6 +970,42 @@ body {
   }
 }
 
+@keyframes mushroom-spawn {
+  from {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(0.6);
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1);
+  }
+}
+
+@keyframes mushroom-despawn {
+  from {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1);
+  }
+  to {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(0.85);
+  }
+}
+
+@keyframes spore-puff {
+  0% {
+    opacity: 0;
+    transform: translateX(-50%) translateY(0) scale(0.6);
+  }
+  40% {
+    opacity: 0.65;
+  }
+  100% {
+    opacity: 0;
+    transform: translateX(-50%) translateY(-12px) scale(1.2);
+  }
+}
+
 @keyframes float-in {
   from {
     opacity: 0;
@@ -953,6 +1025,26 @@ body {
   to {
     opacity: 1;
     transform: translateY(0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .bob {
+    animation: none !important;
+  }
+
+  .pulse {
+    animation: none !important;
+  }
+
+  .mushroom.spawn,
+  .mushroom.despawn {
+    animation: none !important;
+    transition: none !important;
+  }
+
+  .mushroom.despawn::after {
+    animation: none !important;
   }
 }
 
