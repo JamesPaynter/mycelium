@@ -40,7 +40,7 @@ const viewActions = {
 
 const views = {
   list: createListView({ appState, actions: viewActions, fetchApi }),
-  garden: createGardenView(),
+  garden: createGardenView({ appState, actions: viewActions }),
   map: createMapView(),
 };
 
@@ -200,6 +200,7 @@ function setTarget(projectName, runId, options = {}) {
   }
 
   views.list.reset();
+  views.garden.reset?.();
   updateQueryParams();
   startSummaryPolling();
 }
@@ -247,6 +248,7 @@ async function fetchSummary() {
     const summary = await fetchApi(buildSummaryUrl());
     appState.summary = summary;
     views.list.onSummary(summary);
+    views.garden.onSummary?.(summary);
     setGlobalError("");
   } catch (error) {
     setGlobalError(toErrorMessage(error));
