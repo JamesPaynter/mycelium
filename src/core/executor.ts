@@ -51,6 +51,7 @@ import {
   orchestratorLogPath,
   taskEventsLogPath,
   taskComplianceReportPath,
+  taskDerivedScopeReportPath,
   taskLogsDir,
   taskWorkspaceDir,
   workerCodexHomeDir,
@@ -98,6 +99,10 @@ import {
   createComponentOwnerResolver,
   deriveComponentResources,
 } from "../control-plane/integration/resources.js";
+import {
+  createDerivedScopeSnapshot,
+  deriveTaskWriteScopeReport,
+} from "../control-plane/integration/derived-scope.js";
 
 const LABEL_PREFIX = "mycelium";
 
@@ -386,6 +391,77 @@ function mergeResourceNames(input: {
   return Array.from(names).sort();
 }
 
+async function emitDerivedScopeReports(input: {
+  repoPath: string;
+  runId: string;
+  tasks: TaskSpec[];
+  controlPlaneConfig: ControlPlaneRunConfig;
+  controlPlaneSnapshot: ControlPlaneSnapshot | undefined;
+  orchestratorLog: JsonlLogger;
+}): Promise<void> {
+  if (!input.controlPlaneConfig.enabled) {
+    return;
+  }
+
+  const loadedModel = await loadControlPlaneModel({
+    enabled: input.controlPlaneConfig.enabled,
+    snapshot: input.controlPlaneSnapshot,
+  });
+  if (!loadedModel) {
+    return;
+  }
+
+  let snapshot: Awaited<ReturnType<typeof createDerivedScopeSnapshot>> | null = null;
+  try {
+    snapshot = await createDerivedScopeSnapshot({
+      repoPath: input.repoPath,
+      baseSha: loadedModel.baseSha,
+    });
+  } catch (error) {
+    logOrchestratorEvent(input.orchestratorLog, "control_plane.derived_scope.error", {
+      message: formatErrorMessage(error),
+      base_sha: loadedModel.baseSha,
+    });
+    return;
+  }
+
+  try {
+    for (const task of input.tasks) {
+      try {
+        const report = await deriveTaskWriteScopeReport({
+          manifest: task.manifest,
+          model: loadedModel.model,
+          snapshotPath: snapshot.snapshotPath,
+          componentResourcePrefix: input.controlPlaneConfig.componentResourcePrefix,
+          fallbackResource: input.controlPlaneConfig.fallbackResource,
+        });
+        const reportPath = taskDerivedScopeReportPath(
+          input.repoPath,
+          input.runId,
+          task.manifest.id,
+        );
+        await writeJsonFile(reportPath, report);
+
+        logOrchestratorEvent(input.orchestratorLog, "task.derived_scope", {
+          taskId: task.manifest.id,
+          task_slug: task.slug,
+          report_path: reportPath,
+          confidence: report.confidence,
+          resources: report.derived_write_resources.length,
+        });
+      } catch (error) {
+        logOrchestratorEvent(input.orchestratorLog, "task.derived_scope.error", {
+          taskId: task.manifest.id,
+          task_slug: task.slug,
+          message: formatErrorMessage(error),
+        });
+      }
+    }
+  } finally {
+    await snapshot.release();
+  }
+}
+
 export async function runProject(
   projectName: string,
   config: ProjectConfig,
@@ -544,6 +620,15 @@ export async function runProject(
       plan: plannedBatches,
     };
   }
+
+  await emitDerivedScopeReports({
+    repoPath,
+    runId,
+    tasks,
+    controlPlaneConfig,
+    controlPlaneSnapshot,
+    orchestratorLog: orchLog,
+  });
 
   if (testValidatorEnabled) {
     testValidatorLog = new JsonlLogger(validatorLogPath(projectName, runId, "test-validator"), {

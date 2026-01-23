@@ -150,6 +150,22 @@ export function taskComplianceReportPath(
   return path.join(taskLogsDir(projectName, runId, taskId, taskSlug), "compliance.json");
 }
 
+export function taskDerivedScopeReportPath(
+  repoPath: string,
+  runId: string,
+  taskId: string,
+): string {
+  return path.join(
+    repoPath,
+    ".mycelium",
+    "reports",
+    "control-plane",
+    "derived-scope",
+    runId,
+    `${taskId}.json`,
+  );
+}
+
 export function plannerHomeDir(projectName: string): string {
   return path.join(orchestratorHome(), "codex", projectName, "planner");
 }
