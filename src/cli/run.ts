@@ -2,16 +2,35 @@ import type { ProjectConfig } from "../core/config.js";
 import { runProject, type BatchPlanEntry, type RunOptions } from "../core/executor.js";
 import { defaultRunId } from "../core/utils.js";
 import { createRunStopSignalHandler } from "./signal-handlers.js";
+import {
+  closeUiServer,
+  launchUiServer,
+  maybeOpenUiBrowser,
+  resolveUiRuntimeConfig,
+  type UiStartResult,
+} from "./ui.js";
+
+type RunCommandOptions = RunOptions & {
+  ui?: boolean;
+  uiPort?: number;
+  uiOpen?: boolean;
+};
 
 export async function runCommand(
   projectName: string,
   config: ProjectConfig,
-  opts: RunOptions,
+  opts: RunCommandOptions,
 ): Promise<void> {
-  const runId = opts.runId ?? defaultRunId();
+  const { ui, uiPort, uiOpen, ...runOptions } = opts;
+  const runId = runOptions.runId ?? defaultRunId();
+  const uiRuntime = resolveUiRuntimeConfig(config.ui, {
+    enabled: ui,
+    port: uiPort,
+    openBrowser: uiOpen,
+  });
   const stopHandler = createRunStopSignalHandler({
     onSignal: (signal) => {
-      const containerNote = opts.stopContainersOnExit
+      const containerNote = runOptions.stopContainersOnExit
         ? "Stopping task containers before exit."
         : "Leaving task containers running so you can resume.";
       console.log(
@@ -20,15 +39,28 @@ export async function runCommand(
     },
   });
 
+  let uiStart: UiStartResult | null = null;
   let res: Awaited<ReturnType<typeof runProject>>;
   try {
+    uiStart = await launchUiServer({
+      projectName,
+      runId,
+      runtime: uiRuntime,
+      onError: "warn",
+    });
+    if (uiStart) {
+      console.log(`UI: ${uiStart.url}`);
+      await maybeOpenUiBrowser(uiStart.url, uiRuntime.openBrowser);
+    }
+
     res = await runProject(projectName, config, {
-      ...opts,
+      ...runOptions,
       runId,
       stopSignal: stopHandler.signal,
     });
   } finally {
     stopHandler.cleanup();
+    await closeUiServer(uiStart?.handle ?? null);
   }
 
   if (res.stopped) {
@@ -40,7 +72,7 @@ export async function runCommand(
     return;
   }
 
-  if (opts.dryRun) {
+  if (runOptions.dryRun) {
     printDryRunPlan(res.runId, res.plan);
     return;
   }
