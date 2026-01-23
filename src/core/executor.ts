@@ -67,6 +67,7 @@ import {
   validatorLogPath,
   validatorReportPath,
   runLogsDir,
+  runSummaryReportPath,
 } from "./paths.js";
 import { buildGreedyBatch, topologicalReady, type BatchPlan, type LockResolver } from "./scheduler.js";
 import { StateStore, findLatestRunId } from "./state-store.js";
@@ -735,6 +736,174 @@ function resolveCompliancePolicyForTier(input: {
   return (input.tier ?? 0) >= 2 ? "block" : "warn";
 }
 
+
+
+// =============================================================================
+// RUN METRICS
+// =============================================================================
+
+type RunMetrics = {
+  scopeViolations: {
+    warnCount: number;
+    blockCount: number;
+  };
+  fallbackRepoRootCount: number;
+  blastRadius: {
+    impactedComponentsTotal: number;
+    reports: number;
+  };
+  validation: {
+    doctorMsTotal: number;
+    checksetMsTotal: number;
+  };
+};
+
+type RunSummaryMetrics = {
+  scope_violations: {
+    warn_count: number;
+    block_count: number;
+  };
+  fallback_repo_root_count: number;
+  avg_impacted_components: number;
+  doctor_seconds_total: number;
+  checkset_seconds_total: number;
+  derived_lock_mode_enabled: boolean;
+  avg_batch_size: number;
+};
+
+type RunSummary = {
+  run_id: string;
+  project: string;
+  status: RunState["status"];
+  started_at: string;
+  completed_at: string;
+  control_plane: {
+    enabled: boolean;
+    lock_mode: ControlPlaneLockMode;
+    scope_mode: ControlPlaneScopeMode;
+  };
+  metrics: RunSummaryMetrics;
+};
+
+function createRunMetrics(input: {
+  derivedScopeReports: Map<string, DerivedScopeReport>;
+  fallbackResource: string;
+}): RunMetrics {
+  return {
+    scopeViolations: { warnCount: 0, blockCount: 0 },
+    fallbackRepoRootCount: countFallbackRepoRoot(input.derivedScopeReports, input.fallbackResource),
+    blastRadius: { impactedComponentsTotal: 0, reports: 0 },
+    validation: { doctorMsTotal: 0, checksetMsTotal: 0 },
+  };
+}
+
+function countFallbackRepoRoot(
+  reports: Map<string, DerivedScopeReport>,
+  fallbackResource: string,
+): number {
+  const fallback = fallbackResource.trim();
+  if (!fallback) return 0;
+
+  let count = 0;
+  for (const report of reports.values()) {
+    if (report.confidence !== "low") continue;
+    if (report.derived_write_resources.includes(fallback)) {
+      count += 1;
+    }
+  }
+
+  return count;
+}
+
+function recordScopeViolations(metrics: RunMetrics, result: ManifestComplianceResult): void {
+  if (result.violations.length === 0) return;
+
+  if (result.status === "warn") {
+    metrics.scopeViolations.warnCount += result.violations.length;
+    return;
+  }
+
+  if (result.status === "block") {
+    metrics.scopeViolations.blockCount += result.violations.length;
+  }
+}
+
+function recordBlastRadius(
+  metrics: RunMetrics,
+  report: ControlPlaneBlastRadiusReport,
+): void {
+  metrics.blastRadius.impactedComponentsTotal += report.impacted_components.length;
+  metrics.blastRadius.reports += 1;
+}
+
+function recordDoctorDuration(metrics: RunMetrics, durationMs: number): void {
+  metrics.validation.doctorMsTotal += Math.max(0, durationMs);
+}
+
+function recordChecksetDuration(metrics: RunMetrics, durationMs: number): void {
+  metrics.validation.checksetMsTotal += Math.max(0, durationMs);
+}
+
+function buildRunSummary(input: {
+  runId: string;
+  projectName: string;
+  state: RunState;
+  lockMode: ControlPlaneLockMode;
+  scopeMode: ControlPlaneScopeMode;
+  controlPlaneEnabled: boolean;
+  metrics: RunMetrics;
+}): RunSummary {
+  const totalBatchTasks = input.state.batches.reduce(
+    (sum, batch) => sum + batch.tasks.length,
+    0,
+  );
+  const avgBatchSize = averageRounded(totalBatchTasks, input.state.batches.length, 2);
+  const avgImpacted = averageRounded(
+    input.metrics.blastRadius.impactedComponentsTotal,
+    input.metrics.blastRadius.reports,
+    2,
+  );
+
+  return {
+    run_id: input.runId,
+    project: input.projectName,
+    status: input.state.status,
+    started_at: input.state.started_at,
+    completed_at: input.state.updated_at,
+    control_plane: {
+      enabled: input.controlPlaneEnabled,
+      lock_mode: input.lockMode,
+      scope_mode: input.scopeMode,
+    },
+    metrics: {
+      scope_violations: {
+        warn_count: input.metrics.scopeViolations.warnCount,
+        block_count: input.metrics.scopeViolations.blockCount,
+      },
+      fallback_repo_root_count: input.metrics.fallbackRepoRootCount,
+      avg_impacted_components: avgImpacted,
+      doctor_seconds_total: secondsFromMs(input.metrics.validation.doctorMsTotal),
+      checkset_seconds_total: secondsFromMs(input.metrics.validation.checksetMsTotal),
+      derived_lock_mode_enabled: input.lockMode === "derived",
+      avg_batch_size: avgBatchSize,
+    },
+  };
+}
+
+function averageRounded(total: number, count: number, decimals: number): number {
+  if (count === 0) return 0;
+  return roundToDecimals(total / count, decimals);
+}
+
+function secondsFromMs(durationMs: number): number {
+  return roundToDecimals(durationMs / 1000, 3);
+}
+
+function roundToDecimals(value: number, decimals: number): number {
+  if (!Number.isFinite(value)) return 0;
+  return Number(value.toFixed(decimals));
+}
+
 export async function runProject(
   projectName: string,
   config: ProjectConfig,
@@ -942,6 +1111,10 @@ export async function runProject(
     controlPlaneConfig,
     controlPlaneSnapshot,
     orchestratorLog: orchLog,
+  });
+  const runMetrics = createRunMetrics({
+    derivedScopeReports,
+    fallbackResource: controlPlaneConfig.fallbackResource,
   });
   const policyDecisions = new Map<string, PolicyDecision>();
   const lockResolver = buildTaskLockResolver({
@@ -1474,6 +1647,7 @@ export async function runProject(
     reportPath: string;
     result: ManifestComplianceResult;
   }): void {
+    recordScopeViolations(runMetrics, args.result);
     const basePayload = {
       task_slug: args.taskSlug,
       policy: args.policy,
@@ -1559,7 +1733,7 @@ export async function runProject(
 
       if (blastContext && taskSpec) {
         try {
-          await emitBlastRadiusReport({
+          const report = await emitBlastRadiusReport({
             repoPath,
             runId,
             task: taskSpec,
@@ -1567,6 +1741,9 @@ export async function runProject(
             blastContext,
             orchestratorLog: orchLog,
           });
+          if (report) {
+            recordBlastRadius(runMetrics, report);
+          }
         } catch (error) {
           logOrchestratorEvent(orchLog, "task.blast_radius.error", {
             taskId: r.taskId,
@@ -1710,6 +1887,7 @@ export async function runProject(
 
         let testResult: TestValidationReport | null = null;
         let testError: string | null = null;
+        const testStartedAt = Date.now();
         try {
           testResult = await runTestValidator({
             projectName,
@@ -1731,6 +1909,8 @@ export async function runProject(
             taskId: r.taskId,
             message: testError,
           });
+        } finally {
+          recordChecksetDuration(runMetrics, Date.now() - testStartedAt);
         }
 
         const outcome = await summarizeTestValidatorResult(reportPath, testResult, testError);
@@ -1804,6 +1984,7 @@ export async function runProject(
       shouldRunDoctorValidatorCadence &&
       !stopReason
     ) {
+      const doctorStartedAt = Date.now();
       const doctorOutcome = await runDoctorValidatorWithReport({
         projectName,
         repoPath,
@@ -1817,6 +1998,7 @@ export async function runProject(
         orchestratorLog: orchLog,
         logger: doctorValidatorLog ?? undefined,
       });
+      recordDoctorDuration(runMetrics, Date.now() - doctorStartedAt);
       doctorValidatorLastCount = finishedCount;
 
       if (doctorOutcome) {
@@ -1904,12 +2086,14 @@ export async function runProject(
           batch_id: params.batchId,
           command: config.doctor,
         });
+        const doctorIntegrationStartedAt = Date.now();
         const doctorRes = await execaCommand(config.doctor, {
           cwd: repoPath,
           shell: true,
           reject: false,
           timeout: config.doctor_timeout ? config.doctor_timeout * 1000 : undefined,
         });
+        recordDoctorDuration(runMetrics, Date.now() - doctorIntegrationStartedAt);
         lastIntegrationDoctorOutput = `${doctorRes.stdout}\n${doctorRes.stderr}`.trim();
         const doctorExitCode = doctorRes.exitCode ?? -1;
         lastIntegrationDoctorExitCode = doctorExitCode;
@@ -1926,11 +2110,13 @@ export async function runProject(
 
         if (doctorOk) {
           logOrchestratorEvent(orchLog, "doctor.canary.start", { batch_id: params.batchId });
+          const doctorCanaryStartedAt = Date.now();
           doctorCanaryResult = await runDoctorCanary({
             command: config.doctor,
             cwd: repoPath,
             timeoutSeconds: config.doctor_timeout,
           });
+          recordDoctorDuration(runMetrics, Date.now() - doctorCanaryStartedAt);
           lastIntegrationDoctorCanary = doctorCanaryResult;
 
           if (doctorCanaryResult.status === "unexpected_pass") {
@@ -1967,6 +2153,7 @@ export async function runProject(
       successfulTasks.length > 0 &&
       !stopReason
     ) {
+      const doctorStartedAt = Date.now();
       const doctorOutcome = await runDoctorValidatorWithReport({
         projectName,
         repoPath,
@@ -1980,6 +2167,7 @@ export async function runProject(
         orchestratorLog: orchLog,
         logger: doctorValidatorLog ?? undefined,
       });
+      recordDoctorDuration(runMetrics, Date.now() - doctorStartedAt);
 
       doctorValidatorLastCount = completed.size + failed.size;
 
@@ -2059,6 +2247,7 @@ export async function runProject(
       shouldRunDoctorValidatorSuspicious &&
       !stopReason
     ) {
+      const doctorStartedAt = Date.now();
       const doctorOutcome = await runDoctorValidatorWithReport({
         projectName,
         repoPath,
@@ -2073,6 +2262,7 @@ export async function runProject(
         orchestratorLog: orchLog,
         logger: doctorValidatorLog ?? undefined,
       });
+      recordDoctorDuration(runMetrics, Date.now() - doctorStartedAt);
 
       doctorValidatorLastCount = postMergeFinishedCount;
 
@@ -2527,6 +2717,31 @@ export async function runProject(
     state.status = failed.size > 0 ? "failed" : "complete";
   }
   await stateStore.save(state);
+
+  const runSummary = buildRunSummary({
+    runId,
+    projectName,
+    state,
+    lockMode,
+    scopeMode: scopeComplianceMode,
+    controlPlaneEnabled: controlPlaneConfig.enabled,
+    metrics: runMetrics,
+  });
+  const runSummaryPath = runSummaryReportPath(repoPath, runId);
+  try {
+    await writeJsonFile(runSummaryPath, runSummary);
+    logOrchestratorEvent(orchLog, "run.summary", {
+      status: state.status,
+      report_path: runSummaryPath,
+      metrics: runSummary.metrics,
+    });
+  } catch (error) {
+    logOrchestratorEvent(orchLog, "run.summary.error", {
+      status: state.status,
+      report_path: runSummaryPath,
+      message: formatErrorMessage(error),
+    });
+  }
 
   logOrchestratorEvent(orchLog, "run.complete", { status: state.status });
   closeValidatorLogs();

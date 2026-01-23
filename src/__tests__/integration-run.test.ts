@@ -68,6 +68,15 @@ describe("integration: plan + run (mock LLM)", () => {
     });
 
     const headAfter = await gitHead(repoDir, config.main_branch);
+    const runSummaryPath = path.join(
+      repoDir,
+      ".mycelium",
+      "reports",
+      "control-plane",
+      "run-summary",
+      `${runResult.runId}.json`,
+    );
+    const runSummary = await fse.readJson(runSummaryPath);
 
     const writtenFiles = await Promise.all([
       fs.readFile(path.join(repoDir, "notes/release-notes.txt"), "utf8"),
@@ -80,6 +89,20 @@ describe("integration: plan + run (mock LLM)", () => {
     expect(runResult.state.batches.every((b) => b.integration_doctor_passed === true)).toBe(true);
     expect(writtenFiles[0]).toContain("Mock update");
     expect(writtenFiles[1]).toContain("Mock update");
+    expect(runSummary).toMatchObject({
+      run_id: runResult.runId,
+      project: "toy-project",
+      status: "complete",
+      metrics: {
+        scope_violations: { warn_count: 0, block_count: 0 },
+        fallback_repo_root_count: 0,
+        avg_impacted_components: 0,
+        derived_lock_mode_enabled: false,
+      },
+    });
+    expect(runSummary.metrics.avg_batch_size).toBe(2);
+    expect(runSummary.metrics.doctor_seconds_total).toBeTypeOf("number");
+    expect(runSummary.metrics.checkset_seconds_total).toBeTypeOf("number");
   });
 });
 

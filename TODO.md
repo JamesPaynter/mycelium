@@ -33,7 +33,7 @@
 - [ ] [073 - Surface-aware gates + optional surface locks](.mycelium/tasks/073-surface-aware-gates-optional-surface-locks/spec.md) (Effort <M>, Tier <standard>)
 - [ ] [074 - Autonomy tiers (risk classification that drives enforcement)](.mycelium/tasks/074-autonomy-tiers-risk-classification-that-drives-enforcement/spec.md) (Effort <M>, Tier <standard>)
 - [ ] [075 - Policy transparency: cp policy eval + per-task artifacts](.mycelium/tasks/075-policy-transparency-cp-policy-eval-per-task-artifacts/spec.md) (Effort <S>, Tier <standard>)
-- [ ] [076 - Metrics + feedback loop for Phase B (prove value, guide simplification)](.mycelium/tasks/076-metrics-feedback-loop-for-phase-b-prove-value-guide-simplification/spec.md) (Effort <S>, Tier <standard>)
+- [x] [076 - Metrics + feedback loop for Phase B (prove value, guide simplification)](.mycelium/tasks/076-metrics-feedback-loop-for-phase-b-prove-value-guide-simplification/spec.md) (Effort <S>, Tier <standard>)
 
 - [ ] ALL_TASKS_COMPLETE
 

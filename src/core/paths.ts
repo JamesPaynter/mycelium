@@ -214,6 +214,17 @@ export function taskPolicyReportPath(
   );
 }
 
+export function runSummaryReportPath(repoPath: string, runId: string): string {
+  return path.join(
+    repoPath,
+    ".mycelium",
+    "reports",
+    "control-plane",
+    "run-summary",
+    `${runId}.json`,
+  );
+}
+
 export function plannerHomeDir(projectName: string): string {
   return path.join(orchestratorHome(), "codex", projectName, "planner");
 }
