@@ -12,6 +12,7 @@ LLM-driven planner and Docker-isolated Codex workers that plan tasks, run them i
 
 ## Docs
 - Spec traceability matrix: `docs/spec-traceability.md` maps each spec principle to code, tests, and drills.
+- Control plane navigation tools: `docs/control-plane/repo-navigation-tools.md`.
 
 ## Run an autopilot pass
 1) Install deps: `npm install` (Node 20+).  
