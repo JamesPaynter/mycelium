@@ -200,6 +200,52 @@ describe("runManifestCompliance", () => {
       violationsByPath.get("apps/api/index.ts")?.guidance?.map((item) => item.action),
     ).toEqual(["expand_scope", "split_task"]);
   });
+
+  it("uses static resources when provided, even if derived resources are present", async () => {
+    const repo = await createRepo();
+    tempDirs.push(repo);
+
+    await execa("git", ["checkout", "-b", "agent/004"], { cwd: repo });
+    await fse.outputFile(path.join(repo, "apps", "api", "index.ts"), "export const api = true;\n");
+    await execa("git", ["add", "."], { cwd: repo });
+    await execa("git", ["commit", "-m", "Add api change"], { cwd: repo });
+
+    const manifest: TaskManifest = {
+      id: "004",
+      name: "api-change",
+      description: "Update api",
+      estimated_minutes: 10,
+      dependencies: [],
+      locks: { reads: [], writes: [] },
+      files: { reads: [], writes: [] },
+      affected_tests: [],
+      test_paths: [],
+      tdd_mode: "off",
+      verify: { doctor: "npm test" },
+    };
+
+    const resources: ResourceConfig[] = [
+      { name: "component:api", description: "API", paths: ["apps/api/**"] },
+      { name: "docs", description: "Docs", paths: ["docs/**"] },
+    ];
+
+    const staticResources: ResourceConfig[] = [
+      { name: "docs", description: "Docs", paths: ["docs/**"] },
+    ];
+
+    const result = await runManifestCompliance({
+      workspacePath: repo,
+      mainBranch: "main",
+      manifest,
+      resources,
+      staticResources,
+      fallbackResource: "repo-root",
+      policy: "warn",
+    });
+
+    const changed = result.changedFiles.find((file) => file.path === "apps/api/index.ts");
+    expect(changed?.resources).toEqual(["repo-root"]);
+  });
 });
 
 describe("resolveResourcesForFile", () => {
