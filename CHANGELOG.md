@@ -3,6 +3,7 @@
 ## 2026-01-23
 - Added commit-addressed Control Plane model storage with build locks, metadata, and `cp build`/`cp info` lifecycle commands.
 - Pinned runs to Control Plane base SHA snapshots, persisted metadata in run state, and added resume coverage to keep the base SHA stable.
+- Added derived scope shadow reports that expand manifest write intent to component resources/paths, emit per-task artifacts, and log orchestrator events.
 
 ## 2026-01-22
 - Added TypeScript symbol reference lookup via the language service, plus `cp symbols refs` CLI options and tests.
