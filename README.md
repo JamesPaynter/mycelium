@@ -50,8 +50,8 @@ npm run dev -- autopilot --project <project-name> --local-worker --max-parallel 
 ## Config quick reference
 - Planner/worker models: set `planner` and `worker` blocks (providers: `openai`, `anthropic`, `codex`, `mock`; `reasoning_effort` supported).
 - Resources: `resources[].paths` drive scheduler locks; manifests declare `locks.reads/writes` and `files.reads/writes`.
-- Control plane: `control_plane.enabled` derives component resources (`component_resource_prefix`), uses `fallback_resource` for unmapped files, and `lock_mode` selects declared/shadow/derived scheduling.
-- Manifest enforcement: `manifest_enforcement: off|warn|block`; violations emit `access.requested` and trigger auto-rescope (adds locks/files, resets task to pending) when possible.
+- Control plane: `control_plane.enabled` derives component resources (`component_resource_prefix`), uses `fallback_resource` for unmapped files, `scope_mode` controls compliance enforcement (off/shadow/enforce), and `lock_mode` selects declared/shadow/derived scheduling.
+- Manifest enforcement: `manifest_enforcement: off|warn|block`; violations emit `access.requested` and trigger auto-rescope when possible, unless `control_plane.scope_mode=shadow`.
 - Validators: `test_validator` and `doctor_validator` respect `enabled` + `mode` (`warn|block`); doctor validator cadence via `run_every_n_tasks` and also when integration doctor fails or the canary passes unexpectedly.
 - Budgets: `budgets.mode warn|block` with `max_tokens_per_task` / `max_cost_per_run`; defaults warn.
 - Docker: `docker.image`, `dockerfile`, `build_context`, `user`, `network_mode`, `memory_mb`, `cpu_quota`, `pids_limit`; `--local-worker` skips Docker.

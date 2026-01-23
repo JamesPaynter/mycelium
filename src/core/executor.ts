@@ -24,6 +24,7 @@ import { resolveCodexReasoningEffort } from "./codex-reasoning.js";
 import type {
   ControlPlaneLockMode,
   ControlPlaneResourcesMode,
+  ControlPlaneScopeMode,
   DoctorValidatorConfig,
   ManifestEnforcementPolicy,
   ProjectConfig,
@@ -90,7 +91,11 @@ import { runTestValidator, type TestValidationReport } from "../validators/test-
 import { runWorker } from "../../worker/loop.js";
 import type { WorkerLogger, WorkerLogEventInput } from "../../worker/logging.js";
 import { loadWorkerState, type WorkerCheckpoint } from "../../worker/state.js";
-import { runManifestCompliance, type ManifestComplianceResult } from "./manifest-compliance.js";
+import {
+  runManifestCompliance,
+  type ManifestComplianceResult,
+  type ResourceOwnershipResolver,
+} from "./manifest-compliance.js";
 import { computeRescopeFromCompliance } from "./manifest-rescope.js";
 import { isMockLlmEnabled } from "../llm/mock.js";
 import { buildControlPlaneModel } from "../control-plane/model/build.js";
@@ -98,6 +103,7 @@ import { ControlPlaneStore } from "../control-plane/storage.js";
 import type { ControlPlaneModel } from "../control-plane/model/schema.js";
 import {
   createComponentOwnerResolver,
+  createComponentOwnershipResolver,
   deriveComponentResources,
 } from "../control-plane/integration/resources.js";
 import {
@@ -256,6 +262,7 @@ type ControlPlaneRunConfig = {
   componentResourcePrefix: string;
   fallbackResource: string;
   resourcesMode: ControlPlaneResourcesMode;
+  scopeMode: ControlPlaneScopeMode;
   lockMode: ControlPlaneLockMode;
 };
 
@@ -266,12 +273,17 @@ function resolveControlPlaneConfig(config: ProjectConfig): ControlPlaneRunConfig
     componentResourcePrefix: raw.component_resource_prefix ?? "component:",
     fallbackResource: raw.fallback_resource ?? "repo-root",
     resourcesMode: raw.resources_mode ?? "prefer-derived",
+    scopeMode: raw.scope_mode ?? "enforce",
     lockMode: raw.lock_mode ?? "declared",
   };
 }
 
 function resolveEffectiveLockMode(config: ControlPlaneRunConfig): ControlPlaneLockMode {
   return config.enabled ? config.lockMode : "declared";
+}
+
+function resolveScopeComplianceMode(config: ControlPlaneRunConfig): ControlPlaneScopeMode {
+  return config.enabled ? config.scopeMode : "enforce";
 }
 
 async function buildControlPlaneSnapshot(input: {
@@ -308,6 +320,7 @@ type ResourceResolutionContext = {
   staticResources: ResourceConfig[];
   knownResources: string[];
   ownerResolver?: (filePath: string) => string | null;
+  ownershipResolver?: ResourceOwnershipResolver;
   fallbackResource: string;
   resourcesMode: ControlPlaneResourcesMode;
 };
@@ -345,6 +358,7 @@ async function buildResourceResolutionContext(input: {
   const resourcesMode = input.controlPlaneConfig.resourcesMode;
   const derivedResources: ResourceConfig[] = [];
   let ownerResolver: ((filePath: string) => string | null) | undefined;
+  let ownershipResolver: ResourceOwnershipResolver | undefined;
 
   const loadedModel = await loadControlPlaneModel({
     enabled: input.controlPlaneConfig.enabled,
@@ -363,6 +377,10 @@ async function buildResourceResolutionContext(input: {
       model: loadedModel.model,
       componentResourcePrefix: input.controlPlaneConfig.componentResourcePrefix,
     });
+    ownershipResolver = createComponentOwnershipResolver({
+      model: loadedModel.model,
+      componentResourcePrefix: input.controlPlaneConfig.componentResourcePrefix,
+    });
   }
 
   const knownResources = mergeResourceNames({
@@ -375,6 +393,7 @@ async function buildResourceResolutionContext(input: {
     staticResources: input.staticResources,
     knownResources,
     ownerResolver,
+    ownershipResolver,
     fallbackResource,
     resourcesMode,
   };
@@ -552,45 +571,52 @@ export async function runProject(
     const containerUser = config.docker.user;
     const controlPlaneConfig = resolveControlPlaneConfig(config);
     const lockMode = resolveEffectiveLockMode(controlPlaneConfig);
-  const docker = useDocker ? dockerClient() : null;
-  const manifestPolicy: ManifestEnforcementPolicy = config.manifest_enforcement ?? "warn";
-  const costPer1kTokens = DEFAULT_COST_PER_1K_TOKENS;
-  const mockLlmMode = isMockLlmEnabled() || config.worker.model === "mock";
-  let stopRequested: StopRequest | null = null;
-  let state: RunState;
+    const scopeComplianceMode = resolveScopeComplianceMode(controlPlaneConfig);
+    const shouldEnforceCompliance = scopeComplianceMode === "enforce";
+    const docker = useDocker ? dockerClient() : null;
+    const manifestPolicy: ManifestEnforcementPolicy = config.manifest_enforcement ?? "warn";
+    const compliancePolicy: ManifestEnforcementPolicy =
+      scopeComplianceMode === "off" ? "off" : manifestPolicy;
+    const costPer1kTokens = DEFAULT_COST_PER_1K_TOKENS;
+    const mockLlmMode = isMockLlmEnabled() || config.worker.model === "mock";
+    let stopRequested: StopRequest | null = null;
+    let state: RunState;
 
-  // Prepare directories
-  await ensureDir(orchestratorHome());
-  const stateStore = new StateStore(projectName, runId);
-  const orchLog = new JsonlLogger(orchestratorLogPath(projectName, runId), { runId });
-  const testValidatorConfig = config.test_validator;
-  const testValidatorMode = resolveValidatorMode(testValidatorConfig);
-  const testValidatorEnabled = testValidatorMode !== "off";
-  const doctorValidatorConfig = config.doctor_validator;
-  const doctorValidatorMode = resolveValidatorMode(doctorValidatorConfig);
-  const doctorValidatorEnabled = doctorValidatorMode !== "off";
-  let testValidatorLog: JsonlLogger | null = null;
-  let doctorValidatorLog: JsonlLogger | null = null;
-  const closeValidatorLogs = (): void => {
-    if (testValidatorLog) {
-      testValidatorLog.close();
-    }
-    if (doctorValidatorLog) {
-      doctorValidatorLog.close();
-    }
-  };
+    // Prepare directories
+    await ensureDir(orchestratorHome());
+    const stateStore = new StateStore(projectName, runId);
+    const orchLog = new JsonlLogger(orchestratorLogPath(projectName, runId), { runId });
+    const testValidatorConfig = config.test_validator;
+    const testValidatorMode = resolveValidatorMode(testValidatorConfig);
+    const testValidatorEnabled = testValidatorMode !== "off";
+    const doctorValidatorConfig = config.doctor_validator;
+    const doctorValidatorMode = resolveValidatorMode(doctorValidatorConfig);
+    const doctorValidatorEnabled = doctorValidatorMode !== "off";
+    let testValidatorLog: JsonlLogger | null = null;
+    let doctorValidatorLog: JsonlLogger | null = null;
+    const closeValidatorLogs = (): void => {
+      if (testValidatorLog) {
+        testValidatorLog.close();
+      }
+      if (doctorValidatorLog) {
+        doctorValidatorLog.close();
+      }
+    };
 
-  logOrchestratorEvent(orchLog, "run.start", {
-    project: projectName,
-    repo_path: repoPath,
-  });
+    logOrchestratorEvent(orchLog, "run.start", {
+      project: projectName,
+      repo_path: repoPath,
+    });
 
-  // Ensure repo is clean and on integration branch.
-  await ensureCleanWorkingTree(repoPath);
-  await checkout(repoPath, config.main_branch).catch(async () => {
-    // If branch doesn't exist, create it from current HEAD.
-    await execa("git", ["checkout", "-b", config.main_branch], { cwd: repoPath, stdio: "pipe" });
-  });
+    // Ensure repo is clean and on integration branch.
+    await ensureCleanWorkingTree(repoPath);
+    await checkout(repoPath, config.main_branch).catch(async () => {
+      // If branch doesn't exist, create it from current HEAD.
+      await execa("git", ["checkout", "-b", config.main_branch], {
+        cwd: repoPath,
+        stdio: "pipe",
+      });
+    });
 
   const runResumeReason = isResume ? "resume_command" : "existing_state";
   const hadExistingState = await stateStore.exists();
@@ -1210,12 +1236,14 @@ export async function runProject(
     taskId: string;
     taskSlug: string;
     policy: ManifestEnforcementPolicy;
+    scopeMode: ControlPlaneScopeMode;
     reportPath: string;
     result: ManifestComplianceResult;
   }): void {
     const basePayload = {
       task_slug: args.taskSlug,
       policy: args.policy,
+      scope_mode: args.scopeMode,
       status: args.result.status,
       report_path: args.reportPath,
       changed_files: args.result.changedFiles.length,
@@ -1242,6 +1270,10 @@ export async function runProject(
         file: violation.path,
         resources: violation.resources,
         reasons: violation.reasons,
+        ...(violation.component_owners
+          ? { component_owners: violation.component_owners }
+          : {}),
+        ...(violation.guidance ? { guidance: violation.guidance } : {}),
         policy: args.policy,
         enforcement: args.result.status,
         report_path: args.reportPath,
@@ -1331,20 +1363,22 @@ export async function runProject(
         resources: resourceContext.staticResources,
         fallbackResource: resourceContext.fallbackResource,
         ownerResolver: resourceContext.ownerResolver,
+        ownershipResolver: resourceContext.ownershipResolver,
         resourcesMode: resourceContext.resourcesMode,
-        policy: manifestPolicy,
+        policy: compliancePolicy,
         reportPath: complianceReportPath,
       });
 
       logComplianceEvents({
         taskId: r.taskId,
         taskSlug: r.taskSlug,
-        policy: manifestPolicy,
+        policy: compliancePolicy,
+        scopeMode: scopeComplianceMode,
         reportPath: complianceReportPath,
         result: compliance,
       });
 
-      if (compliance.violations.length > 0) {
+      if (compliance.violations.length > 0 && shouldEnforceCompliance) {
         const violationSummary = describeManifestViolations(compliance);
         const rescopeReason = `Rescope required: ${violationSummary}`;
         markTaskRescopeRequired(state, r.taskId, rescopeReason);
@@ -1352,7 +1386,7 @@ export async function runProject(
           taskId: r.taskId,
           violations: compliance.violations.length,
           report_path: complianceReportPath,
-          policy: manifestPolicy,
+          policy: compliancePolicy,
         });
 
         const rescope = computeRescopeFromCompliance(taskSpec.manifest, compliance);

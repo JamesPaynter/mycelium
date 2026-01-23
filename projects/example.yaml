@@ -69,6 +69,7 @@ control_plane:
   component_resource_prefix: "component:"
   fallback_resource: "repo-root"
   resources_mode: "prefer-derived"
+  scope_mode: "enforce"
 
 planner:
   provider: codex

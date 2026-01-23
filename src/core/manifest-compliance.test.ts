@@ -6,7 +6,11 @@ import fse from "fs-extra";
 import { afterEach, describe, expect, it } from "vitest";
 
 import type { ResourceConfig } from "./config.js";
-import { resolveResourcesForFile, runManifestCompliance } from "./manifest-compliance.js";
+import {
+  resolveResourcesForFile,
+  runManifestCompliance,
+  type ResourceOwnershipResolver,
+} from "./manifest-compliance.js";
 import type { TaskManifest } from "./task-manifest.js";
 
 describe("runManifestCompliance", () => {
@@ -105,6 +109,96 @@ describe("runManifestCompliance", () => {
     expect(result.violations).not.toHaveLength(0);
     expect(result.violations[0]?.reasons).toContain("resource_not_locked_for_write");
     expect(result.violations[0]?.reasons).toContain("file_not_declared_for_write");
+  });
+
+  it("reports component resources for violations across multiple components", async () => {
+    const repo = await createRepo();
+    tempDirs.push(repo);
+
+    await execa("git", ["checkout", "-b", "agent/003"], { cwd: repo });
+    await fse.outputFile(path.join(repo, "apps", "api", "index.ts"), "export const api = true;\n");
+    await fse.outputFile(path.join(repo, "apps", "web", "index.ts"), "export const web = true;\n");
+    await execa("git", ["add", "."], { cwd: repo });
+    await execa("git", ["commit", "-m", "Add component changes"], { cwd: repo });
+
+    const manifest: TaskManifest = {
+      id: "003",
+      name: "multi-component-change",
+      description: "Update multiple components",
+      estimated_minutes: 10,
+      dependencies: [],
+      locks: { reads: [], writes: [] },
+      files: { reads: [], writes: [] },
+      affected_tests: [],
+      test_paths: [],
+      tdd_mode: "off",
+      verify: { doctor: "npm test" },
+    };
+
+    const resources: ResourceConfig[] = [
+      { name: "backend", description: "Backend", paths: ["src/**"] },
+    ];
+
+    const ownerResolver = (file: string): string | null => {
+      if (file.startsWith("apps/api/")) return "component:api";
+      if (file.startsWith("apps/web/")) return "component:web";
+      return null;
+    };
+
+    const ownershipResolver: ResourceOwnershipResolver = (file) => {
+      if (file.startsWith("apps/api/")) {
+        return [
+          {
+            component_id: "api",
+            component_name: "API",
+            resource: "component:api",
+            root: "apps/api",
+          },
+        ];
+      }
+      if (file.startsWith("apps/web/")) {
+        return [
+          {
+            component_id: "web",
+            component_name: "Web",
+            resource: "component:web",
+            root: "apps/web",
+          },
+        ];
+      }
+      return null;
+    };
+
+    const result = await runManifestCompliance({
+      workspacePath: repo,
+      mainBranch: "main",
+      manifest,
+      resources,
+      fallbackResource: "repo-root",
+      ownerResolver,
+      ownershipResolver,
+      policy: "warn",
+    });
+
+    expect(result.violations).toHaveLength(2);
+
+    const violationsByPath = new Map(
+      result.violations.map((violation) => [violation.path, violation]),
+    );
+
+    expect(violationsByPath.get("apps/api/index.ts")?.resources).toEqual(["component:api"]);
+    expect(violationsByPath.get("apps/web/index.ts")?.resources).toEqual(["component:web"]);
+    expect(violationsByPath.get("apps/api/index.ts")?.component_owners).toEqual([
+      {
+        component_id: "api",
+        component_name: "API",
+        resource: "component:api",
+        root: "apps/api",
+      },
+    ]);
+    expect(
+      violationsByPath.get("apps/api/index.ts")?.guidance?.map((item) => item.action),
+    ).toEqual(["expand_scope", "split_task"]);
   });
 });
 

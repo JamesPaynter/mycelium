@@ -7,6 +7,16 @@ The `control_plane.lock_mode` setting controls how it is used:
 - `shadow`: write artifacts; scheduling uses manifest locks.
 - `derived`: write artifacts; scheduling uses derived locks (low confidence widens to the fallback resource).
 
+## Scope compliance rollout
+
+Use `control_plane.scope_mode` to control how graph-backed compliance is enforced:
+
+- `off`: skip control-plane scope compliance (reports show `status: skipped`).
+- `shadow`: compute compliance reports and `access.requested` events, but do not rescope or block.
+- `enforce`: run compliance and enforce `manifest_enforcement` (warn/block) as usual.
+
+`manifest_enforcement` remains the warn/block policy when `scope_mode=enforce`.
+
 ## Artifact location
 
 Each task writes one JSON report at:

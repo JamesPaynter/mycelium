@@ -10,6 +10,15 @@ import type { ResourceConfig } from "../../core/config.js";
 
 export type ComponentOwnerResolver = (filePath: string) => string | null;
 
+export type ComponentOwnershipDetail = {
+  component_id: string;
+  component_name: string;
+  resource: string;
+  root: string;
+};
+
+export type ComponentOwnershipResolver = (filePath: string) => ComponentOwnershipDetail[] | null;
+
 export type DeriveComponentResourcesInput = {
   repoPath: string;
   baseSha: string;
@@ -41,11 +50,41 @@ export function createComponentOwnerResolver(options: {
   const prefix = options.componentResourcePrefix;
 
   return (filePath: string) => {
-    const match = resolveOwnershipForPath(options.model.ownership, options.model.components, filePath);
+    const match = resolveOwnershipForPath(
+      options.model.ownership,
+      options.model.components,
+      filePath,
+    );
     if (!match.owner) {
       return null;
     }
     return `${prefix}${match.owner.component.id}`;
+  };
+}
+
+export function createComponentOwnershipResolver(options: {
+  model: ControlPlaneModel;
+  componentResourcePrefix: string;
+}): ComponentOwnershipResolver {
+  const prefix = options.componentResourcePrefix;
+
+  return (filePath: string) => {
+    const match = resolveOwnershipForPath(
+      options.model.ownership,
+      options.model.components,
+      filePath,
+    );
+    if (!match.owner) {
+      return null;
+    }
+
+    const candidates = match.candidates.length > 0 ? match.candidates : [match.owner];
+    return candidates.map((candidate) => ({
+      component_id: candidate.component.id,
+      component_name: candidate.component.name,
+      resource: `${prefix}${candidate.component.id}`,
+      root: candidate.root,
+    }));
   };
 }
 
