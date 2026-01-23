@@ -1,7 +1,11 @@
-# Derived Scope Artifacts (Shadow Mode)
+# Derived Scope Artifacts (Shadow + Derived Modes)
 
 Derived scope is computed per task to compare declared locks/files with control-plane ownership.
-This is **shadow-only**: it does not change scheduling or enforcement yet.
+The `control_plane.lock_mode` setting controls how it is used:
+
+- `declared`: no derived artifacts; scheduling uses manifest locks.
+- `shadow`: write artifacts; scheduling uses manifest locks.
+- `derived`: write artifacts; scheduling uses derived locks (low confidence widens to the fallback resource).
 
 ## Artifact location
 
@@ -21,6 +25,7 @@ Orchestrator events include the `report_path` in `task.derived_scope`.
   "task_name": "Derived scope test",
   "derived_write_resources": ["component:acme-web-app"],
   "derived_write_paths": ["apps/web/**"],
+  "derived_locks": { "reads": [], "writes": ["component:acme-web-app"] },
   "confidence": "high",
   "notes": [],
   "manifest": {

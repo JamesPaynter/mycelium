@@ -61,6 +61,10 @@ function expectReport(
   } else {
     expect(report.derived_write_paths).toBeUndefined();
   }
+  expect(report.derived_locks).toEqual({
+    reads: [],
+    writes: expected.resources,
+  });
   expect(report.confidence).toBe(expected.confidence);
 }
 

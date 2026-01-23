@@ -22,6 +22,7 @@ import { ensureCodexAuthForHome } from "./codexAuth.js";
 import { resolveCodexReasoningEffort } from "./codex-reasoning.js";
 
 import type {
+  ControlPlaneLockMode,
   ControlPlaneResourcesMode,
   DoctorValidatorConfig,
   ManifestEnforcementPolicy,
@@ -45,7 +46,7 @@ import {
   type JsonObject,
 } from "./logger.js";
 import { loadTaskSpecs } from "./task-loader.js";
-import type { TaskSpec } from "./task-manifest.js";
+import { normalizeLocks, type TaskSpec } from "./task-manifest.js";
 import {
   orchestratorHome,
   orchestratorLogPath,
@@ -60,7 +61,7 @@ import {
   validatorReportPath,
   runLogsDir,
 } from "./paths.js";
-import { buildGreedyBatch, topologicalReady, type BatchPlan } from "./scheduler.js";
+import { buildGreedyBatch, topologicalReady, type BatchPlan, type LockResolver } from "./scheduler.js";
 import { StateStore, findLatestRunId } from "./state-store.js";
 import {
   completeBatch,
@@ -102,6 +103,7 @@ import {
 import {
   createDerivedScopeSnapshot,
   deriveTaskWriteScopeReport,
+  type DerivedScopeReport,
 } from "../control-plane/integration/derived-scope.js";
 
 const LABEL_PREFIX = "mycelium";
@@ -254,6 +256,7 @@ type ControlPlaneRunConfig = {
   componentResourcePrefix: string;
   fallbackResource: string;
   resourcesMode: ControlPlaneResourcesMode;
+  lockMode: ControlPlaneLockMode;
 };
 
 function resolveControlPlaneConfig(config: ProjectConfig): ControlPlaneRunConfig {
@@ -263,7 +266,12 @@ function resolveControlPlaneConfig(config: ProjectConfig): ControlPlaneRunConfig
     componentResourcePrefix: raw.component_resource_prefix ?? "component:",
     fallbackResource: raw.fallback_resource ?? "repo-root",
     resourcesMode: raw.resources_mode ?? "prefer-derived",
+    lockMode: raw.lock_mode ?? "declared",
   };
+}
+
+function resolveEffectiveLockMode(config: ControlPlaneRunConfig): ControlPlaneLockMode {
+  return config.enabled ? config.lockMode : "declared";
 }
 
 async function buildControlPlaneSnapshot(input: {
@@ -398,9 +406,12 @@ async function emitDerivedScopeReports(input: {
   controlPlaneConfig: ControlPlaneRunConfig;
   controlPlaneSnapshot: ControlPlaneSnapshot | undefined;
   orchestratorLog: JsonlLogger;
-}): Promise<void> {
-  if (!input.controlPlaneConfig.enabled) {
-    return;
+}): Promise<Map<string, DerivedScopeReport>> {
+  const reports = new Map<string, DerivedScopeReport>();
+  const shouldCompute =
+    input.controlPlaneConfig.enabled && input.controlPlaneConfig.lockMode !== "declared";
+  if (!shouldCompute) {
+    return reports;
   }
 
   const loadedModel = await loadControlPlaneModel({
@@ -408,7 +419,7 @@ async function emitDerivedScopeReports(input: {
     snapshot: input.controlPlaneSnapshot,
   });
   if (!loadedModel) {
-    return;
+    return reports;
   }
 
   let snapshot: Awaited<ReturnType<typeof createDerivedScopeSnapshot>> | null = null;
@@ -422,7 +433,7 @@ async function emitDerivedScopeReports(input: {
       message: formatErrorMessage(error),
       base_sha: loadedModel.baseSha,
     });
-    return;
+    return reports;
   }
 
   try {
@@ -441,6 +452,7 @@ async function emitDerivedScopeReports(input: {
           task.manifest.id,
         );
         await writeJsonFile(reportPath, report);
+        reports.set(task.manifest.id, report);
 
         logOrchestratorEvent(input.orchestratorLog, "task.derived_scope", {
           taskId: task.manifest.id,
@@ -460,6 +472,48 @@ async function emitDerivedScopeReports(input: {
   } finally {
     await snapshot.release();
   }
+
+  return reports;
+}
+
+function buildTaskLockResolver(input: {
+  lockMode: ControlPlaneLockMode;
+  derivedScopeReports: Map<string, DerivedScopeReport>;
+  fallbackResource: string;
+}): LockResolver {
+  if (input.lockMode !== "derived") {
+    return (task) => normalizeLocks(task.manifest.locks);
+  }
+
+  const fallbackResource = input.fallbackResource.trim();
+  const fallbackLocks = normalizeLocks({
+    reads: [],
+    writes: fallbackResource ? [fallbackResource] : [],
+  });
+
+  return (task) => {
+    const report = input.derivedScopeReports.get(task.manifest.id);
+    if (!report) {
+      return fallbackLocks;
+    }
+
+    const derivedLocks = report.derived_locks ?? {
+      reads: [],
+      writes: report.derived_write_resources,
+    };
+
+    if (report.confidence !== "low" || fallbackResource.length === 0) {
+      return normalizeLocks(derivedLocks);
+    }
+
+    const widenedWrites = new Set(derivedLocks.writes);
+    widenedWrites.add(fallbackResource);
+
+    return normalizeLocks({
+      reads: derivedLocks.reads,
+      writes: Array.from(widenedWrites),
+    });
+  };
 }
 
 export async function runProject(
@@ -497,6 +551,7 @@ export async function runProject(
     const networkMode = config.docker.network_mode;
     const containerUser = config.docker.user;
     const controlPlaneConfig = resolveControlPlaneConfig(config);
+    const lockMode = resolveEffectiveLockMode(controlPlaneConfig);
   const docker = useDocker ? dockerClient() : null;
   const manifestPolicy: ManifestEnforcementPolicy = config.manifest_enforcement ?? "warn";
   const costPer1kTokens = DEFAULT_COST_PER_1K_TOKENS;
@@ -621,13 +676,18 @@ export async function runProject(
     };
   }
 
-  await emitDerivedScopeReports({
+  const derivedScopeReports = await emitDerivedScopeReports({
     repoPath,
     runId,
     tasks,
     controlPlaneConfig,
     controlPlaneSnapshot,
     orchestratorLog: orchLog,
+  });
+  const lockResolver = buildTaskLockResolver({
+    lockMode,
+    derivedScopeReports,
+    fallbackResource: controlPlaneConfig.fallbackResource,
   });
 
   if (testValidatorEnabled) {
@@ -1807,7 +1867,7 @@ export async function runProject(
     }
 
     batchId += 1;
-    const { batch } = buildGreedyBatch(ready, maxParallel);
+    const { batch } = buildGreedyBatch(ready, maxParallel, lockResolver);
 
     const batchTaskIds = batch.tasks.map((t) => t.manifest.id);
     plannedBatches.push({ batchId, taskIds: batchTaskIds, locks: batch.locks });
@@ -1819,6 +1879,7 @@ export async function runProject(
       batch_id: batchId,
       tasks: batchTaskIds,
       locks: batch.locks,
+      lock_mode: lockMode,
     });
 
     if (opts.dryRun) {

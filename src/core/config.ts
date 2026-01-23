@@ -18,6 +18,7 @@ const ResourceSchema = z
   .strict();
 
 const ControlPlaneResourcesModeSchema = z.enum(["prefer-derived"]);
+const ControlPlaneLockModeSchema = z.enum(["declared", "shadow", "derived"]);
 
 const ControlPlaneSchema = z
   .object({
@@ -25,6 +26,7 @@ const ControlPlaneSchema = z
     component_resource_prefix: z.string().min(1).default("component:"),
     fallback_resource: z.string().min(1).default("repo-root"),
     resources_mode: ControlPlaneResourcesModeSchema.default("prefer-derived"),
+    lock_mode: ControlPlaneLockModeSchema.default("declared"),
   })
   .strict();
 
@@ -156,6 +158,7 @@ export type ValidatorMode = z.infer<typeof ValidatorModeSchema>;
 export type ResourceConfig = z.infer<typeof ResourceSchema>;
 export type ControlPlaneConfig = z.infer<typeof ControlPlaneSchema>;
 export type ControlPlaneResourcesMode = z.infer<typeof ControlPlaneResourcesModeSchema>;
+export type ControlPlaneLockMode = z.infer<typeof ControlPlaneLockModeSchema>;
 export type DockerConfig = z.infer<typeof DockerSchema>;
 export type DockerNetworkMode = z.infer<typeof DockerNetworkModeSchema>;
 export type ProjectConfig = z.infer<typeof ProjectConfigSchema>;

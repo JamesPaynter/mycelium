@@ -20,6 +20,7 @@ export type DerivedScopeReport = {
   task_name: string;
   derived_write_resources: string[];
   derived_write_paths?: string[];
+  derived_locks: TaskManifest["locks"];
   confidence: DerivedScopeConfidence;
   notes: string[];
   manifest: {
@@ -91,6 +92,10 @@ export async function deriveTaskWriteScopeReport(input: {
     task_name: input.manifest.name,
     derived_write_resources: derived.derivedWriteResources,
     derived_write_paths: derived.derivedWritePaths,
+    derived_locks: {
+      reads: [],
+      writes: derived.derivedWriteResources,
+    },
     confidence: derived.confidence,
     notes: derived.notes,
     manifest: {
@@ -168,10 +173,9 @@ async function deriveTaskWriteScope(input: {
     componentResourcePrefix: input.componentResourcePrefix,
   });
 
+  const shouldFallback = missingOwners.length > 0 || resources.length === 0;
   const derivedWriteResources = dedupeAndSort(
-    missingOwners.length > 0 && fallbackResource
-      ? [...resources, fallbackResource]
-      : resources,
+    shouldFallback && fallbackResource ? [...resources, fallbackResource] : resources,
   );
 
   const derivedWritePaths = buildDerivedWritePaths({
@@ -192,7 +196,7 @@ async function deriveTaskWriteScope(input: {
   return {
     derivedWriteResources,
     derivedWritePaths,
-    confidence: missingOwners.length > 0 || resources.length === 0 ? "low" : "medium",
+    confidence: shouldFallback ? "low" : "medium",
     notes,
   };
 }
