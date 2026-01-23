@@ -39,6 +39,8 @@ describe("resolveProjectConfigPath", () => {
     expect(config).toContain("tasks_dir: .mycelium/tasks");
     expect(config).toContain("planning_dir: .mycelium/planning");
     expect(config).toContain("doctor: ./.mycelium/doctor.sh");
+    expect(config).toContain("ui:");
+    expect(config).toContain("open_browser: true");
     expect(config).toContain("planner:");
     expect(config).toContain("worker:");
 

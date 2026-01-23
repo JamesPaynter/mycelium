@@ -2,12 +2,22 @@ import type { ProjectConfig } from "../core/config.js";
 import { runProject, type RunOptions } from "../core/executor.js";
 import { loadRunStateForProject } from "../core/state-store.js";
 import { createRunStopSignalHandler } from "./signal-handlers.js";
+import {
+  closeUiServer,
+  launchUiServer,
+  maybeOpenUiBrowser,
+  resolveUiRuntimeConfig,
+  type UiStartResult,
+} from "./ui.js";
 
 type ResumeOptions = Pick<
   RunOptions,
   "maxParallel" | "dryRun" | "buildImage" | "useDocker" | "stopContainersOnExit"
 > & {
   runId?: string;
+  ui?: boolean;
+  uiPort?: number;
+  uiOpen?: boolean;
 };
 
 export async function resumeCommand(
@@ -24,6 +34,11 @@ export async function resumeCommand(
     return;
   }
 
+  const uiRuntime = resolveUiRuntimeConfig(config.ui, {
+    enabled: opts.ui,
+    port: opts.uiPort,
+    openBrowser: opts.uiOpen,
+  });
   const stopHandler = createRunStopSignalHandler({
     onSignal: (signal) => {
       const containerNote = opts.stopContainersOnExit
@@ -35,8 +50,20 @@ export async function resumeCommand(
     },
   });
 
+  let uiStart: UiStartResult | null = null;
   let res: Awaited<ReturnType<typeof runProject>>;
   try {
+    uiStart = await launchUiServer({
+      projectName,
+      runId: resolved.runId,
+      runtime: uiRuntime,
+      onError: "warn",
+    });
+    if (uiStart) {
+      console.log(`UI: ${uiStart.url}`);
+      await maybeOpenUiBrowser(uiStart.url, uiRuntime.openBrowser);
+    }
+
     res = await runProject(projectName, config, {
       runId: resolved.runId,
       maxParallel: opts.maxParallel,
@@ -49,6 +76,7 @@ export async function resumeCommand(
     });
   } finally {
     stopHandler.cleanup();
+    await closeUiServer(uiStart?.handle ?? null);
   }
 
   if (res.stopped) {

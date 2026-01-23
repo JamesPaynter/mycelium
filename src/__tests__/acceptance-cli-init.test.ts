@@ -52,6 +52,8 @@ describe("acceptance: mycelium init", () => {
     expect(config).toContain("repo_path:");
     expect(config).toContain("tasks_dir: .mycelium/tasks");
     expect(config).toContain("planning_dir: .mycelium/planning");
+    expect(config).toContain("ui:");
+    expect(config).toContain("open_browser: true");
 
     const gitignore = await fs.readFile(gitignorePath, "utf8");
     expect(gitignore).toContain("Managed by Mycelium");
