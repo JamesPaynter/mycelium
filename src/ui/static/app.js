@@ -41,7 +41,7 @@ const viewActions = {
 const views = {
   list: createListView({ appState, actions: viewActions, fetchApi }),
   garden: createGardenView({ appState, actions: viewActions, fetchApi }),
-  map: createMapView(),
+  map: createMapView({ appState }),
 };
 
 init();
@@ -202,8 +202,13 @@ function setTarget(projectName, runId, options = {}) {
 
   views.list.reset();
   views.garden.reset?.();
+  views.map.reset?.();
   updateQueryParams();
   startSummaryPolling();
+
+  if (appState.activeView === "map") {
+    void views.map.refresh?.();
+  }
 }
 
 function startSummaryPolling() {
@@ -224,6 +229,7 @@ function stopSummaryPolling() {
 async function requestRefresh() {
   await fetchSummary();
   await views.list.refresh();
+  await views.map.refresh?.();
 }
 
 function setSelectedTask(taskId) {

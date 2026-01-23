@@ -235,6 +235,174 @@ body {
 
 
 /* =============================================================================
+   MAP VIEW
+   ============================================================================= */
+
+#view-map {
+  padding: 20px 24px;
+}
+
+#view-map.map-view {
+  display: block;
+}
+
+.map-shell {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.map-header .subtext {
+  max-width: 520px;
+}
+
+.map-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  justify-content: flex-end;
+}
+
+.map-meta-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: var(--panel);
+  font-size: 0.7rem;
+  color: var(--muted);
+}
+
+.map-meta-label {
+  font-size: 0.65rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.map-meta-value {
+  font-size: 0.75rem;
+  color: var(--ink);
+  font-weight: 600;
+}
+
+.map-stage {
+  position: relative;
+  min-height: 520px;
+  border-radius: 18px;
+  border: 1px solid var(--line);
+  overflow: hidden;
+  background:
+    radial-gradient(circle at 18% 20%, rgba(255, 255, 255, 0.6), transparent 45%),
+    radial-gradient(circle at 80% 16%, rgba(42, 124, 111, 0.2), transparent 44%),
+    repeating-linear-gradient(
+      120deg,
+      rgba(156, 123, 98, 0.07) 0px,
+      rgba(156, 123, 98, 0.07) 2px,
+      transparent 2px,
+      transparent 12px
+    ),
+    linear-gradient(180deg, #f7f1e6 0%, #efe6d6 55%, #e6dcc9 100%);
+}
+
+.map-graph {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+.map-message {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  text-align: center;
+  padding: 24px;
+}
+
+.map-message[hidden] {
+  display: none;
+}
+
+.map-message-card {
+  max-width: 520px;
+  padding: 18px 20px;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.86);
+  border: 1px dashed rgba(155, 124, 98, 0.45);
+  box-shadow: 0 16px 32px rgba(41, 50, 44, 0.12);
+}
+
+.map-message-title {
+  font-weight: 700;
+  color: var(--ink);
+}
+
+.map-message-copy {
+  margin-top: 6px;
+  font-size: 0.9rem;
+  color: var(--muted);
+}
+
+.map-message-detail {
+  margin-top: 10px;
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+
+.map-message-detail code {
+  display: inline-block;
+  margin-top: 6px;
+  padding: 6px 10px;
+  border-radius: 10px;
+  border: 1px solid rgba(42, 124, 111, 0.25);
+  background: var(--panel);
+  color: var(--accent-strong);
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+}
+
+.map-hypha {
+  fill: none;
+  stroke: rgba(42, 124, 111, 0.35);
+  stroke-width: 1.2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  opacity: 0.85;
+}
+
+.map-node {
+  cursor: default;
+}
+
+.map-knot-glow {
+  fill: rgba(42, 124, 111, 0.18);
+}
+
+.map-knot-core {
+  fill: rgba(255, 249, 240, 0.95);
+  stroke: rgba(42, 124, 111, 0.6);
+  stroke-width: 1.1;
+}
+
+.map-node:hover .map-knot-core {
+  fill: #ffffff;
+  stroke: rgba(42, 124, 111, 0.85);
+}
+
+.map-label {
+  font-size: 0.7rem;
+  font-weight: 600;
+  fill: var(--ink);
+  paint-order: stroke;
+  stroke: rgba(245, 239, 227, 0.9);
+  stroke-width: 3px;
+}
+
+
+/* =============================================================================
    GARDEN VIEW
    ============================================================================= */
 
@@ -1220,6 +1388,14 @@ body {
   .garden {
     padding: 84px 20px 72px;
   }
+
+  .map-meta {
+    justify-content: flex-start;
+  }
+
+  .map-stage {
+    min-height: 440px;
+  }
 }
 
 @media (max-width: 640px) {
@@ -1241,6 +1417,10 @@ body {
 
   .field.wide input {
     width: 100%;
+  }
+
+  .map-stage {
+    min-height: 360px;
   }
 
   .garden {
