@@ -2,6 +2,8 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import fs from "node:fs/promises";
 import path from "node:path";
 
+import { readJsonlFromCursor } from "../core/log-query.js";
+import { resolveRunLogsDir } from "../core/paths.js";
 import { loadRunStateForProject, summarizeRunState } from "../core/state-store.js";
 
 
@@ -21,6 +23,7 @@ type ResolvedUiRouterOptions = UiRouterOptions & {
 
 type ApiRouteMatch =
   | { type: "summary"; projectName: string; runId: string }
+  | { type: "orchestrator_events"; projectName: string; runId: string }
   | { type: "bad_request" }
   | { type: "not_found" };
 
@@ -29,6 +32,8 @@ type StaticFile = {
   size: number;
   contentType: string;
 };
+
+type OptionalNumberParseResult = { ok: true; value: number | null } | { ok: false };
 
 
 // =============================================================================
@@ -122,20 +127,17 @@ async function handleApiRequest(
     return;
   }
 
-  const resolved = await loadRunStateForProject(route.projectName, route.runId);
-  if (!resolved) {
-    sendApiError(
-      res,
-      404,
-      "not_found",
-      `Run ${route.runId} not found for project ${route.projectName}.`,
-      method === "HEAD",
-    );
+  if (route.type === "summary") {
+    await handleSummaryRequest(res, method, route);
     return;
   }
 
-  const summary = summarizeRunState(resolved.state);
-  sendApiOk(res, summary, method === "HEAD");
+  if (route.type === "orchestrator_events") {
+    await handleOrchestratorEventsRequest(res, method, url, route);
+    return;
+  }
+
+  sendApiError(res, 404, "not_found", "Endpoint not found.", method === "HEAD");
 }
 
 async function handleStaticRequest(
@@ -183,22 +185,119 @@ async function handleStaticRequest(
 // API ROUTES
 // =============================================================================
 
+async function handleSummaryRequest(
+  res: ServerResponse,
+  method: string,
+  route: { projectName: string; runId: string },
+): Promise<void> {
+  const resolved = await loadRunStateForProject(route.projectName, route.runId);
+  if (!resolved) {
+    sendApiError(
+      res,
+      404,
+      "not_found",
+      `Run ${route.runId} not found for project ${route.projectName}.`,
+      method === "HEAD",
+    );
+    return;
+  }
+
+  const summary = summarizeRunState(resolved.state);
+  sendApiOk(res, summary, method === "HEAD");
+}
+
+async function handleOrchestratorEventsRequest(
+  res: ServerResponse,
+  method: string,
+  url: URL,
+  route: { projectName: string; runId: string },
+): Promise<void> {
+  const cursorResult = parseCursorParam(url.searchParams.get("cursor"));
+  if (!cursorResult.ok) {
+    sendApiError(res, 400, "bad_request", "Invalid cursor value.", method === "HEAD");
+    return;
+  }
+
+  const maxBytesResult = parseOptionalNonNegativeInteger(url.searchParams.get("maxBytes"));
+  if (!maxBytesResult.ok) {
+    sendApiError(res, 400, "bad_request", "Invalid maxBytes value.", method === "HEAD");
+    return;
+  }
+
+  const typeGlob = parseOptionalString(url.searchParams.get("typeGlob"));
+  const taskId = parseOptionalString(url.searchParams.get("taskId"));
+
+  const resolved = resolveRunLogsDir(route.projectName, route.runId);
+  if (!resolved) {
+    sendApiError(res, 404, "not_found", "Run logs not found.", method === "HEAD");
+    return;
+  }
+
+  const logPath = path.join(resolved.dir, "orchestrator.jsonl");
+  const logExists = await fileExists(logPath);
+  if (!logExists) {
+    sendApiError(res, 404, "not_found", "Run logs not found.", method === "HEAD");
+    return;
+  }
+
+  const readOptions = maxBytesResult.value === null ? {} : { maxBytes: maxBytesResult.value };
+  const result = await readJsonlFromCursor(
+    logPath,
+    cursorResult.value,
+    { taskId, typeGlob },
+    readOptions,
+  );
+
+  sendApiOk(
+    res,
+    {
+      file: "orchestrator.jsonl",
+      cursor: result.cursor,
+      nextCursor: result.nextCursor,
+      truncated: result.truncated,
+      lines: result.lines,
+    },
+    method === "HEAD",
+  );
+}
+
 function matchApiRoute(pathname: string): ApiRouteMatch {
   const segments = pathname.split("/").filter(Boolean);
-  if (segments.length !== 6) return { type: "not_found" };
+  if (segments.length === 6) {
+    const [api, projects, projectSegment, runs, runSegment, summary] = segments;
+    if (api !== "api" || projects !== "projects" || runs !== "runs" || summary !== "summary") {
+      return { type: "not_found" };
+    }
 
-  const [api, projects, projectSegment, runs, runSegment, summary] = segments;
-  if (api !== "api" || projects !== "projects" || runs !== "runs" || summary !== "summary") {
-    return { type: "not_found" };
+    const parsed = parseProjectRunSegments(projectSegment, runSegment);
+    if (!parsed) {
+      return { type: "bad_request" };
+    }
+
+    return { type: "summary", ...parsed };
   }
 
-  const projectName = safeDecodeSegment(projectSegment);
-  const runId = safeDecodeSegment(runSegment);
-  if (!projectName || !runId) {
-    return { type: "bad_request" };
+  if (segments.length === 7) {
+    const [api, projects, projectSegment, runs, runSegment, orchestrator, events] = segments;
+    if (
+      api !== "api" ||
+      projects !== "projects" ||
+      runs !== "runs" ||
+      orchestrator !== "orchestrator" ||
+      events !== "events"
+    ) {
+      return { type: "not_found" };
+    }
+
+    const parsed = parseProjectRunSegments(projectSegment, runSegment);
+    if (!parsed) {
+      return { type: "bad_request" };
+    }
+
+    return { type: "orchestrator_events", ...parsed };
   }
 
-  return { type: "summary", projectName, runId };
+  return { type: "not_found" };
 }
 
 
@@ -398,6 +497,19 @@ function safeDecodeSegment(segment: string): string | null {
   return decoded;
 }
 
+function parseProjectRunSegments(
+  projectSegment: string,
+  runSegment: string,
+): { projectName: string; runId: string } | null {
+  const projectName = safeDecodeSegment(projectSegment);
+  const runId = safeDecodeSegment(runSegment);
+  if (!projectName || !runId) {
+    return null;
+  }
+
+  return { projectName, runId };
+}
+
 function safeDecodePathname(pathname: string): string | null {
   try {
     const decoded = decodeURIComponent(pathname);
@@ -405,6 +517,53 @@ function safeDecodePathname(pathname: string): string | null {
     return decoded;
   } catch {
     return null;
+  }
+}
+
+function parseOptionalString(value: string | null): string | undefined {
+  if (value === null) return undefined;
+  const trimmed = value.trim();
+  return trimmed ? trimmed : undefined;
+}
+
+function parseOptionalNonNegativeInteger(value: string | null): OptionalNumberParseResult {
+  if (value === null) {
+    return { ok: true, value: null };
+  }
+
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return { ok: true, value: null };
+  }
+
+  if (!/^\d+$/.test(trimmed)) {
+    return { ok: false };
+  }
+
+  const parsed = Number.parseInt(trimmed, 10);
+  if (!Number.isSafeInteger(parsed)) {
+    return { ok: false };
+  }
+
+  return { ok: true, value: parsed };
+}
+
+function parseCursorParam(value: string | null): { ok: true; value: number } | { ok: false } {
+  const parsed = parseOptionalNonNegativeInteger(value);
+  if (!parsed.ok) {
+    return { ok: false };
+  }
+
+  return { ok: true, value: parsed.value ?? 0 };
+}
+
+async function fileExists(filePath: string): Promise<boolean> {
+  try {
+    const stat = await fs.stat(filePath);
+    return stat.isFile();
+  } catch (err) {
+    if (isMissingFile(err)) return false;
+    throw err;
   }
 }
 
