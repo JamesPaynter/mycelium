@@ -1,17 +1,39 @@
 import os from "node:os";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 
 import { execa } from "execa";
 import fse from "fs-extra";
 import { afterEach, describe, expect, it } from "vitest";
 
+import { extractComponents } from "../control-plane/extract/components.js";
+import { buildOwnershipIndex } from "../control-plane/extract/ownership.js";
+import {
+  createComponentOwnerResolver,
+  createComponentOwnershipResolver,
+} from "../control-plane/integration/resources.js";
+import { createEmptyModel, type ControlPlaneModel } from "../control-plane/model/schema.js";
 import type { ResourceConfig } from "./config.js";
 import {
   resolveResourcesForFile,
   runManifestCompliance,
-  type ResourceOwnershipResolver,
 } from "./manifest-compliance.js";
 import type { TaskManifest } from "./task-manifest.js";
+
+// =============================================================================
+// FIXTURES
+// =============================================================================
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const CONTROL_PLANE_FIXTURE_REPO = path.resolve(
+  __dirname,
+  "../../test/fixtures/control-plane-mini-repo",
+);
+
+
+// =============================================================================
+// TESTS
+// =============================================================================
 
 describe("runManifestCompliance", () => {
   const tempDirs: string[] = [];
@@ -112,14 +134,30 @@ describe("runManifestCompliance", () => {
   });
 
   it("reports component resources for violations across multiple components", async () => {
-    const repo = await createRepo();
+    const repo = await createControlPlaneRepo();
     tempDirs.push(repo);
 
     await execa("git", ["checkout", "-b", "agent/003"], { cwd: repo });
-    await fse.outputFile(path.join(repo, "apps", "api", "index.ts"), "export const api = true;\n");
-    await fse.outputFile(path.join(repo, "apps", "web", "index.ts"), "export const web = true;\n");
+    await fse.outputFile(
+      path.join(repo, "apps", "web", "src", "index.ts"),
+      "export const web = true;\n",
+    );
+    await fse.outputFile(
+      path.join(repo, "packages", "utils", "src", "index.ts"),
+      "export const utils = true;\n",
+    );
     await execa("git", ["add", "."], { cwd: repo });
     await execa("git", ["commit", "-m", "Add component changes"], { cwd: repo });
+
+    const model = await buildControlPlaneModel(repo);
+    const ownerResolver = createComponentOwnerResolver({
+      model,
+      componentResourcePrefix: "component:",
+    });
+    const ownershipResolver = createComponentOwnershipResolver({
+      model,
+      componentResourcePrefix: "component:",
+    });
 
     const manifest: TaskManifest = {
       id: "003",
@@ -136,38 +174,8 @@ describe("runManifestCompliance", () => {
     };
 
     const resources: ResourceConfig[] = [
-      { name: "backend", description: "Backend", paths: ["src/**"] },
+      { name: "repo", description: "Repo", paths: ["**/*"] },
     ];
-
-    const ownerResolver = (file: string): string | null => {
-      if (file.startsWith("apps/api/")) return "component:api";
-      if (file.startsWith("apps/web/")) return "component:web";
-      return null;
-    };
-
-    const ownershipResolver: ResourceOwnershipResolver = (file) => {
-      if (file.startsWith("apps/api/")) {
-        return [
-          {
-            component_id: "api",
-            component_name: "API",
-            resource: "component:api",
-            root: "apps/api",
-          },
-        ];
-      }
-      if (file.startsWith("apps/web/")) {
-        return [
-          {
-            component_id: "web",
-            component_name: "Web",
-            resource: "component:web",
-            root: "apps/web",
-          },
-        ];
-      }
-      return null;
-    };
 
     const result = await runManifestCompliance({
       workspacePath: repo,
@@ -186,18 +194,22 @@ describe("runManifestCompliance", () => {
       result.violations.map((violation) => [violation.path, violation]),
     );
 
-    expect(violationsByPath.get("apps/api/index.ts")?.resources).toEqual(["component:api"]);
-    expect(violationsByPath.get("apps/web/index.ts")?.resources).toEqual(["component:web"]);
-    expect(violationsByPath.get("apps/api/index.ts")?.component_owners).toEqual([
+    expect(violationsByPath.get("apps/web/src/index.ts")?.resources).toEqual([
+      "component:acme-web-app",
+    ]);
+    expect(violationsByPath.get("packages/utils/src/index.ts")?.resources).toEqual([
+      "component:acme-utils",
+    ]);
+    expect(violationsByPath.get("apps/web/src/index.ts")?.component_owners).toEqual([
       {
-        component_id: "api",
-        component_name: "API",
-        resource: "component:api",
-        root: "apps/api",
+        component_id: "acme-web-app",
+        component_name: "@acme/web-app",
+        resource: "component:acme-web-app",
+        root: "apps/web",
       },
     ]);
     expect(
-      violationsByPath.get("apps/api/index.ts")?.guidance?.map((item) => item.action),
+      violationsByPath.get("apps/web/src/index.ts")?.guidance?.map((item) => item.action),
     ).toEqual(["expand_scope", "split_task"]);
   });
 
@@ -286,17 +298,45 @@ describe("resolveResourcesForFile", () => {
   });
 });
 
-async function createRepo(): Promise<string> {
-  const repo = await fse.mkdtemp(path.join(os.tmpdir(), "manifest-compliance-"));
 
+// =============================================================================
+// HELPERS
+// =============================================================================
+
+async function initGitRepo(repo: string): Promise<void> {
   await execa("git", ["init"], { cwd: repo });
   await execa("git", ["checkout", "-B", "main"], { cwd: repo });
   await execa("git", ["config", "user.name", "tester"], { cwd: repo });
   await execa("git", ["config", "user.email", "tester@example.com"], { cwd: repo });
+}
 
+async function createRepo(): Promise<string> {
+  const repo = await fse.mkdtemp(path.join(os.tmpdir(), "manifest-compliance-"));
+
+  await initGitRepo(repo);
   await fse.outputFile(path.join(repo, "src", "app.ts"), "export const app = true;\n");
   await execa("git", ["add", "."], { cwd: repo });
   await execa("git", ["commit", "-m", "init"], { cwd: repo });
 
   return repo;
+}
+
+async function createControlPlaneRepo(): Promise<string> {
+  const repo = await fse.mkdtemp(path.join(os.tmpdir(), "manifest-compliance-cp-"));
+
+  await fse.copy(CONTROL_PLANE_FIXTURE_REPO, repo);
+  await initGitRepo(repo);
+  await execa("git", ["add", "."], { cwd: repo });
+  await execa("git", ["commit", "-m", "init"], { cwd: repo });
+
+  return repo;
+}
+
+async function buildControlPlaneModel(repoRoot: string): Promise<ControlPlaneModel> {
+  const { components } = await extractComponents(repoRoot);
+  const ownership = buildOwnershipIndex(components);
+  const model = createEmptyModel();
+  model.components = components;
+  model.ownership = ownership;
+  return model;
 }

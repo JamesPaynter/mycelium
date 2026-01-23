@@ -17,6 +17,12 @@ Use `control_plane.scope_mode` to control how graph-backed compliance is enforce
 
 `manifest_enforcement` remains the warn/block policy when `scope_mode=enforce`.
 
+## Compliance output
+
+When scope compliance runs with Control Plane enabled, owned files resolve to `component:<id>` before
+static resources or the fallback resource. Violations include `component_owners` with component IDs
+and owning roots, plus guidance to expand scope or split the task.
+
 ## Artifact location
 
 Each task writes one JSON report at:
