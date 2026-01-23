@@ -375,6 +375,7 @@ function shouldBuildControlPlaneSnapshot(
 
 type ResourceResolutionContext = {
   staticResources: ResourceConfig[];
+  effectiveResources: ResourceConfig[];
   knownResources: string[];
   ownerResolver?: (filePath: string) => string | null;
   ownershipResolver?: ResourceOwnershipResolver;
@@ -440,14 +441,18 @@ async function buildResourceResolutionContext(input: {
     });
   }
 
-  const knownResources = mergeResourceNames({
+  const effectiveResources = mergeResources({
     staticResources: input.staticResources,
     derivedResources,
+  });
+  const knownResources = mergeResourceNames({
+    resources: effectiveResources,
     fallbackResource,
   });
 
   return {
     staticResources: input.staticResources,
+    effectiveResources,
     knownResources,
     ownerResolver,
     ownershipResolver,
@@ -456,16 +461,30 @@ async function buildResourceResolutionContext(input: {
   };
 }
 
-function mergeResourceNames(input: {
+function mergeResources(input: {
   staticResources: ResourceConfig[];
   derivedResources: ResourceConfig[];
+}): ResourceConfig[] {
+  const merged = new Map<string, ResourceConfig>();
+
+  for (const resource of input.staticResources) {
+    merged.set(resource.name, resource);
+  }
+  for (const resource of input.derivedResources) {
+    if (!merged.has(resource.name)) {
+      merged.set(resource.name, resource);
+    }
+  }
+
+  return Array.from(merged.values()).sort(compareResourceByName);
+}
+
+function mergeResourceNames(input: {
+  resources: ResourceConfig[];
   fallbackResource: string;
 }): string[] {
   const names = new Set<string>();
-  for (const resource of input.staticResources) {
-    names.add(resource.name);
-  }
-  for (const resource of input.derivedResources) {
+  for (const resource of input.resources) {
     names.add(resource.name);
   }
   if (input.fallbackResource) {
@@ -473,6 +492,10 @@ function mergeResourceNames(input: {
   }
 
   return Array.from(names).sort();
+}
+
+function compareResourceByName(a: ResourceConfig, b: ResourceConfig): number {
+  return a.name.localeCompare(b.name);
 }
 
 async function emitDerivedScopeReports(input: {
@@ -1666,7 +1689,8 @@ export async function runProject(
         workspacePath: r.workspace,
         mainBranch: config.main_branch,
         manifest: taskSpec.manifest,
-        resources: resourceContext.staticResources,
+        resources: resourceContext.effectiveResources,
+        staticResources: resourceContext.staticResources,
         fallbackResource: resourceContext.fallbackResource,
         ownerResolver: resourceContext.ownerResolver,
         ownershipResolver: resourceContext.ownershipResolver,

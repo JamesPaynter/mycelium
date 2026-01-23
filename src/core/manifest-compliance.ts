@@ -85,6 +85,7 @@ export type ManifestComplianceArgs = {
   mainBranch: string;
   manifest: TaskManifest;
   resources: ResourceConfig[];
+  staticResources?: ResourceConfig[];
   fallbackResource: string;
   ownerResolver?: ResourceOwnerResolver;
   ownershipResolver?: ResourceOwnershipResolver;
@@ -124,7 +125,7 @@ export async function runManifestCompliance(
   const changedFiles = await collectChangedFiles({
     workspacePath: args.workspacePath,
     mainBranch: args.mainBranch,
-    staticResources: args.resources,
+    staticResources: args.staticResources ?? args.resources,
     fallbackResource: args.fallbackResource,
     ownerResolver: args.ownerResolver,
     ownershipResolver: args.ownershipResolver,
