@@ -121,6 +121,7 @@ import {
   type ControlPlaneBlastRadiusReport,
 } from "../control-plane/integration/blast-radius.js";
 import {
+  associateSurfaceChangesWithComponents,
   detectSurfaceChanges,
   resolveSurfacePatterns,
 } from "../control-plane/policy/surface-detect.js";
@@ -296,6 +297,7 @@ type ControlPlaneRunConfig = {
   lockMode: ControlPlaneLockMode;
   checks: ControlPlaneChecksRunConfig;
   surfacePatterns: SurfacePatternSet;
+  surfaceLocksEnabled: boolean;
 };
 
 function resolveControlPlaneConfig(config: ProjectConfig): ControlPlaneRunConfig {
@@ -303,6 +305,8 @@ function resolveControlPlaneConfig(config: ProjectConfig): ControlPlaneRunConfig
   const rawChecks = (raw.checks ?? {}) as Partial<ProjectConfig["control_plane"]["checks"]>;
   const rawSurfacePatterns =
     (raw.surface_patterns ?? {}) as ControlPlaneSurfacePatternsConfig;
+  const rawSurfaceLocks =
+    (raw.surface_locks ?? {}) as Partial<ProjectConfig["control_plane"]["surface_locks"]>;
   return {
     enabled: raw.enabled === true,
     componentResourcePrefix: raw.component_resource_prefix ?? "component:",
@@ -317,6 +321,7 @@ function resolveControlPlaneConfig(config: ProjectConfig): ControlPlaneRunConfig
       fallbackCommand: rawChecks.fallback_command,
     },
     surfacePatterns: resolveSurfacePatterns(rawSurfacePatterns),
+    surfaceLocksEnabled: rawSurfaceLocks.enabled ?? false,
   };
 }
 
@@ -544,6 +549,8 @@ async function emitDerivedScopeReports(input: {
           snapshotPath: snapshot.snapshotPath,
           componentResourcePrefix: input.controlPlaneConfig.componentResourcePrefix,
           fallbackResource: input.controlPlaneConfig.fallbackResource,
+          surfaceLocksEnabled: input.controlPlaneConfig.surfaceLocksEnabled,
+          surfacePatterns: input.controlPlaneConfig.surfacePatterns,
         });
         const reportPath = taskDerivedScopeReportPath(
           input.repoPath,
@@ -701,13 +708,23 @@ async function detectSurfaceChangesForRepo(input: {
   repoPath: string;
   baseSha: string;
   surfacePatterns: SurfacePatternSet;
+  model?: ControlPlaneModel;
 }): Promise<SurfaceChangeDetection> {
-  if (!input.baseSha.trim()) {
-    return detectSurfaceChanges([], input.surfacePatterns);
+  const detection = input.baseSha.trim()
+    ? detectSurfaceChanges(
+        await listChangedFiles(input.repoPath, input.baseSha),
+        input.surfacePatterns,
+      )
+    : detectSurfaceChanges([], input.surfacePatterns);
+
+  if (!input.model) {
+    return detection;
   }
 
-  const changedFiles = await listChangedFiles(input.repoPath, input.baseSha);
-  return detectSurfaceChanges(changedFiles, input.surfacePatterns);
+  return associateSurfaceChangesWithComponents({
+    detection,
+    model: input.model,
+  });
 }
 
 function resolveTaskTouchedComponents(input: {
@@ -765,6 +782,83 @@ function buildChecksetReport(input: {
   };
 }
 
+function buildEmptySurfaceDetection(): SurfaceChangeDetection {
+  return {
+    is_surface_change: false,
+    categories: [],
+    matched_files: {},
+  };
+}
+
+function filterSurfaceDetectionForTask(input: {
+  detection: SurfaceChangeDetection;
+  touchedComponents: string[];
+}): SurfaceChangeDetection {
+  if (!input.detection.is_surface_change) {
+    return input.detection;
+  }
+
+  if (input.touchedComponents.length === 0) {
+    return input.detection;
+  }
+
+  const matchedComponents = input.detection.matched_components;
+  if (!matchedComponents || matchedComponents.length === 0) {
+    return input.detection;
+  }
+
+  const touchedSet = new Set(input.touchedComponents);
+  const filteredComponents = matchedComponents.filter((component) => touchedSet.has(component));
+  if (filteredComponents.length === 0) {
+    return buildEmptySurfaceDetection();
+  }
+
+  const matchedByCategory = input.detection.matched_components_by_category;
+  if (!matchedByCategory) {
+    return {
+      ...input.detection,
+      matched_components: filteredComponents,
+    };
+  }
+
+  const filteredCategories: SurfaceChangeDetection["categories"] = [];
+  const filteredFiles: SurfaceChangeDetection["matched_files"] = {};
+  const filteredComponentsByCategory: SurfaceChangeDetection["matched_components_by_category"] =
+    {};
+
+  for (const category of input.detection.categories) {
+    const categoryComponents = matchedByCategory[category];
+    if (!categoryComponents || categoryComponents.length === 0) {
+      continue;
+    }
+
+    const relevantComponents = categoryComponents.filter((component) =>
+      touchedSet.has(component),
+    );
+    if (relevantComponents.length === 0) {
+      continue;
+    }
+
+    filteredCategories.push(category);
+    if (input.detection.matched_files[category]) {
+      filteredFiles[category] = input.detection.matched_files[category];
+    }
+    filteredComponentsByCategory[category] = relevantComponents;
+  }
+
+  if (filteredCategories.length === 0) {
+    return buildEmptySurfaceDetection();
+  }
+
+  return {
+    is_surface_change: true,
+    categories: filteredCategories,
+    matched_files: filteredFiles,
+    matched_components: filteredComponents,
+    matched_components_by_category: filteredComponentsByCategory,
+  };
+}
+
 function computeTaskCheckset(input: {
   task: TaskSpec;
   derivedScopeReports: Map<string, DerivedScopeReport>;
@@ -778,6 +872,10 @@ function computeTaskCheckset(input: {
     task: input.task,
     derivedScopeReports: input.derivedScopeReports,
     componentResourcePrefix: input.componentResourcePrefix,
+  });
+  const surfaceDetection = filterSurfaceDetectionForTask({
+    detection: input.surfaceDetection,
+    touchedComponents,
   });
   const impact =
     input.blastContext && touchedComponents.length > 0
@@ -797,14 +895,14 @@ function computeTaskCheckset(input: {
     commandsByComponent: input.checksConfig.commandsByComponent,
     maxComponentsForScoped: input.checksConfig.maxComponentsForScoped,
     fallbackCommand,
-    surfaceChange: input.surfaceDetection.is_surface_change,
-    surfaceChangeCategories: input.surfaceDetection.categories,
+    surfaceChange: surfaceDetection.is_surface_change,
+    surfaceChangeCategories: surfaceDetection.categories,
   });
 
   const report = buildChecksetReport({
     task: input.task,
     decision,
-    surfaceDetection: input.surfaceDetection,
+    surfaceDetection,
   });
   return { decision, report };
 }
@@ -2253,6 +2351,7 @@ export async function runProject(
             repoPath,
             baseSha: controlPlaneSnapshot?.base_sha ?? config.main_branch,
             surfacePatterns: controlPlaneConfig.surfacePatterns,
+            model: blastContext?.model,
           });
 
     if (opts.dryRun) {

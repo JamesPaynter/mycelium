@@ -108,12 +108,14 @@ export function computeChecksetDecision(input: ChecksetDecisionInput): ChecksetD
 
   if (input.surfaceChange) {
     rationale.push(buildSurfaceChangeSummary(input.surfaceChangeCategories));
-    return buildFallbackDecision({
-      fallbackCommand: input.fallbackCommand,
-      requiredComponents,
-      rationale,
-      reason: "surface_change",
-    });
+    if (!input.impactedComponents || input.impactedComponents.length === 0) {
+      return buildFallbackDecision({
+        fallbackCommand: input.fallbackCommand,
+        requiredComponents,
+        rationale,
+        reason: "surface_change",
+      });
+    }
   }
 
   if (requiredComponents.length === 0) {

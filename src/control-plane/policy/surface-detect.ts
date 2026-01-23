@@ -5,6 +5,8 @@ import path from "node:path";
 
 import { minimatch } from "minimatch";
 
+import { resolveOwnershipForPath } from "../extract/ownership.js";
+import type { ControlPlaneModel } from "../model/schema.js";
 import type {
   SurfaceChangeCategory,
   SurfaceChangeDetection,
@@ -94,6 +96,61 @@ export function detectSurfaceChanges(
     is_surface_change: categories.length > 0,
     categories,
     matched_files: matchedFiles,
+  };
+}
+
+
+
+// =============================================================================
+// COMPONENT ASSOCIATION
+// =============================================================================
+
+export function associateSurfaceChangesWithComponents(input: {
+  detection: SurfaceChangeDetection;
+  model: ControlPlaneModel;
+}): SurfaceChangeDetection {
+  if (!input.detection.is_surface_change) {
+    return input.detection;
+  }
+
+  const matchedComponents = new Set<string>();
+  const matchedByCategory: Partial<Record<SurfaceChangeCategory, string[]>> = {};
+
+  for (const category of input.detection.categories) {
+    const files = input.detection.matched_files[category];
+    if (!files || files.length === 0) {
+      continue;
+    }
+
+    const categoryComponents = new Set<string>();
+    for (const file of files) {
+      const match = resolveOwnershipForPath(
+        input.model.ownership,
+        input.model.components,
+        file,
+      );
+      if (!match.owner) {
+        continue;
+      }
+
+      const componentId = match.owner.component.id;
+      categoryComponents.add(componentId);
+      matchedComponents.add(componentId);
+    }
+
+    if (categoryComponents.size > 0) {
+      matchedByCategory[category] = Array.from(categoryComponents).sort();
+    }
+  }
+
+  if (matchedComponents.size === 0) {
+    return input.detection;
+  }
+
+  return {
+    ...input.detection,
+    matched_components: Array.from(matchedComponents).sort(),
+    matched_components_by_category: matchedByCategory,
   };
 }
 

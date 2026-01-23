@@ -10,6 +10,7 @@ import {
   type DerivedScopeReport,
 } from "../control-plane/integration/derived-scope.js";
 import { createEmptyModel, type ControlPlaneModel } from "../control-plane/model/schema.js";
+import { resolveSurfacePatterns } from "../control-plane/policy/surface-detect.js";
 import { buildGreedyBatch } from "../core/scheduler.js";
 import {
   normalizeLocks,
@@ -77,6 +78,9 @@ function taskId(task: TaskSpec): string {
 async function deriveReport(
   task: TaskSpec,
   model: ControlPlaneModel,
+  options?: {
+    surfaceLocksEnabled?: boolean;
+  },
 ): Promise<DerivedScopeReport> {
   return await deriveTaskWriteScopeReport({
     manifest: task.manifest,
@@ -84,6 +88,8 @@ async function deriveReport(
     snapshotPath: FIXTURE_REPO,
     componentResourcePrefix: "component:",
     fallbackResource: "repo-root",
+    surfaceLocksEnabled: options?.surfaceLocksEnabled,
+    surfacePatterns: resolveSurfacePatterns(),
   });
 }
 
@@ -142,5 +148,59 @@ describe("scheduler lock mode", () => {
 
     expect(report.confidence).toBe("low");
     expect(report.derived_locks.writes).toEqual(["repo-root"]);
+  });
+
+  it("adds surface locks when enabled", async () => {
+    const model = await buildControlPlaneModel(FIXTURE_REPO);
+    const task = createTask("004", {
+      files: { reads: [], writes: ["apps/web/src/index.ts"] },
+    });
+
+    const report = await deriveReport(task, model, { surfaceLocksEnabled: true });
+
+    expect(report.derived_locks.writes).toContain("surface:acme-web-app");
+  });
+
+  it("serializes overlapping surface locks in derived mode", async () => {
+    const model = await buildControlPlaneModel(FIXTURE_REPO);
+    const taskOne = createTask("005", {
+      files: { reads: [], writes: ["apps/web/src/index.ts"] },
+    });
+    const taskTwo = createTask("006", {
+      files: { reads: [], writes: ["apps/web/src/index.ts"] },
+    });
+
+    const reportOne = await deriveReport(taskOne, model, { surfaceLocksEnabled: true });
+    const reportTwo = await deriveReport(taskTwo, model, { surfaceLocksEnabled: true });
+
+    const surfaceLocks = buildDerivedLockMap([
+      {
+        taskId: taskOne.manifest.id,
+        locks: normalizeLocks({
+          reads: [],
+          writes: reportOne.derived_locks.writes.filter((lock) =>
+            lock.startsWith("surface:"),
+          ),
+        }),
+      },
+      {
+        taskId: taskTwo.manifest.id,
+        locks: normalizeLocks({
+          reads: [],
+          writes: reportTwo.derived_locks.writes.filter((lock) =>
+            lock.startsWith("surface:"),
+          ),
+        }),
+      },
+    ]);
+
+    const derived = buildGreedyBatch(
+      [taskOne, taskTwo],
+      2,
+      (task) => surfaceLocks.get(task.manifest.id) ?? normalizeLocks(task.manifest.locks),
+    );
+
+    expect(derived.batch.tasks.map(taskId)).toEqual(["005"]);
+    expect(derived.remaining.map(taskId)).toEqual(["006"]);
   });
 });

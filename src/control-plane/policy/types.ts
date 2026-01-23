@@ -12,6 +12,8 @@ export type SurfaceChangeDetection = {
   is_surface_change: boolean;
   categories: SurfaceChangeCategory[];
   matched_files: Partial<Record<SurfaceChangeCategory, string[]>>;
+  matched_components?: string[];
+  matched_components_by_category?: Partial<Record<SurfaceChangeCategory, string[]>>;
 };
 
 export type SurfacePatternConfig = Partial<Record<SurfaceChangeCategory, string[]>>;

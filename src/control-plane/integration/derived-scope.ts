@@ -11,6 +11,12 @@ import fg from "fast-glob";
 import { git } from "../../git/git.js";
 import { resolveOwnershipForPath } from "../extract/ownership.js";
 import type { ControlPlaneModel } from "../model/schema.js";
+import {
+  associateSurfaceChangesWithComponents,
+  detectSurfaceChanges,
+  resolveSurfacePatterns,
+} from "../policy/surface-detect.js";
+import type { SurfacePatternSet } from "../policy/types.js";
 import type { TaskManifest } from "../../core/task-manifest.js";
 
 export type DerivedScopeConfidence = "high" | "medium" | "low";
@@ -33,6 +39,8 @@ export type DerivedScopeSnapshot = {
   snapshotPath: string;
   release: () => Promise<void>;
 };
+
+const SURFACE_LOCK_PREFIX = "surface:";
 
 
 
@@ -78,13 +86,20 @@ export async function deriveTaskWriteScopeReport(input: {
   snapshotPath: string;
   componentResourcePrefix: string;
   fallbackResource: string;
+  surfaceLocksEnabled?: boolean;
+  surfacePatterns?: SurfacePatternSet;
 }): Promise<DerivedScopeReport> {
+  const surfaceLocksEnabled = input.surfaceLocksEnabled ?? false;
+  const surfacePatterns = input.surfacePatterns ?? resolveSurfacePatterns();
+
   const derived = await deriveTaskWriteScope({
     manifest: input.manifest,
     model: input.model,
     snapshotPath: input.snapshotPath,
     componentResourcePrefix: input.componentResourcePrefix,
     fallbackResource: input.fallbackResource,
+    surfaceLocksEnabled,
+    surfacePatterns,
   });
 
   return {
@@ -92,10 +107,7 @@ export async function deriveTaskWriteScopeReport(input: {
     task_name: input.manifest.name,
     derived_write_resources: derived.derivedWriteResources,
     derived_write_paths: derived.derivedWritePaths,
-    derived_locks: {
-      reads: [],
-      writes: derived.derivedWriteResources,
-    },
+    derived_locks: derived.derivedLocks,
     confidence: derived.confidence,
     notes: derived.notes,
     manifest: {
@@ -114,6 +126,7 @@ export async function deriveTaskWriteScopeReport(input: {
 type DerivedWriteScope = {
   derivedWriteResources: string[];
   derivedWritePaths?: string[];
+  derivedLocks: TaskManifest["locks"];
   confidence: DerivedScopeConfidence;
   notes: string[];
 };
@@ -124,6 +137,8 @@ async function deriveTaskWriteScope(input: {
   snapshotPath: string;
   componentResourcePrefix: string;
   fallbackResource: string;
+  surfaceLocksEnabled: boolean;
+  surfacePatterns: SurfacePatternSet;
 }): Promise<DerivedWriteScope> {
   const fallbackResource = normalizeFallbackResource(input.fallbackResource);
   const notes: string[] = [];
@@ -132,6 +147,18 @@ async function deriveTaskWriteScope(input: {
     input.manifest.locks?.writes ?? [],
     input.componentResourcePrefix,
   );
+  const writeGlobs = normalizeStringList(input.manifest.files?.writes ?? []);
+  const shouldExpandFiles =
+    writeGlobs.length > 0 && (componentLocks.length === 0 || input.surfaceLocksEnabled);
+  const expandedFiles = shouldExpandFiles
+    ? await expandWriteGlobs(writeGlobs, input.snapshotPath)
+    : [];
+  const surfaceLockComponents = resolveSurfaceLockComponents({
+    expandedFiles,
+    model: input.model,
+    surfaceLocksEnabled: input.surfaceLocksEnabled,
+    surfacePatterns: input.surfacePatterns,
+  });
 
   if (componentLocks.length > 0) {
     const derivedWriteResources = dedupeAndSort(componentLocks);
@@ -145,13 +172,14 @@ async function deriveTaskWriteScope(input: {
     return {
       derivedWriteResources,
       derivedWritePaths,
+      derivedLocks: buildDerivedLocks({
+        derivedWriteResources,
+        surfaceLockComponents,
+      }),
       confidence: "high",
       notes,
     };
   }
-
-  const writeGlobs = normalizeStringList(input.manifest.files?.writes ?? []);
-  const expandedFiles = await expandWriteGlobs(writeGlobs, input.snapshotPath);
 
   if (expandedFiles.length === 0) {
     notes.push(
@@ -162,6 +190,10 @@ async function deriveTaskWriteScope(input: {
 
     return {
       derivedWriteResources: fallbackResource ? [fallbackResource] : [],
+      derivedLocks: buildDerivedLocks({
+        derivedWriteResources: fallbackResource ? [fallbackResource] : [],
+        surfaceLockComponents,
+      }),
       confidence: "low",
       notes,
     };
@@ -196,6 +228,10 @@ async function deriveTaskWriteScope(input: {
   return {
     derivedWriteResources,
     derivedWritePaths,
+    derivedLocks: buildDerivedLocks({
+      derivedWriteResources,
+      surfaceLockComponents,
+    }),
     confidence: shouldFallback ? "low" : "medium",
     notes,
   };
@@ -240,6 +276,50 @@ function resolveComponentResourcesForFiles(input: {
   }
 
   return { resources: Array.from(resources).sort(), missingOwners };
+}
+
+
+
+// =============================================================================
+// SURFACE LOCKS
+// =============================================================================
+
+function resolveSurfaceLockComponents(input: {
+  expandedFiles: string[];
+  model: ControlPlaneModel;
+  surfaceLocksEnabled: boolean;
+  surfacePatterns: SurfacePatternSet;
+}): string[] {
+  if (!input.surfaceLocksEnabled || input.expandedFiles.length === 0) {
+    return [];
+  }
+
+  const detection = detectSurfaceChanges(input.expandedFiles, input.surfacePatterns);
+  if (!detection.is_surface_change) {
+    return [];
+  }
+
+  const associated = associateSurfaceChangesWithComponents({
+    detection,
+    model: input.model,
+  });
+
+  return associated.matched_components ?? [];
+}
+
+function buildDerivedLocks(input: {
+  derivedWriteResources: string[];
+  surfaceLockComponents: string[];
+}): TaskManifest["locks"] {
+  const surfaceLocks = buildSurfaceLockResources(input.surfaceLockComponents);
+  return {
+    reads: [],
+    writes: dedupeAndSort([...input.derivedWriteResources, ...surfaceLocks]),
+  };
+}
+
+function buildSurfaceLockResources(components: string[]): string[] {
+  return components.map((component) => `${SURFACE_LOCK_PREFIX}${component}`);
 }
 
 function buildDerivedWritePaths(input: {

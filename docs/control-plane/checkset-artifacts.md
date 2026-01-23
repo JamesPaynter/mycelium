@@ -30,10 +30,15 @@ The checkset falls back to the global doctor when:
 
 - required components exceed `max_components_for_scoped`
 - any required component is missing a mapping
-- surface changes are detected (contracts/config/migrations/public entrypoints)
+- surface changes are detected but impact data is unavailable
 
+When surface changes are detected and impact data is available, the checkset widens to the
+impacted component set (reverse deps) and still respects the scoped component cap.
 When the dependency graph is missing or low-confidence, impacted components widen to all
 components; if that set is too large, the fallback triggers automatically.
+
+Surface changes are filtered to tasks that touch the same components when ownership data
+is available; otherwise the gate applies to all tasks.
 
 ## Artifact location
 
@@ -52,9 +57,15 @@ Each task writes one JSON report at:
   "required_components": ["component-a"],
   "selected_command": "npm run test:component-a",
   "surface_change": {
-    "is_surface_change": false,
-    "categories": [],
-    "matched_files": {}
+    "is_surface_change": true,
+    "categories": ["contract"],
+    "matched_files": {
+      "contract": ["api/openapi.yaml"]
+    },
+    "matched_components": ["component-a"],
+    "matched_components_by_category": {
+      "contract": ["component-a"]
+    }
   },
   "confidence": "high",
   "rationale": []

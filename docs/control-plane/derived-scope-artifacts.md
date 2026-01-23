@@ -7,6 +7,9 @@ The `control_plane.lock_mode` setting controls how it is used:
 - `shadow`: write artifacts; scheduling uses manifest locks.
 - `derived`: write artifacts; scheduling uses derived locks (low confidence widens to the fallback resource).
 
+Optional surface locks add `surface:<component>` write locks when a task changes surface
+files in that component. Enable with `control_plane.surface_locks.enabled`.
+
 ## Scope compliance rollout
 
 Use `control_plane.scope_mode` to control how graph-backed compliance is enforced:
@@ -41,7 +44,10 @@ Orchestrator events include the `report_path` in `task.derived_scope`.
   "task_name": "Derived scope test",
   "derived_write_resources": ["component:acme-web-app"],
   "derived_write_paths": ["apps/web/**"],
-  "derived_locks": { "reads": [], "writes": ["component:acme-web-app"] },
+  "derived_locks": {
+    "reads": [],
+    "writes": ["component:acme-web-app", "surface:acme-web-app"]
+  },
   "confidence": "high",
   "notes": [],
   "manifest": {

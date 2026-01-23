@@ -44,6 +44,11 @@ Notes:
 - Patterns are minimatch globs evaluated against repo-relative paths.
 - Omit a category to use the defaults; set an empty list to disable that category.
 
+## Component association
+
+When a control-plane model is available, matched files are mapped to component IDs.
+This allows surface gating to apply only to tasks touching those components.
+
 ## Output shape
 
 ```json
@@ -53,6 +58,11 @@ Notes:
   "matched_files": {
     "contract": ["api/openapi.yaml"],
     "config": [".env.local", "deploy/values.yaml"]
+  },
+  "matched_components": ["component-a", "component-b"],
+  "matched_components_by_category": {
+    "contract": ["component-a"],
+    "config": ["component-b"]
   }
 }
 ```
