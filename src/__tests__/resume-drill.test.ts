@@ -19,7 +19,12 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const FIXTURE_REPO = path.resolve(__dirname, "../../test/fixtures/toy-repo");
 const DOCKER_IMAGE = "mycelium-worker:resume-drill";
 
-const ENV_VARS = ["MYCELIUM_HOME", "MOCK_LLM", "MOCK_LLM_OUTPUT_PATH"] as const;
+const ENV_VARS = [
+  "MYCELIUM_HOME",
+  "MOCK_LLM",
+  "MOCK_LLM_OUTPUT_PATH",
+  "MYCELIUM_FAKE_CRASH_AFTER_CONTAINER_START",
+] as const;
 const originalEnv: Record<(typeof ENV_VARS)[number], string | undefined> = Object.fromEntries(
   ENV_VARS.map((key) => [key, process.env[key]]),
 ) as Record<(typeof ENV_VARS)[number], string | undefined>;
@@ -91,6 +96,7 @@ describeDocker("resume acceptance: orchestrator crash + resume reattaches", () =
       process.env.MYCELIUM_HOME = path.join(tempRoot, ".mycelium");
       process.env.MOCK_LLM = "1";
       process.env.MOCK_LLM_OUTPUT_PATH = path.join(repoDir, "mock-planner-output.json");
+      process.env.MYCELIUM_FAKE_CRASH_AFTER_CONTAINER_START = "1";
 
       await ensureImplementationPlan(repoDir);
       const config = loadProjectConfig(configPath);
@@ -119,6 +125,7 @@ describeDocker("resume acceptance: orchestrator crash + resume reattaches", () =
         cwd: process.cwd(),
         env: process.env,
       });
+      runProc.catch(() => undefined);
       processes.push(runProc);
 
       await waitForOrchestratorEvent(orchestratorLog, "container.start");
@@ -141,6 +148,7 @@ describeDocker("resume acceptance: orchestrator crash + resume reattaches", () =
         "1",
         "--no-build-image",
       ];
+      delete process.env.MYCELIUM_FAKE_CRASH_AFTER_CONTAINER_START;
       const resumeResult = await execa(cliBin, resumeArgs, {
         cwd: process.cwd(),
         env: process.env,
@@ -286,7 +294,7 @@ async function overrideTaskDoctor(
 async function writeBootstrapDelayScript(repoDir: string): Promise<void> {
   const script = [
     "// Delay to keep the worker container alive during the resume drill.",
-    "const delayMs = 4000;",
+    "const delayMs = 8000;",
     "await new Promise((resolve) => setTimeout(resolve, delayMs));",
     "console.log(`bootstrap delay complete (${delayMs}ms)`);",
     "",
@@ -299,6 +307,9 @@ async function writeFailOnceDoctor(repoDir: string): Promise<void> {
     "import fs from 'node:fs';",
     "import path from 'node:path';",
     "import { spawnSync } from 'node:child_process';",
+    "",
+    "const delayMs = 5000;",
+    "await new Promise((resolve) => setTimeout(resolve, delayMs));",
     "",
     "const guardPath = process.env.WORKER_FAIL_ONCE_FILE ?? path.join(process.cwd(), '.mycelium', 'codex-home', '.fail-once');",
     "if (!fs.existsSync(guardPath)) {",
@@ -328,7 +339,7 @@ async function waitForOrchestratorEvent(
     if (events && events.some((event) => event.type === eventType)) {
       return;
     }
-    await sleep(500);
+    await sleep(100);
   }
 
   throw new Error(`Timed out waiting for ${eventType} in ${logPath}`);

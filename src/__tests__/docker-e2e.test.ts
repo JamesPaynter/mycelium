@@ -81,7 +81,7 @@ describeDocker("docker-mode end-to-end smoke (mock LLM)", () => {
 
       const runResult = await runProject(projectName, config, {
         runId,
-        maxParallel: 1,
+        maxParallel: 2,
         useDocker: true,
         cleanupOnSuccess: true,
         buildImage: true,
@@ -164,7 +164,7 @@ async function writeProjectConfig(configPath: string, repoDir: string): Promise<
     "main_branch: main",
     "tasks_dir: .mycelium/tasks",
     "doctor: npm test",
-    "max_parallel: 1",
+    "max_parallel: 2",
     "resources:",
     '  - name: docs',
     '    paths: ["notes/**"]',

@@ -73,10 +73,16 @@ describeDocker("docker-mode control plane smoke", () => {
         ["cp", "components", "list", "--json", "--repo", REPO_MOUNT_PATH],
         { repoDir },
       );
-      const listEnvelope = parseJsonEnvelope(listResult.stdout, "cp components list");
+      const listEnvelope = parseJsonEnvelope<unknown[]>(
+        listResult.stdout,
+        "cp components list",
+      );
       expect(listEnvelope.ok).toBe(true);
+      if (!listEnvelope.ok) {
+        throw new Error(`cp components list failed: ${listEnvelope.error.message}`);
+      }
       expect(Array.isArray(listEnvelope.result)).toBe(true);
-      expect((listEnvelope.result as unknown[]).length).toBeGreaterThan(0);
+      expect(listEnvelope.result.length).toBeGreaterThan(0);
     },
     180_000,
   );
@@ -128,18 +134,9 @@ function probeDockerAvailability(): { available: boolean; reason?: string } {
 }
 
 async function ensureWorkerImage(): Promise<void> {
-  if (hasDockerImage(DOCKER_IMAGE)) {
-    return;
-  }
-
   await execa("docker", ["build", "-f", DOCKERFILE_PATH, "-t", DOCKER_IMAGE, BUILD_CONTEXT], {
     stdio: "inherit",
   });
-}
-
-function hasDockerImage(tag: string): boolean {
-  const result = spawnSync("docker", ["image", "inspect", tag], { stdio: "ignore" });
-  return result.status === 0;
 }
 
 async function runMyceliumInDocker(

@@ -259,6 +259,8 @@ export async function runProject(
     const useDocker = opts.useDocker ?? true;
     const stopContainersOnExit = opts.stopContainersOnExit ?? false;
     const plannedBatches: BatchPlanEntry[] = [];
+    const crashAfterContainerStart =
+      process.env.MYCELIUM_FAKE_CRASH_AFTER_CONTAINER_START === "1";
 
     const repoPath = config.repo_path;
     const workerImage = config.docker.image;
@@ -360,17 +362,18 @@ export async function runProject(
 
   // Ensure worker image exists.
   if (useDocker) {
-    const haveImage = docker ? await imageExists(docker, workerImage) : false;
-    if (!haveImage) {
-      if (opts.buildImage ?? true) {
-        logOrchestratorEvent(orchLog, "docker.image.build.start", { image: workerImage });
-        await buildWorkerImage({
-          tag: workerImage,
-          dockerfile: config.docker.dockerfile,
-          context: config.docker.build_context,
-        });
-        logOrchestratorEvent(orchLog, "docker.image.build.complete", { image: workerImage });
-      } else {
+    const shouldBuildImage = opts.buildImage ?? true;
+    if (shouldBuildImage) {
+      logOrchestratorEvent(orchLog, "docker.image.build.start", { image: workerImage });
+      await buildWorkerImage({
+        tag: workerImage,
+        dockerfile: config.docker.dockerfile,
+        context: config.docker.build_context,
+      });
+      logOrchestratorEvent(orchLog, "docker.image.build.complete", { image: workerImage });
+    } else {
+      const haveImage = docker ? await imageExists(docker, workerImage) : false;
+      if (!haveImage) {
         throw new Error(
           `Docker image not found: ${workerImage}. Build it or run with --build-image.`,
         );
@@ -1738,6 +1741,11 @@ export async function runProject(
           try {
             await startContainer(container);
             logOrchestratorEvent(orchLog, "container.start", { taskId, container_id: containerId });
+
+            if (crashAfterContainerStart) {
+              // Simulate an orchestrator crash for resume drills; the worker container keeps running.
+              process.kill(process.pid, "SIGKILL");
+            }
 
             const waited = await waitContainer(container);
 

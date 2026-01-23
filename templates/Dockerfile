@@ -20,6 +20,7 @@ RUN apt-get update && apt-get install -y \
   && rm -rf /var/lib/apt/lists/*
 
 COPY package.json package-lock.json tsconfig.json ./
+COPY index.ts ./
 COPY src ./src
 COPY worker ./worker
 

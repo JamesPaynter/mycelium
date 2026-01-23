@@ -36,3 +36,23 @@
 - [ ] [076 - Metrics + feedback loop for Phase B (prove value, guide simplification)](.mycelium/tasks/076-metrics-feedback-loop-for-phase-b-prove-value-guide-simplification/spec.md) (Effort <S>, Tier <standard>)
 
 - [ ] ALL_TASKS_COMPLETE
+
+## Mycelium Visualizer UI (read-only localhost)
+
+### Phase UI-0: Server + APIs (cursor-based tail)
+- [ ] [077 - UI server scaffolding + static hosting + run summary endpoint](.mycelium/tasks/077-ui-server-scaffold-summary-endpoint/spec.md)
+- [ ] [078 - JSONL cursor/offset tail helper (shared, tested)](.mycelium/tasks/078-jsonl-tail-cursor-helper/spec.md)
+- [ ] [079 - Orchestrator events API: /orchestrator/events (cursor + typeGlob)](.mycelium/tasks/079-api-orchestrator-events-tail/spec.md)
+- [ ] [080 - Task events API: /tasks/:taskId/events (cursor + typeGlob); bootstrap output via typeGlob=bootstrap.*](.mycelium/tasks/080-api-task-events-tail-bootstrap-filter/spec.md)
+- [ ] [081 - Diagnostics APIs: doctor snippet, compliance.json, validator reports](.mycelium/tasks/081-api-diagnostics-doctor-compliance-validators/spec.md)
+
+### Phase UI-1: CLI + Config integration
+- [ ] [082 - Config schema + CLI wiring (mycelium ui; run/resume start UI by default with --no-ui)](.mycelium/tasks/082-cli-config-ui-integration/spec.md)
+
+### Phase UI-2: Frontend MVP
+- [ ] [083 - Static frontend MVP (overview, tasks list, task detail w/ event tail + filters)](.mycelium/tasks/083-frontend-mvp-static-ui/spec.md)
+
+### Phase UI-3: Build + Tests
+- [ ] [084 - Build/packaging (dist/ui) + unit/smoke tests (cursor tail + endpoints)](.mycelium/tasks/084-build-packaging-tests-ui/spec.md)
+
+- [ ] ALL_TASKS_COMPLETE

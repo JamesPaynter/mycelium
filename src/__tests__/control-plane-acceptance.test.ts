@@ -119,10 +119,10 @@ async function initGitRepo(repoDir: string): Promise<void> {
 
 function createControlPlaneRunner(
   repoDir: string,
-): (args: string[]) => Promise<JsonEnvelope<unknown>> {
+): <T>(args: string[]) => Promise<JsonEnvelope<T>> {
   const logSpy = vi.spyOn(console, "log").mockImplementation(() => undefined);
 
-  return async (args: string[]) => {
+  return async function runJson<T>(args: string[]): Promise<JsonEnvelope<T>> {
     logSpy.mockClear();
     await runCli([
       "node",
@@ -135,7 +135,7 @@ function createControlPlaneRunner(
       "--no-build",
     ]);
 
-    return parseLastJsonLine<JsonEnvelope<unknown>>(logSpy);
+    return parseLastJsonLine<JsonEnvelope<T>>(logSpy);
   };
 }
 
@@ -196,12 +196,16 @@ describe("control-plane acceptance", () => {
     const runJson = createControlPlaneRunner(repoDir);
 
     const components = expectOk<ControlPlaneComponent[]>(
-      await runJson(["components", "list"]),
+      await runJson<ControlPlaneComponent[]>(["components", "list"]),
     );
     expect(components).toEqual(EXPECTED_COMPONENTS);
 
     const webComponent = expectOk<ControlPlaneComponent | null>(
-      await runJson(["components", "show", "acme-web-app"]),
+      await runJson<ControlPlaneComponent | null>([
+        "components",
+        "show",
+        "acme-web-app",
+      ]),
     );
     expect(webComponent).toEqual(expectedComponentById("acme-web-app"));
 
@@ -209,7 +213,13 @@ describe("control-plane acceptance", () => {
       path: string;
       owner: { component: ControlPlaneComponent; root: string } | null;
       candidates: Array<{ component: ControlPlaneComponent; root: string }>;
-    }>(await runJson(["owner", "apps/web/src/index.ts"]));
+    }>(
+      await runJson<{
+        path: string;
+        owner: { component: ControlPlaneComponent; root: string } | null;
+        candidates: Array<{ component: ControlPlaneComponent; root: string }>;
+      }>(["owner", "apps/web/src/index.ts"]),
+    );
 
     expect(owner).toEqual({
       path: "apps/web/src/index.ts",
@@ -238,7 +248,15 @@ describe("control-plane acceptance", () => {
       transitive: boolean;
       limit: number | null;
       truncated: boolean;
-    }>(await runJson(["deps", "acme-web-app"]));
+    }>(
+      await runJson<{
+        component_id: string;
+        edges: ControlPlaneDependencyEdge[];
+        transitive: boolean;
+        limit: number | null;
+        truncated: boolean;
+      }>(["deps", "acme-web-app"]),
+    );
 
     expect(deps).toEqual({
       component_id: "acme-web-app",
@@ -259,7 +277,15 @@ describe("control-plane acceptance", () => {
       transitive: boolean;
       limit: number | null;
       truncated: boolean;
-    }>(await runJson(["rdeps", "acme-infra-terraform"]));
+    }>(
+      await runJson<{
+        component_id: string;
+        edges: ControlPlaneDependencyEdge[];
+        transitive: boolean;
+        limit: number | null;
+        truncated: boolean;
+      }>(["rdeps", "acme-infra-terraform"]),
+    );
 
     expect(reverseDeps).toEqual({
       component_id: "acme-infra-terraform",
@@ -281,7 +307,16 @@ describe("control-plane acceptance", () => {
       impacted_components: string[];
       confidence: string;
       warnings: string[];
-    }>(await runJson(["blast", "--changed", "packages/utils/src/index.ts"]));
+    }>(
+      await runJson<{
+        changed_paths: string[];
+        touched_components: string[];
+        unmapped_paths: string[];
+        impacted_components: string[];
+        confidence: string;
+        warnings: string[];
+      }>(["blast", "--changed", "packages/utils/src/index.ts"]),
+    );
 
     expect(blast).toEqual({
       changed_paths: ["packages/utils/src/index.ts"],
@@ -300,7 +335,7 @@ describe("control-plane acceptance", () => {
     const runJson = createControlPlaneRunner(repoDir);
 
     const findResult = expectOk<SymbolFindResult>(
-      await runJson(["symbols", "find", "formatUserId"]),
+      await runJson<SymbolFindResult>(["symbols", "find", "formatUserId"]),
     );
 
     expect(findResult.query).toBe("formatUserId");
@@ -327,7 +362,7 @@ describe("control-plane acceptance", () => {
     });
 
     const defResult = expectOk<SymbolDefinitionResult>(
-      await runJson([
+      await runJson<SymbolDefinitionResult>([
         "symbols",
         "def",
         formatMatch.symbol_id,
@@ -350,7 +385,11 @@ describe("control-plane acceptance", () => {
     });
 
     const refsResult = expectOk<SymbolReferencesResult>(
-      await runJson(["symbols", "refs", formatMatch.symbol_id]),
+      await runJson<SymbolReferencesResult>([
+        "symbols",
+        "refs",
+        formatMatch.symbol_id,
+      ]),
     );
 
     expect(refsResult.symbol_id).toBe(formatMatch.symbol_id);
