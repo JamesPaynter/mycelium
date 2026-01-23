@@ -144,8 +144,9 @@ export async function resolveTypeScriptSymbolReferences(options: {
       }
 
       const isDefinition =
-        normalizedFileName === definitionPath &&
-        entry.textSpan.start === definitionOffset;
+        entry.isDefinition ??
+        (normalizedFileName === definitionPath &&
+          entry.textSpan.start === definitionOffset);
 
       references.push({
         file: repoPath,
