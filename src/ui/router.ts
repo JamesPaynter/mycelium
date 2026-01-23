@@ -6,6 +6,7 @@ import { findTaskLogDir, readJsonlFromCursor, taskEventsLogPathForId } from "../
 import { resolveRunLogsDir } from "../core/paths.js";
 import { readDoctorLogSnippet } from "../core/run-logs.js";
 import { loadRunStateForProject, summarizeRunState } from "../core/state-store.js";
+import { loadCodeGraphSnapshot, type CodeGraphError } from "./code-graph.js";
 
 
 // =============================================================================
@@ -24,6 +25,7 @@ type ResolvedUiRouterOptions = UiRouterOptions & {
 
 type ApiRouteMatch =
   | { type: "summary"; projectName: string; runId: string }
+  | { type: "code_graph"; projectName: string; runId: string }
   | { type: "orchestrator_events"; projectName: string; runId: string }
   | { type: "task_events"; projectName: string; runId: string; taskId: string }
   | { type: "task_doctor"; projectName: string; runId: string; taskId: string }
@@ -141,6 +143,11 @@ async function handleApiRequest(
     return;
   }
 
+  if (route.type === "code_graph") {
+    await handleCodeGraphRequest(res, method, url, route);
+    return;
+  }
+
   if (route.type === "orchestrator_events") {
     await handleOrchestratorEventsRequest(res, method, url, route);
     return;
@@ -233,6 +240,39 @@ async function handleSummaryRequest(
 
   const summary = summarizeRunState(resolved.state);
   sendApiOk(res, summary, method === "HEAD");
+}
+
+async function handleCodeGraphRequest(
+  res: ServerResponse,
+  method: string,
+  url: URL,
+  route: { projectName: string; runId: string },
+): Promise<void> {
+  const baseSha = parseOptionalString(url.searchParams.get("baseSha")) ?? null;
+  const resolved = await loadRunStateForProject(route.projectName, route.runId);
+  if (!resolved) {
+    sendApiError(
+      res,
+      404,
+      "not_found",
+      `Run ${route.runId} not found for project ${route.projectName}.`,
+      method === "HEAD",
+    );
+    return;
+  }
+
+  const snapshot = await loadCodeGraphSnapshot({
+    state: resolved.state,
+    baseShaOverride: baseSha,
+  });
+
+  if (!snapshot.ok) {
+    const status = statusForCodeGraphError(snapshot.error.code);
+    sendCodeGraphError(res, status, snapshot.error, method === "HEAD");
+    return;
+  }
+
+  sendApiOk(res, snapshot.result, method === "HEAD");
 }
 
 async function handleOrchestratorEventsRequest(
@@ -485,8 +525,8 @@ async function handleValidatorReportRequest(
 function matchApiRoute(pathname: string): ApiRouteMatch {
   const segments = pathname.split("/").filter(Boolean);
   if (segments.length === 6) {
-    const [api, projects, projectSegment, runs, runSegment, summary] = segments;
-    if (api !== "api" || projects !== "projects" || runs !== "runs" || summary !== "summary") {
+    const [api, projects, projectSegment, runs, runSegment, tail] = segments;
+    if (api !== "api" || projects !== "projects" || runs !== "runs") {
       return { type: "not_found" };
     }
 
@@ -495,7 +535,15 @@ function matchApiRoute(pathname: string): ApiRouteMatch {
       return { type: "bad_request" };
     }
 
-    return { type: "summary", ...parsed };
+    if (tail === "summary") {
+      return { type: "summary", ...parsed };
+    }
+
+    if (tail === "code-graph") {
+      return { type: "code_graph", ...parsed };
+    }
+
+    return { type: "not_found" };
   }
 
   if (segments.length === 7) {
@@ -737,6 +785,15 @@ function sendApiError(
   sendJson(res, status, { ok: false, error: { code, message } }, isHead);
 }
 
+function sendCodeGraphError(
+  res: ServerResponse,
+  status: number,
+  error: CodeGraphError,
+  isHead: boolean,
+): void {
+  sendJson(res, status, { ok: false, error }, isHead);
+}
+
 function sendJson(res: ServerResponse, status: number, payload: unknown, isHead: boolean): void {
   const body = JSON.stringify(payload);
   res.statusCode = status;
@@ -871,6 +928,19 @@ function parseCursorParam(value: string | null): { ok: true; value: number } | {
 function normalizeLogPath(baseDir: string, filePath: string): string {
   const relativePath = path.relative(baseDir, filePath);
   return relativePath.split(path.sep).join("/");
+}
+
+function statusForCodeGraphError(code: CodeGraphError["code"]): number {
+  switch (code) {
+    case "INVALID_BASE_SHA":
+      return 400;
+    case "MODEL_NOT_FOUND":
+    case "REPO_NOT_FOUND":
+    case "BASE_SHA_RESOLUTION_FAILED":
+      return 404;
+    default:
+      return 500;
+  }
 }
 
 async function fileExists(filePath: string): Promise<boolean> {
