@@ -358,6 +358,21 @@ async function buildControlPlaneSnapshot(input: {
   };
 }
 
+function shouldBuildControlPlaneSnapshot(
+  snapshot: ControlPlaneSnapshot | undefined,
+): snapshot is ControlPlaneSnapshot & { base_sha: string } {
+  if (!snapshot?.enabled || !snapshot.base_sha) {
+    return false;
+  }
+
+  return (
+    !snapshot.model_hash ||
+    !snapshot.model_path ||
+    !snapshot.schema_version ||
+    !snapshot.extractor_versions
+  );
+}
+
 type ResourceResolutionContext = {
   staticResources: ResourceConfig[];
   knownResources: string[];
@@ -805,15 +820,14 @@ export async function runProject(
     const containerSecurityPayload = buildContainerSecurityPayload(config.docker);
     const networkMode = config.docker.network_mode;
     const containerUser = config.docker.user;
-    const controlPlaneConfig = resolveControlPlaneConfig(config);
-    const checksetMode = controlPlaneConfig.enabled ? controlPlaneConfig.checks.mode : "off";
-    const lockMode = resolveEffectiveLockMode(controlPlaneConfig);
-    const scopeComplianceMode = resolveScopeComplianceMode(controlPlaneConfig);
-    const shouldEnforceCompliance = scopeComplianceMode === "enforce";
+    let controlPlaneConfig = resolveControlPlaneConfig(config);
+    let checksetMode: ControlPlaneChecksMode;
+    let lockMode: ControlPlaneLockMode;
+    let scopeComplianceMode: ControlPlaneScopeMode;
+    let shouldEnforceCompliance: boolean;
+    let compliancePolicy: ManifestEnforcementPolicy;
     const docker = useDocker ? dockerClient() : null;
     const manifestPolicy: ManifestEnforcementPolicy = config.manifest_enforcement ?? "warn";
-    const compliancePolicy: ManifestEnforcementPolicy =
-      scopeComplianceMode === "off" ? "off" : manifestPolicy;
     const costPer1kTokens = DEFAULT_COST_PER_1K_TOKENS;
     const mockLlmMode = isMockLlmEnabled() || config.worker.model === "mock";
     let stopRequested: StopRequest | null = null;
@@ -876,21 +890,29 @@ export async function runProject(
   let controlPlaneSnapshot: ControlPlaneSnapshot | undefined = hadExistingState
     ? state.control_plane
     : undefined;
+  const snapshotEnabled = controlPlaneSnapshot?.enabled ?? controlPlaneConfig.enabled;
   if (!controlPlaneSnapshot?.base_sha) {
     const baseSha = await resolveRunBaseSha(repoPath, config.main_branch);
-    controlPlaneSnapshot = await buildControlPlaneSnapshot({
-      repoPath,
-      baseSha,
-      enabled: controlPlaneConfig.enabled,
-    });
-  }
+    controlPlaneSnapshot = {
+      enabled: snapshotEnabled,
+      base_sha: baseSha,
+    };
 
-  if (hadExistingState) {
-    if (!state.control_plane?.base_sha) {
+    if (hadExistingState) {
       state.control_plane = controlPlaneSnapshot;
       await stateStore.save(state);
+    } else {
+      state = createRunState({
+        runId,
+        project: projectName,
+        repoPath,
+        mainBranch: config.main_branch,
+        taskIds: [],
+        controlPlane: controlPlaneSnapshot,
+      });
+      await stateStore.save(state);
     }
-  } else {
+  } else if (!hadExistingState) {
     state = createRunState({
       runId,
       project: projectName,
@@ -901,6 +923,29 @@ export async function runProject(
     });
     await stateStore.save(state);
   }
+
+  if (shouldBuildControlPlaneSnapshot(controlPlaneSnapshot)) {
+    controlPlaneSnapshot = await buildControlPlaneSnapshot({
+      repoPath,
+      baseSha: controlPlaneSnapshot.base_sha,
+      enabled: true,
+    });
+    state.control_plane = controlPlaneSnapshot;
+    await stateStore.save(state);
+  }
+
+  if (controlPlaneSnapshot && controlPlaneSnapshot.enabled !== controlPlaneConfig.enabled) {
+    controlPlaneConfig = {
+      ...controlPlaneConfig,
+      enabled: controlPlaneSnapshot.enabled,
+    };
+  }
+
+  checksetMode = controlPlaneConfig.enabled ? controlPlaneConfig.checks.mode : "off";
+  lockMode = resolveEffectiveLockMode(controlPlaneConfig);
+  scopeComplianceMode = resolveScopeComplianceMode(controlPlaneConfig);
+  shouldEnforceCompliance = scopeComplianceMode === "enforce";
+  compliancePolicy = scopeComplianceMode === "off" ? "off" : manifestPolicy;
 
   const resourceContext = await buildResourceResolutionContext({
     repoPath,

@@ -68,4 +68,5 @@ or
 ## Run pinning (Phase B)
 
 - Runs persist `control_plane.base_sha` (plus model metadata when available) at start.
+- The base SHA is written immediately after checkout so failed runs remain auditable.
 - Resume reuses the stored snapshot so base SHA and model hash stay fixed mid-run.
