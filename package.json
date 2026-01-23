@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "Autonomous task orchestrator for long-running Codex-powered software delivery",
+  "description": "Mycelium: Codex-powered task orchestration for long-running software delivery",
   "license": "Apache-2.0",
   "bin": {
     "mycelium": "./bin/mycelium"
@@ -13,10 +13,12 @@
     "bin/mycelium",
     "templates/**/*",
     "README.md",
-    "LICENSE"
+    "LICENSE",
+    "GPT-PRO-notes/**/*"
   ],
   "scripts": {
-    "build": "tsc -p tsconfig.json",
+    "build": "tsc -p tsconfig.json && npm run build:ui",
+    "build:ui": "node scripts/build-ui.mjs",
     "build:worker": "tsc -p tsconfig.json",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "lint": "eslint . --ext .ts,.js,.cjs,.mjs",
@@ -45,6 +47,7 @@
     "js-yaml": "^4.1.0",
     "minimatch": "^9.0.4",
     "openai": "^6.16.0",
+    "typescript": "^5.4.5",
     "zod": "^3.23.8"
   },
   "devDependencies": {
@@ -61,7 +64,6 @@
     "eslint-plugin-import": "^2.32.0",
     "prettier": "^3.7.4",
     "tsx": "^4.15.0",
-    "typescript": "^5.4.5",
     "vitest": "^4.0.16"
   }
 }

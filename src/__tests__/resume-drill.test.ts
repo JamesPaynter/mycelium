@@ -19,7 +19,12 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const FIXTURE_REPO = path.resolve(__dirname, "../../test/fixtures/toy-repo");
 const DOCKER_IMAGE = "mycelium-worker:resume-drill";
 
-const ENV_VARS = ["MYCELIUM_HOME", "MOCK_LLM", "MOCK_LLM_OUTPUT_PATH"] as const;
+const ENV_VARS = [
+  "MYCELIUM_HOME",
+  "MOCK_LLM",
+  "MOCK_LLM_OUTPUT_PATH",
+  "MYCELIUM_FAKE_CRASH_AFTER_CONTAINER_START",
+] as const;
 const originalEnv: Record<(typeof ENV_VARS)[number], string | undefined> = Object.fromEntries(
   ENV_VARS.map((key) => [key, process.env[key]]),
 ) as Record<(typeof ENV_VARS)[number], string | undefined>;
@@ -91,11 +96,14 @@ describeDocker("resume acceptance: orchestrator crash + resume reattaches", () =
       process.env.MYCELIUM_HOME = path.join(tempRoot, ".mycelium");
       process.env.MOCK_LLM = "1";
       process.env.MOCK_LLM_OUTPUT_PATH = path.join(repoDir, "mock-planner-output.json");
+      process.env.MYCELIUM_FAKE_CRASH_AFTER_CONTAINER_START = "1";
 
+      await ensureImplementationPlan(repoDir);
       const config = loadProjectConfig(configPath);
       await planProject(projectName, config, {
         input: ".mycelium/planning/implementation-plan.md",
       });
+      await overrideTaskDoctor(repoDir, "001", "node resume-doctor.js");
 
       const orchestratorLog = orchestratorLogPath(projectName, runId);
       const cliBin = path.join(process.cwd(), "node_modules", ".bin", "tsx");
@@ -117,6 +125,7 @@ describeDocker("resume acceptance: orchestrator crash + resume reattaches", () =
         cwd: process.cwd(),
         env: process.env,
       });
+      runProc.catch(() => undefined);
       processes.push(runProc);
 
       await waitForOrchestratorEvent(orchestratorLog, "container.start");
@@ -139,6 +148,7 @@ describeDocker("resume acceptance: orchestrator crash + resume reattaches", () =
         "1",
         "--no-build-image",
       ];
+      delete process.env.MYCELIUM_FAKE_CRASH_AFTER_CONTAINER_START;
       const resumeResult = await execa(cliBin, resumeArgs, {
         cwd: process.cwd(),
         env: process.env,
@@ -215,7 +225,7 @@ async function writeProjectConfig(configPath: string, repoDir: string): Promise<
     `repo_path: ${repoDir}`,
     "main_branch: main",
     "tasks_dir: .mycelium/tasks",
-    "doctor: node resume-doctor.js",
+    "doctor: node -e \"process.exit(0)\"",
     "max_parallel: 1",
     "resources:",
     '  - name: docs',
@@ -240,10 +250,51 @@ async function writeProjectConfig(configPath: string, repoDir: string): Promise<
   await fs.writeFile(configPath, configContents, "utf8");
 }
 
+async function ensureImplementationPlan(repoDir: string): Promise<void> {
+  const sourcePlan = path.join(repoDir, "docs", "planning", "implementation-plan.md");
+  const planDir = path.join(repoDir, ".mycelium", "planning");
+  const targetPlan = path.join(planDir, "implementation-plan.md");
+
+  await fs.mkdir(planDir, { recursive: true });
+
+  let contents = "# Implementation Plan\n";
+  try {
+    contents = await fs.readFile(sourcePlan, "utf8");
+  } catch {
+    // Fall back to a stub when fixtures change.
+  }
+
+  await fs.writeFile(targetPlan, contents, "utf8");
+}
+
+async function overrideTaskDoctor(
+  repoDir: string,
+  taskId: string,
+  doctorCommand: string,
+): Promise<void> {
+  const tasksRoot = path.join(repoDir, ".mycelium", "tasks");
+  const entries = await fs.readdir(tasksRoot, { withFileTypes: true });
+  const taskDir = entries.find(
+    (entry) => entry.isDirectory() && entry.name.startsWith(`${taskId}-`),
+  );
+  if (!taskDir) {
+    throw new Error(`Task directory not found for ${taskId} in ${tasksRoot}`);
+  }
+
+  const manifestPath = path.join(tasksRoot, taskDir.name, "manifest.json");
+  const raw = await fs.readFile(manifestPath, "utf8");
+  const manifest = JSON.parse(raw) as { verify?: { doctor?: string } };
+  const next = {
+    ...manifest,
+    verify: { ...manifest.verify, doctor: doctorCommand },
+  };
+  await fs.writeFile(manifestPath, JSON.stringify(next, null, 2) + "\n", "utf8");
+}
+
 async function writeBootstrapDelayScript(repoDir: string): Promise<void> {
   const script = [
     "// Delay to keep the worker container alive during the resume drill.",
-    "const delayMs = 4000;",
+    "const delayMs = 8000;",
     "await new Promise((resolve) => setTimeout(resolve, delayMs));",
     "console.log(`bootstrap delay complete (${delayMs}ms)`);",
     "",
@@ -256,6 +307,9 @@ async function writeFailOnceDoctor(repoDir: string): Promise<void> {
     "import fs from 'node:fs';",
     "import path from 'node:path';",
     "import { spawnSync } from 'node:child_process';",
+    "",
+    "const delayMs = 5000;",
+    "await new Promise((resolve) => setTimeout(resolve, delayMs));",
     "",
     "const guardPath = process.env.WORKER_FAIL_ONCE_FILE ?? path.join(process.cwd(), '.mycelium', 'codex-home', '.fail-once');",
     "if (!fs.existsSync(guardPath)) {",
@@ -285,7 +339,7 @@ async function waitForOrchestratorEvent(
     if (events && events.some((event) => event.type === eventType)) {
       return;
     }
-    await sleep(500);
+    await sleep(100);
   }
 
   throw new Error(`Timed out waiting for ${eventType} in ${logPath}`);

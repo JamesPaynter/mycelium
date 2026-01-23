@@ -65,7 +65,15 @@ export async function removeRunWorkspace(projectName: string, runId: string): Pr
 
 async function ensureWorkspaceRuntimeIgnored(workspacePath: string): Promise<void> {
   const excludePath = path.join(workspacePath, ".git", "info", "exclude");
-  const patterns = [".mycelium/"];
+  // Avoid committing orchestrator artifacts into the task branch. We do *not* ignore
+  // the entire .mycelium folder because some projects keep planning artifacts
+  // or local config there, but tasks/planning are managed by the orchestrator.
+  const patterns = [
+    ".mycelium/tasks/",
+    ".mycelium/planning/",
+    ".mycelium/codex-home/",
+    ".mycelium/worker-state.json",
+  ];
 
   let existing = "";
   try {

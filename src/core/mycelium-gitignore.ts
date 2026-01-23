@@ -1,27 +1,21 @@
-import path from "node:path";
-
-import type { VersioningConfig } from "./config.js";
-
 export type MyceliumGitignoreOptions = {
-  repoPath: string;
-  tasksDir: string;
-  planningDir: string;
-  versioning: VersioningConfig;
+  includeSessions?: boolean;
 };
 
-export function buildMyceliumGitignore(options: MyceliumGitignoreOptions): string {
-  const entries = buildIgnoreEntries(options);
+export function buildMyceliumGitignore(
+  options: MyceliumGitignoreOptions = {},
+): string {
+  const entries = buildEntries(options);
   const lines = [
-    "# Managed by Mycelium. Edit .mycelium/config.yaml versioning to change tracked paths.",
+    "# Managed by Mycelium. Edit this file if you need different repo hygiene.",
     ...entries,
     "",
   ];
   return lines.join("\n");
 }
 
-function buildIgnoreEntries(options: MyceliumGitignoreOptions): string[] {
-  const myceliumRoot = path.join(options.repoPath, ".mycelium");
-  const entries: string[] = [
+function buildEntries(options: MyceliumGitignoreOptions): string[] {
+  const entries = [
     "logs/",
     "state/",
     "workspaces/",
@@ -29,30 +23,9 @@ function buildIgnoreEntries(options: MyceliumGitignoreOptions): string[] {
     "projects/",
   ];
 
-  if (!options.versioning.commit_tasks) {
-    const entry = relativeToMycelium(myceliumRoot, path.resolve(options.repoPath, options.tasksDir));
-    if (entry) entries.push(ensureTrailingSlash(entry));
-  }
-
-  if (!options.versioning.commit_planning) {
-    const entry = relativeToMycelium(
-      myceliumRoot,
-      path.resolve(options.repoPath, options.planningDir),
-    );
-    if (entry) entries.push(ensureTrailingSlash(entry));
+  if (options.includeSessions ?? true) {
+    entries.push("planning/sessions/");
   }
 
   return Array.from(new Set(entries)).sort();
-}
-
-function relativeToMycelium(myceliumRoot: string, targetAbs: string): string | null {
-  const rel = path.relative(myceliumRoot, targetAbs);
-  if (!rel || rel === "." || rel.startsWith("..") || path.isAbsolute(rel)) {
-    return null;
-  }
-  return rel.split(path.sep).join("/");
-}
-
-function ensureTrailingSlash(entry: string): string {
-  return entry.endsWith("/") ? entry : `${entry}/`;
 }

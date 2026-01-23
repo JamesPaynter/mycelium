@@ -45,9 +45,8 @@ Return JSON only with this shape:
 5. Use the dependencies array to enforce ordering when one task relies on another.
 6. Specs must include file paths, symbol names, patterns to follow, edge cases, and verification commands.
 7. Identify affected tests; if new tests are needed, name them and include them in files.writes.
-8. Always set verify.doctor to the provided doctor command; it must be non-empty.
-9. When `tdd_mode` is `strict`, include test_paths, populate affected_tests, and describe the tests-first plan before implementation steps.
-10. Do not add commentary; output valid JSON that matches the schema exactly.
+8. When `tdd_mode` is `strict`, include test_paths, populate affected_tests, and describe the tests-first plan before implementation steps.
+9. Do not add commentary; output valid JSON that matches the schema exactly.
 
 ## Inputs
 ### Implementation Plan

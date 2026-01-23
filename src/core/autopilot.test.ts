@@ -122,15 +122,9 @@ describe("writePlanningArtifacts + transcript formatting", () => {
       summary: "overall summary",
     };
 
-    const planningRoot = path.join(repo, ".mycelium", "planning");
-    const planInputPath = path.join(
-      planningRoot,
-      "002-implementation",
-      "implementation-plan.md",
-    );
+    const planInputPath = path.join(repo, "docs", "planning", "002-implementation", "implementation-plan.md");
     const paths = await writePlanningArtifacts({
       repoPath: repo,
-      planningRoot,
       sessionId: "20250101-000000",
       planInputPath,
       artifacts,
@@ -147,7 +141,7 @@ describe("writePlanningArtifacts + transcript formatting", () => {
       artifactPaths: paths,
       plan: {
         tasksPlanned: 3,
-        outputDir: path.join(repo, ".mycelium", "tasks"),
+        outputDir: path.join(repo, ".tasks"),
         planIndexPath: null,
         dryRun: false,
       },
@@ -157,7 +151,7 @@ describe("writePlanningArtifacts + transcript formatting", () => {
     const planFile = fs.readFileSync(paths.implementationPlanPath, "utf8");
     expect(planFile).toContain("# Implementation Plan");
     expect(planFile).toContain("Session 20250101-000000");
-    expect(transcript).toContain(".mycelium/planning/002-implementation/implementation-plan.md");
+    expect(transcript).toContain("planning/002-implementation/implementation-plan.md");
     expect(transcript).toContain("tasks=3");
     expect(transcript).toContain("Run skipped by operator.");
   });

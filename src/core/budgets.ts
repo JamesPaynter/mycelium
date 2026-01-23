@@ -59,7 +59,7 @@ export function parseTaskTokenUsage(
     const usage = extractUsage(parsed);
     if (!usage) continue;
 
-    const attempt = typeof parsed.attempt === "number" ? parsed.attempt : 0;
+    const attempt = extractAttempt(parsed);
     const bucket = attempts.get(attempt) ?? { input: 0, cached: 0, output: 0 };
 
     bucket.input += usage.input_tokens;
@@ -163,13 +163,13 @@ export function detectBudgetBreaches(args: {
 function extractUsage(
   event: Record<string, unknown>,
 ): { input_tokens: number; cached_input_tokens: number; output_tokens: number } | null {
-  const payload = event.payload;
-  if (!payload || typeof payload !== "object" || Array.isArray(payload)) return null;
+  const payload = readObjectField(event, "payload");
+  if (!payload) return null;
 
-  const codexEvent = (payload as { event?: unknown }).event;
-  if (!codexEvent || typeof codexEvent !== "object" || Array.isArray(codexEvent)) return null;
+  const codexEvent = readObjectField(payload, "event") ?? readNestedEvent(payload);
+  if (!codexEvent) return null;
 
-  const typed = codexEvent as Record<string, unknown>;
+  const typed = codexEvent;
   if (typed.type !== "turn.completed") return null;
 
   const usage = typed.usage;
@@ -184,6 +184,38 @@ function extractUsage(
     cached_input_tokens: cachedTokens,
     output_tokens: outputTokens,
   };
+}
+
+function extractAttempt(event: Record<string, unknown>): number {
+  const topLevel = readNumberField(event, "attempt");
+  if (topLevel !== null) return topLevel;
+
+  const payload = readObjectField(event, "payload");
+  if (!payload) return 0;
+
+  const nested = readNumberField(payload, "attempt");
+  return nested ?? 0;
+}
+
+function readNestedEvent(payload: Record<string, unknown>): Record<string, unknown> | null {
+  const nestedPayload = readObjectField(payload, "payload");
+  if (!nestedPayload) return null;
+  return readObjectField(nestedPayload, "event");
+}
+
+function readObjectField(
+  target: Record<string, unknown>,
+  field: string,
+): Record<string, unknown> | null {
+  const value = target[field];
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  return value as Record<string, unknown>;
+}
+
+function readNumberField(target: Record<string, unknown>, field: string): number | null {
+  const value = target[field];
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  return null;
 }
 
 function estimateCostFromTokens(tokens: number, costPer1kTokens: number): number {

@@ -22,10 +22,8 @@ describe("prepareTaskWorkspace", () => {
 
   beforeEach(async () => {
     originalHome = process.env.MYCELIUM_HOME;
-
     tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "workspace-manager-"));
     process.env.MYCELIUM_HOME = path.join(tmpDir, ".mycelium-home");
-
     await removeRunWorkspace(projectName, runId);
     bareRepo = path.join(tmpDir, "source.git");
 
@@ -117,7 +115,10 @@ describe("prepareTaskWorkspace", () => {
     const excludePath = path.join(workspacePath, ".git", "info", "exclude");
     const exclude = await fse.readFile(excludePath, "utf8");
 
-    expect(exclude).toContain(".mycelium/");
+    expect(exclude).toContain(".mycelium/tasks/");
+    expect(exclude).toContain(".mycelium/planning/");
+    expect(exclude).toContain(".mycelium/codex-home/");
+    expect(exclude).toContain(".mycelium/worker-state.json");
   });
 
   it("fails when workspace points to a different repo", async () => {

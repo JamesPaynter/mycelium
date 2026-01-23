@@ -10,16 +10,11 @@ main_branch: development-codex
 # Task branches are created as: <task_branch_prefix><id>-<name>
 task_branch_prefix: agent/
 
-# Tasks directory within the repo
+# Where Mycelium stores planned task specs + manifests within the target repo
 tasks_dir: .mycelium/tasks
 
-# Planning artifacts directory within the repo
+# Where Mycelium stores planning artifacts (implementation plan, sessions, etc.)
 planning_dir: .mycelium/planning
-
-# Versioning controls for .mycelium contents
-versioning:
-  commit_planning: true
-  commit_tasks: true
 
 # Manifest enforcement policy: off | warn | block
 manifest_enforcement: warn
@@ -68,29 +63,33 @@ resources:
       - yarn.lock
       - Dockerfile*
 
+# Optional control plane config for derived component resources
+control_plane:
+  enabled: false
+  component_resource_prefix: "component:"
+  fallback_resource: "repo-root"
+  resources_mode: "prefer-derived"
+  scope_mode: "enforce"
+
 planner:
-  provider: openai
-  model: gpt-5.2
-  reasoning_effort: xhigh
+  provider: codex
+  model: o3
   # For Anthropic, set provider to "anthropic", set model to a Claude variant,
   # and add anthropic_api_key / anthropic_base_url if you prefer config-based auth.
 
 worker:
-  model: gpt-5.2-codex
-  reasoning_effort: xhigh
+  model: gpt-5.1-codex-max
   checkpoint_commits: true
 
 test_validator:
   mode: warn
   provider: openai
-  model: gpt-5.2
-  reasoning_effort: xhigh
+  model: o3
 
 doctor_validator:
   mode: warn
   provider: openai
-  model: gpt-5.2
-  reasoning_effort: xhigh
+  model: o3
   run_every_n_tasks: 10
   # Anthropic works here too (set provider to "anthropic" and provide a Claude model).
 

@@ -38,19 +38,28 @@ describe("resolveProjectConfigPath", () => {
     const config = fs.readFileSync(result.configPath, "utf8");
     expect(config).toContain("tasks_dir: .mycelium/tasks");
     expect(config).toContain("planning_dir: .mycelium/planning");
-    expect(config).toContain("versioning:");
-    expect(config).toContain("commit_planning: true");
-    expect(config).toContain("commit_tasks: true");
     expect(config).toContain("doctor: ./.mycelium/doctor.sh");
-    expect(config).toContain("model: gpt-5.2");
-    expect(config).toContain("reasoning_effort: xhigh");
-    expect(config).toContain("worker:\n  model: gpt-5.2-codex\n  reasoning_effort: xhigh");
+    expect(config).toContain("ui:");
+    expect(config).toContain("open_browser: true");
+    expect(config).toContain("planner:");
+    expect(config).toContain("worker:");
 
     const doctorScript = path.join(repo, ".mycelium", "doctor.sh");
     expect(fs.existsSync(doctorScript)).toBe(true);
+    expect(fs.readFileSync(doctorScript, "utf8")).toContain("Doctor not configured");
 
     const gitignore = path.join(repo, ".mycelium", ".gitignore");
     expect(fs.readFileSync(gitignore, "utf8")).toContain("Managed by Mycelium");
+
+    const planPath = path.join(
+      repo,
+      ".mycelium",
+      "planning",
+      "002-implementation",
+      "implementation-plan.md",
+    );
+    expect(fs.existsSync(planPath)).toBe(true);
+    expect(fs.readFileSync(planPath, "utf8")).toContain("# Implementation Plan");
   });
 
   it("uses an existing repo config without recreating", () => {
@@ -63,15 +72,15 @@ describe("resolveProjectConfigPath", () => {
       [
         "repo_path: ..",
         "main_branch: main",
-        "doctor: echo ok",
+        "doctor: npm test",
         "resources:",
         "  - name: repo",
         '    paths: ["**/*"]',
         "planner:",
-        "  provider: openai",
-        "  model: gpt-5.2",
+        "  provider: codex",
+        "  model: o3",
         "worker:",
-        "  model: gpt-5.2-codex",
+        "  model: gpt-5.1-codex-max",
         "",
       ].join("\n"),
       "utf8",

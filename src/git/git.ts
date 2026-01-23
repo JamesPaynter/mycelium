@@ -27,7 +27,7 @@ export async function git(
 }
 
 export async function ensureCleanWorkingTree(cwd: string): Promise<void> {
-  // Ignore untracked files (e.g., .mycelium/tasks, logs/) so the tool can operate without
+  // Ignore untracked files (e.g., .tasks/, logs/) so the tool can operate without
   // requiring those artifacts to be committed.
   const res = await execa("git", ["status", "--porcelain", "--untracked-files=no"], {
     cwd,
@@ -48,6 +48,17 @@ export async function currentBranch(cwd: string): Promise<string> {
 export async function headSha(cwd: string): Promise<string> {
   const res = await execa("git", ["rev-parse", "HEAD"], { cwd, stdio: "pipe" });
   return res.stdout.trim();
+}
+
+export async function resolveRunBaseSha(repoPath: string, mainBranch: string): Promise<string> {
+  const branch = await currentBranch(repoPath);
+  if (branch !== mainBranch) {
+    throw new GitError(
+      `Expected ${mainBranch} to be checked out before resolving base SHA (found ${branch}).`,
+    );
+  }
+
+  return headSha(repoPath);
 }
 
 export async function getRemoteUrl(cwd: string, remote = "origin"): Promise<string | null> {

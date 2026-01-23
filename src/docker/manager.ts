@@ -16,16 +16,6 @@ import {
 } from "./docker.js";
 import { streamContainerLogs, type LogStreamHandle } from "./streams.js";
 
-const LABEL_PREFIX = "mycelium";
-
-function containerLabel(
-  labels: Record<string, string> | undefined,
-  key: string,
-): string | undefined {
-  if (!labels) return undefined;
-  return labels[`${LABEL_PREFIX}.${key}`];
-}
-
 export type RunContainerOptions = {
   spec: ContainerSpec;
   logger?: JsonlLogger;
@@ -178,8 +168,8 @@ export class DockerManager {
     const containers = await this.docker.listContainers({ all: true });
     const matches = containers.filter(
       (c) =>
-        containerLabel(c.Labels, "project") === projectName &&
-        containerLabel(c.Labels, "run_id") === runId,
+        c.Labels?.["mycelium.project"] === projectName &&
+        c.Labels?.["mycelium.run_id"] === runId,
     );
 
     return matches.map((c) => ({

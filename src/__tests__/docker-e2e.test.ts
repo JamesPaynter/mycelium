@@ -69,6 +69,7 @@ describeDocker("docker-mode end-to-end smoke (mock LLM)", () => {
       process.env.MOCK_LLM = "1";
       process.env.MOCK_LLM_OUTPUT_PATH = path.join(repoDir, "mock-planner-output.json");
 
+      await ensureImplementationPlan(repoDir);
       const config = loadProjectConfig(configPath);
       const headBefore = await gitHead(repoDir, config.main_branch);
       const commitsBefore = await commitCount(repoDir, config.main_branch);
@@ -80,7 +81,7 @@ describeDocker("docker-mode end-to-end smoke (mock LLM)", () => {
 
       const runResult = await runProject(projectName, config, {
         runId,
-        maxParallel: 1,
+        maxParallel: 2,
         useDocker: true,
         cleanupOnSuccess: true,
         buildImage: true,
@@ -163,7 +164,7 @@ async function writeProjectConfig(configPath: string, repoDir: string): Promise<
     "main_branch: main",
     "tasks_dir: .mycelium/tasks",
     "doctor: npm test",
-    "max_parallel: 1",
+    "max_parallel: 2",
     "resources:",
     '  - name: docs',
     '    paths: ["notes/**"]',
@@ -182,6 +183,23 @@ async function writeProjectConfig(configPath: string, repoDir: string): Promise<
   ].join("\n");
 
   await fs.writeFile(configPath, configContents, "utf8");
+}
+
+async function ensureImplementationPlan(repoDir: string): Promise<void> {
+  const sourcePlan = path.join(repoDir, "docs", "planning", "implementation-plan.md");
+  const planDir = path.join(repoDir, ".mycelium", "planning");
+  const targetPlan = path.join(planDir, "implementation-plan.md");
+
+  await fs.mkdir(planDir, { recursive: true });
+
+  let contents = "# Implementation Plan\n";
+  try {
+    contents = await fs.readFile(sourcePlan, "utf8");
+  } catch {
+    // Fall back to a stub when fixtures change.
+  }
+
+  await fs.writeFile(targetPlan, contents, "utf8");
 }
 
 async function gitHead(repoDir: string, branch: string): Promise<string> {

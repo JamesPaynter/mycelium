@@ -2,7 +2,6 @@
 #
 # Goal: allow codebase reading but prevent repo modifications.
 
-model = "gpt-5.2-codex"
-model_reasoning_effort = "xhigh"
+model = "o3"
 approval_policy = "never"
 sandbox_mode = "read-only"

@@ -1,5 +1,18 @@
 # Changelog
 
+## 2026-01-23
+- Added run summary metrics artifacts (scope violations, fallback counts, blast averages, validator timing, batch sizing) with tests and documentation.
+- Added Control Plane dependency edges (workspace packages + TypeScript imports) plus `cp deps`/`cp rdeps` queries with confidence labels.
+- Added Control Plane blast radius diff helpers and tests covering diff/against path collection.
+- Added commit-addressed Control Plane model storage with build locks, metadata, and `cp build`/`cp info` lifecycle commands.
+- Pinned runs to Control Plane base SHA snapshots, persisted metadata in run state, and added resume coverage to keep the base SHA stable.
+- Added derived scope shadow reports that expand manifest write intent to component resources/paths, emit per-task artifacts, and log orchestrator events.
+- Added Control Plane lock modes (`declared|shadow|derived`) to optionally schedule batches using derived locks with low-confidence fallback to the repo-wide resource.
+- Added surface change detection for contracts, config, migrations, and public entrypoints with configurable patterns and checkset integration.
+
+## 2026-01-22
+- Added TypeScript symbol reference lookup via the language service, plus `cp symbols refs` CLI options and tests.
+
 ## 2026-01-19
 - Added a spec traceability matrix that maps each core principle to code, automated tests, and manual drills; deprecated the old compliance checklist in favor of the matrix and linked it from the README.
 - Simplified packaging: consolidated on `templates/Dockerfile` as the canonical worker image, documented the build path, and added a pack/install smoke script that asserts templates and binaries ship in the npm tarball.

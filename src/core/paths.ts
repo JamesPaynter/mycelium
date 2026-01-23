@@ -1,13 +1,11 @@
 import fs from "node:fs";
-import type { Dirent } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
 export function orchestratorHome(): string {
-  const envHome = process.env.MYCELIUM_HOME;
-  if (envHome) return path.resolve(envHome);
-
-  return path.join(os.homedir(), ".mycelium");
+  return process.env.MYCELIUM_HOME
+    ? path.resolve(process.env.MYCELIUM_HOME)
+    : path.join(os.homedir(), ".mycelium");
 }
 
 export function projectsDir(): string {
@@ -60,14 +58,14 @@ export function resolveRunLogsDir(
 
   const runDirs = fs
     .readdirSync(base, { withFileTypes: true })
-    .filter((entry: Dirent) => entry.isDirectory() && entry.name.startsWith("run-"));
+    .filter((entry) => entry.isDirectory() && entry.name.startsWith("run-"));
 
   if (runDirs.length === 0) {
     return null;
   }
 
   const withMtime = runDirs
-    .map((entry: Dirent) => {
+    .map((entry) => {
       const dir = path.join(base, entry.name);
       const stat = fs.statSync(dir);
       return { dir, runId: entry.name.replace(/^run-/, ""), mtimeMs: stat.mtimeMs };
@@ -150,6 +148,81 @@ export function taskComplianceReportPath(
   taskSlug: string,
 ): string {
   return path.join(taskLogsDir(projectName, runId, taskId, taskSlug), "compliance.json");
+}
+
+export function taskLockDerivationReportPath(
+  repoPath: string,
+  runId: string,
+  taskId: string,
+): string {
+  return path.join(
+    repoPath,
+    ".mycelium",
+    "reports",
+    "control-plane",
+    "lock-derivation",
+    runId,
+    `${taskId}.json`,
+  );
+}
+
+export function taskBlastReportPath(
+  repoPath: string,
+  runId: string,
+  taskId: string,
+): string {
+  return path.join(
+    repoPath,
+    ".mycelium",
+    "reports",
+    "control-plane",
+    "blast",
+    runId,
+    `${taskId}.json`,
+  );
+}
+
+export function taskChecksetReportPath(
+  repoPath: string,
+  runId: string,
+  taskId: string,
+): string {
+  return path.join(
+    repoPath,
+    ".mycelium",
+    "reports",
+    "control-plane",
+    "checkset",
+    runId,
+    `${taskId}.json`,
+  );
+}
+
+export function taskPolicyReportPath(
+  repoPath: string,
+  runId: string,
+  taskId: string,
+): string {
+  return path.join(
+    repoPath,
+    ".mycelium",
+    "reports",
+    "control-plane",
+    "policy",
+    runId,
+    `${taskId}.json`,
+  );
+}
+
+export function runSummaryReportPath(repoPath: string, runId: string): string {
+  return path.join(
+    repoPath,
+    ".mycelium",
+    "reports",
+    "control-plane",
+    "run-summary",
+    `${runId}.json`,
+  );
 }
 
 export function plannerHomeDir(projectName: string): string {

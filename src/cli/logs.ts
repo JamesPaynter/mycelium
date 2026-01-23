@@ -3,6 +3,7 @@ import path from "node:path";
 
 import { Command } from "commander";
 
+import { loadProjectConfig } from "../core/config-loader.js";
 import type { LogSummaryConfig, ProjectConfig } from "../core/config.js";
 import { LogIndex, logIndexPath, type LogIndexQuery } from "../core/log-index.js";
 import { loadRunStateForProject } from "../core/state-store.js";
@@ -16,8 +17,7 @@ import {
   type JsonlFilter,
   type LogSearchResult,
 } from "../core/log-query.js";
-import { resolveRunLogsDir } from "../core/paths.js";
-import { loadConfigForCli } from "./config.js";
+import { projectConfigPath, resolveRunLogsDir } from "../core/paths.js";
 import {
   loadRunEvents,
   listTaskEventLogs,
@@ -42,7 +42,7 @@ export function registerLogsCommand(program: Command): void {
   const logs = program
     .command("logs")
     .description("Inspect orchestrator and task logs")
-    .option("--project <name>", "Project name (default: repo folder name)")
+    .requiredOption("--project <name>", "Project name")
     .option("--run-id <id>", "Run ID (default: latest)")
     .option("--use-index", "Query logs via SQLite index (builds if missing)", false)
     .option("--follow", "Follow orchestrator + task logs", false);
@@ -792,7 +792,6 @@ function createLogSummaryClient(cfg: LogSummaryConfig): LlmClient {
       model,
       defaultTemperature: cfg.temperature ?? 0,
       defaultTimeoutMs: secondsToMs(cfg.timeout_seconds),
-      defaultReasoningEffort: cfg.reasoning_effort,
     });
   }
 
@@ -1406,26 +1405,14 @@ function buildContext(command: Command): {
     config?: string;
     useIndex?: boolean;
   };
-
-  const resolved = loadConfigForCli({
-    projectName: opts.project,
-    explicitConfigPath: opts.config,
-    initIfMissing: true,
-  });
-
-  if (resolved.created) {
-    console.log(`Created project config at ${resolved.configPath}`);
-    console.log(`Edit ${resolved.configPath} to set doctor, resources, and models.`);
+  if (!opts.project) {
+    throw new Error("Project name is required");
   }
 
-  const config = resolved.config;
+  const configPath = opts.config ?? projectConfigPath(opts.project);
+  const config = loadProjectConfig(configPath);
 
-  return {
-    projectName: resolved.projectName,
-    runId: opts.runId,
-    config,
-    useIndex: opts.useIndex ?? false,
-  };
+  return { projectName: opts.project, runId: opts.runId, config, useIndex: opts.useIndex ?? false };
 }
 
 function resolveRunLogsOrWarn(

@@ -14,7 +14,7 @@ Persist Codex thread/session identifiers so a restarted worker container can con
 - Tier: **pro**
 
 ## Files Changing
-- [x] Define a per-task worker state file in the workspace (e.g., `.task-orchestrator/worker-state.json`) containing `thread_id`, `attempt`, and timestamps.
+- [x] Define a per-task worker state file in the workspace (e.g., `.mycelium/worker-state.json`) containing `thread_id`, `attempt`, and timestamps.
 - [x] On first attempt, worker starts a new thread and writes `thread_id` to worker-state.
 - [x] On subsequent attempts (and on container restart), worker uses `codex.resumeThread(thread_id)` instead of `startThread()`.
 - [x] Ensure `CODEX_HOME` is persisted in the workspace volume so sessions survive container restarts.

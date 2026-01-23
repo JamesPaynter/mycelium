@@ -80,6 +80,23 @@ Shared code:
 - Keep `shared/` import-only; do not introduce app startup side effects in `shared/`.
 
 
+## Repo navigation tools
+
+Prefer `mycelium cp` Control Plane navigation queries before grepping when you need
+ownership, dependencies, blast radius, or symbol info.
+
+Command cheat sheet:
+
+```bash
+mycelium cp components list
+mycelium cp owner <path>
+mycelium cp blast <path>
+mycelium cp symbols find <query>
+mycelium cp symbols def <symbol>
+mycelium cp symbols refs <symbol>
+```
+
+
 ## PR and commit requirements
 
 Commits:
@@ -154,9 +171,9 @@ Use the Effort/Tier system for estimating and choosing a model:
 - **Tier**: mini / standard / pro
 
 Model mapping:
-- **Tier mini** → `gpt-5.2-codex-mini` (default reasoning)
-- **Tier standard** → `gpt-5.2-codex` (default reasoning)
-- **Tier pro** → `gpt-5.2-codex` (Reasoning: xhigh)
+- **Tier mini** → `gpt-5.1-codex-mini` (default reasoning)
+- **Tier standard** → `gpt-5.1-codex` (default reasoning)
+- **Tier pro** → `gpt-5.1-codex-max` (Reasoning: Extra high / supermax)
 
 **scratchpad.md** - Working notes during implementation:
 - Session-dated entries

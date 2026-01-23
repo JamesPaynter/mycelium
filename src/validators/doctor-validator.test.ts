@@ -37,11 +37,7 @@ describe("runDoctorValidator", () => {
   });
 
   afterEach(async () => {
-    if (originalHome === undefined) {
-      delete process.env.MYCELIUM_HOME;
-    } else {
-      process.env.MYCELIUM_HOME = originalHome;
-    }
+    process.env.MYCELIUM_HOME = originalHome;
     await fse.remove(tmpDir);
   });
 
@@ -52,7 +48,7 @@ describe("runDoctorValidator", () => {
     await fse.ensureDir(repoPath);
 
     await execa("git", ["init"], { cwd: repoPath });
-    await execa("git", ["checkout", "-b", "main"], { cwd: repoPath });
+    await execa("git", ["checkout", "-B", "main"], { cwd: repoPath });
     await execa("git", ["config", "user.name", "tester"], { cwd: repoPath });
     await execa("git", ["config", "user.email", "tester@example.com"], { cwd: repoPath });
     await fse.writeFile(path.join(repoPath, "README.md"), "hello");
@@ -85,7 +81,7 @@ describe("runDoctorValidator", () => {
       enabled: true,
       mode: "warn",
       provider: "openai",
-      model: "gpt-5.2",
+      model: "o3",
       run_every_n_tasks: 1,
     };
     const llm = new FakeLlm({

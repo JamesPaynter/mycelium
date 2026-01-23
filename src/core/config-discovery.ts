@@ -5,12 +5,19 @@ import { fileURLToPath } from "node:url";
 import { buildMyceliumGitignore } from "./mycelium-gitignore.js";
 import { projectConfigPath } from "./paths.js";
 
+// =============================================================================
+// CONSTANTS
+// =============================================================================
+
 const REPO_CONFIG_DIR = ".mycelium";
 const REPO_CONFIG_FILE = "config.yaml";
 const DEFAULT_TASKS_DIR = `${REPO_CONFIG_DIR}/tasks`;
 const DEFAULT_PLANNING_DIR = `${REPO_CONFIG_DIR}/planning`;
 const DEFAULT_DOCTOR_SCRIPT = `${REPO_CONFIG_DIR}/doctor.sh`;
-const DEFAULT_VERSIONING = { commit_planning: true, commit_tasks: true };
+
+// =============================================================================
+// TYPES
+// =============================================================================
 
 export type ConfigSource = "explicit" | "repo" | "home";
 
@@ -25,6 +32,10 @@ export type InitResult = {
   configPath: string;
   status: "created" | "exists" | "overwritten";
 };
+
+// =============================================================================
+// PUBLIC API
+// =============================================================================
 
 export function resolveProjectConfigPath(args: {
   projectName: string;
@@ -51,8 +62,12 @@ export function resolveProjectConfigPath(args: {
     }
 
     if (args.initIfMissing ?? true) {
-      ensureRepoConfig(repoRoot, repoConfig, { force: false });
-      return { configPath: repoConfig, source: "repo", created: true };
+      const init = initRepoConfig({ cwd: repoRoot, force: false });
+      return {
+        configPath: init.configPath,
+        source: "repo",
+        created: init.status !== "exists",
+      };
     }
 
     return { configPath: repoConfig, source: "repo", created: false };
@@ -72,19 +87,21 @@ export function initRepoConfig(args: { cwd?: string; force?: boolean }): InitRes
     throw new Error("No git repository found in the current or parent directories.");
   }
 
-  const repoConfig = repoConfigPath(repoRoot);
-  const hasConfig = fs.existsSync(repoConfig);
+  const configPath = repoConfigPath(repoRoot);
+  const hasConfig = fs.existsSync(configPath);
+  const force = args.force ?? false;
 
-  const configDir = path.dirname(repoConfig);
-  ensureRepoLayout(repoRoot, configDir);
+  const configDir = path.dirname(configPath);
+  ensureRepoLayout(repoRoot, configDir, { force });
 
-  if (hasConfig && !(args.force ?? false)) {
-    return { repoRoot, configPath: repoConfig, status: "exists" };
+  if (hasConfig && !force) {
+    return { repoRoot, configPath, status: "exists" };
   }
 
-  ensureRepoConfig(repoRoot, repoConfig, { force: args.force ?? false });
-  const status = hasConfig && (args.force ?? false) ? "overwritten" : "created";
-  return { repoRoot, configPath: repoConfig, status };
+  writeDefaultConfig(configPath);
+
+  const status = hasConfig && force ? "overwritten" : "created";
+  return { repoRoot, configPath, status };
 }
 
 export function findRepoRoot(startDir: string): string | null {
@@ -100,66 +117,52 @@ export function findRepoRoot(startDir: string): string | null {
   }
 }
 
-function repoConfigPath(repoRoot: string): string {
+export function repoConfigPath(repoRoot: string): string {
   return path.join(repoRoot, REPO_CONFIG_DIR, REPO_CONFIG_FILE);
 }
 
-function ensureRepoLayout(repoRoot: string, configDir: string): void {
+// =============================================================================
+// INTERNALS
+// =============================================================================
+
+function ensureRepoLayout(repoRoot: string, configDir: string, opts: { force: boolean }): void {
   fs.mkdirSync(configDir, { recursive: true });
-  ensureTasksDir(configDir);
-  ensurePlanningDir(configDir);
-  ensureLocalGitignore(repoRoot, configDir);
-  ensureDoctorScript(path.join(repoRoot, DEFAULT_DOCTOR_SCRIPT));
+  ensureTasksDir(repoRoot);
+  ensurePlanningDirs(repoRoot, opts);
+  ensureLocalGitignore(repoRoot, configDir, opts);
+  ensureDoctorScript(path.join(repoRoot, DEFAULT_DOCTOR_SCRIPT), opts);
 }
 
-function ensureRepoConfig(
-  repoRoot: string,
-  configPath: string,
-  opts: { force: boolean },
-): void {
-  if (fs.existsSync(configPath) && !opts.force) return;
-
-  const configDir = path.dirname(configPath);
-  ensureRepoLayout(repoRoot, configDir);
-
-  const orchestratorRoot = findOrchestratorRoot();
-  const dockerfile = orchestratorRoot
-    ? path.join(orchestratorRoot, "templates", "Dockerfile")
-    : "CHANGE_ME";
-  const buildContext = orchestratorRoot ? orchestratorRoot : "CHANGE_ME";
-
-  const config = buildDefaultConfig({
-    dockerfile,
-    buildContext,
-  });
-
-  fs.writeFileSync(configPath, config, "utf8");
+function ensureTasksDir(repoRoot: string): void {
+  fs.mkdirSync(path.join(repoRoot, DEFAULT_TASKS_DIR), { recursive: true });
 }
 
-function ensureTasksDir(configDir: string): void {
-  fs.mkdirSync(path.join(configDir, "tasks"), { recursive: true });
-}
+function ensurePlanningDirs(repoRoot: string, opts: { force: boolean }): void {
+  const planningRoot = path.join(repoRoot, DEFAULT_PLANNING_DIR);
+  fs.mkdirSync(planningRoot, { recursive: true });
+  fs.mkdirSync(path.join(planningRoot, "002-implementation"), { recursive: true });
+  fs.mkdirSync(path.join(planningRoot, "sessions"), { recursive: true });
 
-function ensurePlanningDir(configDir: string): void {
-  fs.mkdirSync(path.join(configDir, "planning"), { recursive: true });
-}
-
-function ensureLocalGitignore(repoRoot: string, configDir: string): void {
-  const ignorePath = path.join(configDir, ".gitignore");
-  const content = buildMyceliumGitignore({
-    repoPath: repoRoot,
-    tasksDir: DEFAULT_TASKS_DIR,
-    planningDir: DEFAULT_PLANNING_DIR,
-    versioning: DEFAULT_VERSIONING,
-  });
-  const current = fs.existsSync(ignorePath) ? fs.readFileSync(ignorePath, "utf8") : null;
-  if (current !== content) {
-    fs.writeFileSync(ignorePath, content, "utf8");
+  const planPath = path.join(planningRoot, "002-implementation", "implementation-plan.md");
+  if (!fs.existsSync(planPath) || opts.force) {
+    fs.writeFileSync(planPath, defaultImplementationPlanStub(), "utf8");
   }
 }
 
-function ensureDoctorScript(scriptPath: string): void {
-  if (fs.existsSync(scriptPath)) return;
+function ensureLocalGitignore(
+  repoRoot: string,
+  configDir: string,
+  opts: { force: boolean },
+): void {
+  const ignorePath = path.join(configDir, ".gitignore");
+  if (fs.existsSync(ignorePath) && !opts.force) return;
+
+  const content = buildMyceliumGitignore({ includeSessions: true });
+  fs.writeFileSync(ignorePath, content, "utf8");
+}
+
+function ensureDoctorScript(scriptPath: string, opts: { force: boolean }): void {
+  if (fs.existsSync(scriptPath) && !opts.force) return;
 
   const content = [
     "#!/usr/bin/env bash",
@@ -183,59 +186,142 @@ function ensureDoctorScript(scriptPath: string): void {
   }
 }
 
-function buildDefaultConfig(args: { dockerfile: string; buildContext: string }): string {
+function writeDefaultConfig(configPath: string): void {
+  const myceliumRoot = resolveMyceliumPackageRoot();
+  const dockerfile = path.join(myceliumRoot, "templates", "Dockerfile");
+  const buildContext = myceliumRoot;
+
+  fs.writeFileSync(
+    configPath,
+    defaultRepoConfigYaml({ dockerfile, buildContext }),
+    "utf8",
+  );
+}
+
+function resolveMyceliumPackageRoot(): string {
+  const here = path.dirname(fileURLToPath(import.meta.url));
+  // Works for both:
+  // - repo dev (`tsx src/main.ts` => src/core/...)
+  // - packaged install (`node dist/index.js` => dist/core/...)
+  return path.resolve(here, "..", "..");
+}
+
+function defaultRepoConfigYaml(args: { dockerfile: string; buildContext: string }): string {
   return [
-    "# Auto-generated Mycelium config. Update as needed.",
+    "# Mycelium project configuration (repo-scoped)",
+    "#",
+    "# This file is loaded by default from <repo>/.mycelium/config.yaml.",
+    "# You can also keep configs in ~/.mycelium/projects/<project>.yaml.",
+    "",
+    "# Path to the target repo on your machine (env vars like ${HOME} are allowed).",
+    "# Relative paths are resolved from the directory containing this YAML file.",
     "repo_path: ..",
-    `tasks_dir: ${DEFAULT_TASKS_DIR}`,
-    `planning_dir: ${DEFAULT_PLANNING_DIR}`,
-    "versioning:",
-    "  commit_planning: true",
-    "  commit_tasks: true",
+    "",
+    "# Integration branch the orchestrator merges into",
     "main_branch: main",
     "",
-    `doctor: ./${DEFAULT_DOCTOR_SCRIPT}`,
-    "doctor_timeout: 900",
+    "# Task branches are created as: <task_branch_prefix><id>-<name>",
+    "task_branch_prefix: agent/",
     "",
+    "# Where Mycelium stores planned task specs + manifests within the target repo",
+    `tasks_dir: ${DEFAULT_TASKS_DIR}`,
+    "",
+    "# Where Mycelium stores planning artifacts (implementation plan, sessions, etc.)",
+    `planning_dir: ${DEFAULT_PLANNING_DIR}`,
+    "",
+    "# Manifest enforcement policy: off | warn | block",
+    "manifest_enforcement: warn",
+    "",
+    "# Limits",
+    "max_parallel: 4",
+    "max_retries: 20",
+    "timeout_minutes: 120",
+    "",
+    "budgets:",
+    "  mode: warn",
+    "  # max_tokens_per_task: 200000",
+    "  # max_cost_per_run: 25",
+    "",
+    "# UI server settings (mycelium ui / run/resume)",
+    "ui:",
+    "  enabled: true",
+    "  port: 8787",
+    "  open_browser: true",
+    "  refresh_ms: 2000",
+    "",
+    "# Doctor command runs on the integration branch after each batch.",
+    "doctor: ./.mycelium/doctor.sh",
+    "# doctor_timeout: 900",
+    "",
+    "# Optional bootstrap commands executed inside each worker container before Codex runs.",
+    "bootstrap:",
+    "  - npm ci",
+    "",
+    "# Define abstract resources for safe scheduling. Start broad, tighten over time.",
     "resources:",
     "  - name: repo",
-    "    description: Entire repo",
-    '    paths: ["**/*"]',
+    "    description: All repo files (broad default)",
+    "    paths:",
+    "      - \"**/*\"",
     "",
     "planner:",
-    "  provider: openai",
-    "  model: gpt-5.2",
-    "  reasoning_effort: xhigh",
+    "  provider: codex",
+    "  model: o3",
     "",
     "worker:",
-    "  model: gpt-5.2-codex",
-    "  reasoning_effort: xhigh",
+    "  model: gpt-5.1-codex-max",
     "  checkpoint_commits: true",
+    "  # reasoning_effort: medium",
     "",
+    "# Optional validators. Set mode: block to prevent merges on failure.",
+    "# test_validator:",
+    "#   mode: warn",
+    "#   provider: openai",
+    "#   model: o3",
+    "# doctor_validator:",
+    "#   mode: warn",
+    "#   provider: openai",
+    "#   model: o3",
+    "#   run_every_n_tasks: 10",
+    "",
+    "# Docker worker image (paths resolve relative to this file when not absolute)",
     "docker:",
     `  image: mycelium-worker:latest`,
-    `  dockerfile: ${yamlString(args.dockerfile)}`,
-    `  build_context: ${yamlString(args.buildContext)}`,
+    `  dockerfile: ${args.dockerfile}`,
+    `  build_context: ${args.buildContext}`,
+    "  user: worker",
+    "  network_mode: bridge",
+    "  # memory_mb: 2048",
+    "  # cpu_quota: 100000",
+    "  # pids_limit: 512",
     "",
   ].join("\n");
 }
 
-function yamlString(value: string): string {
-  return JSON.stringify(value);
-}
-
-function findOrchestratorRoot(): string | null {
-  const moduleDir = path.dirname(fileURLToPath(import.meta.url));
-  return findUp(moduleDir, (dir) => fs.existsSync(path.join(dir, "templates", "Dockerfile")));
-}
-
-function findUp(start: string, predicate: (dir: string) => boolean): string | null {
-  let current = path.resolve(start);
-  while (true) {
-    if (predicate(current)) return current;
-
-    const parent = path.dirname(current);
-    if (parent === current) return null;
-    current = parent;
-  }
+function defaultImplementationPlanStub(): string {
+  return [
+    "# Implementation Plan",
+    "",
+    "This is a starter implementation plan created by `mycelium init`.",
+    "",
+    "## Goal",
+    "Describe the high-level business/engineering outcome.",
+    "",
+    "## Scope",
+    "- In scope: ...",
+    "- Out of scope: ...",
+    "",
+    "## Constraints",
+    "- Budget / time / dependencies / systems / regulatory constraints",
+    "",
+    "## Acceptance Criteria (system-level)",
+    "Write these as: \"This is what I expect to happen\".",
+    "",
+    "## Risks",
+    "- ...",
+    "",
+    "## Implementation Sketch",
+    "- ...",
+    "",
+  ].join("\n");
 }

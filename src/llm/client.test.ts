@@ -6,7 +6,7 @@ import type {
 } from "@anthropic-ai/sdk/resources/messages/messages";
 import type OpenAI from "openai";
 import { APIError as OpenAiApiError } from "openai/error";
-import type { Response, ResponseCreateParamsNonStreaming } from "openai/resources/responses/responses";
+import type { ChatCompletion, ChatCompletionCreateParams } from "openai/resources/chat/completions";
 import { describe, expect, it } from "vitest";
 
 import { AnthropicClient } from "./anthropic.js";
@@ -14,15 +14,15 @@ import { LlmError } from "./client.js";
 import { OpenAiClient } from "./openai.js";
 
 class FakeOpenAiTransport {
-  lastBody?: ResponseCreateParamsNonStreaming;
+  lastBody?: ChatCompletionCreateParams;
   lastOptions?: OpenAI.RequestOptions;
 
-  constructor(private readonly outcome: Response | Error) {}
+  constructor(private readonly outcome: ChatCompletion | Error) {}
 
   async create(
-    body: ResponseCreateParamsNonStreaming,
+    body: ChatCompletionCreateParams,
     options?: OpenAI.RequestOptions,
-  ): Promise<Response> {
+  ): Promise<ChatCompletion> {
     this.lastBody = body;
     this.lastOptions = options;
     if (this.outcome instanceof Error) {
@@ -32,25 +32,28 @@ class FakeOpenAiTransport {
   }
 }
 
-function makeOpenAiResponse(content: string): Response {
+function makeOpenAiResponse(content: string): ChatCompletion {
   return {
-    id: "resp_123",
-    created_at: 1,
-    output_text: content,
-    status: "completed",
+    id: "chatcmpl-123",
+    choices: [
+      {
+        index: 0,
+        finish_reason: "stop",
+        logprobs: null,
+        message: { role: "assistant", content },
+      },
+    ],
+    created: 1,
     model: "gpt-4o-mini",
-    object: "response",
-    output: [],
-    error: null,
-    incomplete_details: null,
-    instructions: null,
-    metadata: null,
-    parallel_tool_calls: false,
-    temperature: null,
-    top_p: null,
-    tool_choice: "auto",
-    tools: [],
-  } as Response;
+    object: "chat.completion",
+    service_tier: null,
+    system_fingerprint: "fp",
+    usage: {
+      completion_tokens: 5,
+      prompt_tokens: 10,
+      total_tokens: 15,
+    },
+  } as ChatCompletion;
 }
 
 type AnthropicRequestOptions = {
@@ -130,7 +133,6 @@ describe("OpenAiClient", () => {
       transport,
       defaultTemperature: 0.7,
       defaultTimeoutMs: 30_000,
-      defaultReasoningEffort: "high",
     });
 
     const result = await client.complete<{ status: string }>("Hello!", {
@@ -139,19 +141,17 @@ describe("OpenAiClient", () => {
       timeoutMs: 1_500,
     });
 
-    expect(transport.lastBody?.text?.format).toMatchObject({
+    expect(transport.lastBody?.response_format).toMatchObject({
       type: "json_schema",
-      schema,
-      strict: true,
+      json_schema: { schema, strict: true },
     });
     expect(transport.lastBody?.temperature).toBe(0.1);
-    expect(transport.lastBody?.input).toBe("Hello!");
-    expect(transport.lastBody?.reasoning).toEqual({ effort: "high" });
+    expect(transport.lastBody?.messages?.[0]).toEqual({ role: "user", content: "Hello!" });
     expect(transport.lastOptions?.timeout).toBe(1_500);
 
     expect(result.text).toBe('{"status":"ok"}');
     expect(result.parsed).toEqual({ status: "ok" });
-    expect(result.finishReason).toBe("completed");
+    expect(result.finishReason).toBe("stop");
   });
 
   it("wraps OpenAI errors with actionable guidance", async () => {

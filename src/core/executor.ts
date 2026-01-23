@@ -15,16 +15,23 @@ import {
 } from "../docker/docker.js";
 import { buildWorkerImage } from "../docker/image.js";
 import { streamContainerLogs, type LogStreamHandle } from "../docker/streams.js";
-import { ensureCleanWorkingTree, checkout } from "../git/git.js";
+import { ensureCleanWorkingTree, checkout, resolveRunBaseSha } from "../git/git.js";
 import { mergeTaskBranches } from "../git/merge.js";
 import { buildTaskBranchName } from "../git/branches.js";
+import { listChangedFiles } from "../git/changes.js";
 import { ensureCodexAuthForHome } from "./codexAuth.js";
 import { resolveCodexReasoningEffort } from "./codex-reasoning.js";
 
 import type {
+  ControlPlaneChecksMode,
+  ControlPlaneLockMode,
+  ControlPlaneResourcesMode,
+  ControlPlaneScopeMode,
+  ControlPlaneSurfacePatternsConfig,
   DoctorValidatorConfig,
   ManifestEnforcementPolicy,
   ProjectConfig,
+  ResourceConfig,
   ValidatorMode,
 } from "./config.js";
 import {
@@ -43,12 +50,16 @@ import {
   type JsonObject,
 } from "./logger.js";
 import { loadTaskSpecs } from "./task-loader.js";
-import type { TaskSpec } from "./task-manifest.js";
+import { normalizeLocks, type TaskSpec } from "./task-manifest.js";
 import {
   orchestratorHome,
   orchestratorLogPath,
   taskEventsLogPath,
   taskComplianceReportPath,
+  taskBlastReportPath,
+  taskChecksetReportPath,
+  taskLockDerivationReportPath,
+  taskPolicyReportPath,
   taskLogsDir,
   taskWorkspaceDir,
   workerCodexHomeDir,
@@ -56,8 +67,9 @@ import {
   validatorLogPath,
   validatorReportPath,
   runLogsDir,
+  runSummaryReportPath,
 } from "./paths.js";
-import { buildGreedyBatch, topologicalReady, type BatchPlan } from "./scheduler.js";
+import { buildGreedyBatch, topologicalReady, type BatchPlan, type LockResolver } from "./scheduler.js";
 import { StateStore, findLatestRunId } from "./state-store.js";
 import {
   completeBatch,
@@ -69,11 +81,12 @@ import {
   resetTaskToPending,
   startBatch,
   type CheckpointCommit,
+  type ControlPlaneSnapshot,
   type RunState,
   type ValidatorResult,
   type ValidatorStatus,
 } from "./state.js";
-import { ensureDir, defaultRunId, isoNow, writeJsonFile } from "./utils.js";
+import { ensureDir, defaultRunId, isoNow, readJsonFile, writeJsonFile } from "./utils.js";
 import { prepareTaskWorkspace } from "./workspaces.js";
 import {
   runDoctorValidator,
@@ -85,9 +98,37 @@ import { runTestValidator, type TestValidationReport } from "../validators/test-
 import { runWorker } from "../../worker/loop.js";
 import type { WorkerLogger, WorkerLogEventInput } from "../../worker/logging.js";
 import { loadWorkerState, type WorkerCheckpoint } from "../../worker/state.js";
-import { runManifestCompliance, type ManifestComplianceResult } from "./manifest-compliance.js";
+import {
+  runManifestCompliance,
+  type ManifestComplianceResult,
+  type ResourceOwnershipResolver,
+} from "./manifest-compliance.js";
 import { computeRescopeFromCompliance } from "./manifest-rescope.js";
 import { isMockLlmEnabled } from "../llm/mock.js";
+import { buildControlPlaneModel } from "../control-plane/model/build.js";
+import { ControlPlaneStore } from "../control-plane/storage.js";
+import type { ControlPlaneModel } from "../control-plane/model/schema.js";
+import {
+  createComponentOwnerResolver,
+  createComponentOwnershipResolver,
+  deriveComponentResources,
+} from "../control-plane/integration/resources.js";
+import {
+  createDerivedScopeSnapshot,
+  deriveTaskWriteScopeReport,
+  type DerivedScopeReport,
+} from "../control-plane/integration/derived-scope.js";
+import {
+  buildBlastRadiusReport,
+  type ControlPlaneBlastRadiusReport,
+} from "../control-plane/integration/blast-radius.js";
+import { resolveSurfacePatterns } from "../control-plane/policy/surface-detect.js";
+import type { PolicyDecision, SurfacePatternSet } from "../control-plane/policy/types.js";
+import { type ChecksetDecision } from "../control-plane/policy/checkset.js";
+import {
+  evaluateTaskPolicyDecision,
+  type ChecksetReport,
+} from "../control-plane/policy/eval.js";
 
 const LABEL_PREFIX = "mycelium";
 
@@ -234,6 +275,635 @@ function buildContainerSecurityPayload(config: ProjectConfig["docker"]): JsonObj
   return payload;
 }
 
+type ControlPlaneChecksRunConfig = {
+  mode: ControlPlaneChecksMode;
+  commandsByComponent: Record<string, string>;
+  maxComponentsForScoped: number;
+  fallbackCommand?: string;
+};
+
+type ControlPlaneRunConfig = {
+  enabled: boolean;
+  componentResourcePrefix: string;
+  fallbackResource: string;
+  resourcesMode: ControlPlaneResourcesMode;
+  scopeMode: ControlPlaneScopeMode;
+  lockMode: ControlPlaneLockMode;
+  checks: ControlPlaneChecksRunConfig;
+  surfacePatterns: SurfacePatternSet;
+  surfaceLocksEnabled: boolean;
+};
+
+function resolveControlPlaneConfig(config: ProjectConfig): ControlPlaneRunConfig {
+  const raw = (config.control_plane ?? {}) as Partial<ProjectConfig["control_plane"]>;
+  const rawChecks = (raw.checks ?? {}) as Partial<ProjectConfig["control_plane"]["checks"]>;
+  const rawSurfacePatterns =
+    (raw.surface_patterns ?? {}) as ControlPlaneSurfacePatternsConfig;
+  const rawSurfaceLocks =
+    (raw.surface_locks ?? {}) as Partial<ProjectConfig["control_plane"]["surface_locks"]>;
+  return {
+    enabled: raw.enabled === true,
+    componentResourcePrefix: raw.component_resource_prefix ?? "component:",
+    fallbackResource: raw.fallback_resource ?? "repo-root",
+    resourcesMode: raw.resources_mode ?? "prefer-derived",
+    scopeMode: raw.scope_mode ?? "enforce",
+    lockMode: raw.lock_mode ?? "declared",
+    checks: {
+      mode: rawChecks.mode ?? "off",
+      commandsByComponent: rawChecks.commands_by_component ?? {},
+      maxComponentsForScoped: rawChecks.max_components_for_scoped ?? 3,
+      fallbackCommand: rawChecks.fallback_command,
+    },
+    surfacePatterns: resolveSurfacePatterns(rawSurfacePatterns),
+    surfaceLocksEnabled: rawSurfaceLocks.enabled ?? false,
+  };
+}
+
+function resolveEffectiveLockMode(config: ControlPlaneRunConfig): ControlPlaneLockMode {
+  return config.enabled ? config.lockMode : "declared";
+}
+
+function resolveScopeComplianceMode(config: ControlPlaneRunConfig): ControlPlaneScopeMode {
+  return config.enabled ? config.scopeMode : "enforce";
+}
+
+async function buildControlPlaneSnapshot(input: {
+  repoPath: string;
+  baseSha: string;
+  enabled: boolean;
+}): Promise<ControlPlaneSnapshot> {
+  if (!input.enabled) {
+    return {
+      enabled: false,
+      base_sha: input.baseSha,
+    };
+  }
+
+  const buildResult = await buildControlPlaneModel({
+    repoRoot: input.repoPath,
+    baseSha: input.baseSha,
+  });
+  const metadata = buildResult.metadata;
+  const store = new ControlPlaneStore(input.repoPath);
+
+  return {
+    enabled: true,
+    base_sha: buildResult.base_sha,
+    model_hash: metadata.model_hash,
+    model_path: store.getModelPath(buildResult.base_sha),
+    built_at: metadata.built_at,
+    schema_version: metadata.schema_version,
+    extractor_versions: metadata.extractor_versions,
+  };
+}
+
+function shouldBuildControlPlaneSnapshot(
+  snapshot: ControlPlaneSnapshot | undefined,
+): snapshot is ControlPlaneSnapshot & { base_sha: string } {
+  if (!snapshot?.enabled || !snapshot.base_sha) {
+    return false;
+  }
+
+  return (
+    !snapshot.model_hash ||
+    !snapshot.model_path ||
+    !snapshot.schema_version ||
+    !snapshot.extractor_versions
+  );
+}
+
+type ResourceResolutionContext = {
+  staticResources: ResourceConfig[];
+  effectiveResources: ResourceConfig[];
+  knownResources: string[];
+  ownerResolver?: (filePath: string) => string | null;
+  ownershipResolver?: ResourceOwnershipResolver;
+  fallbackResource: string;
+  resourcesMode: ControlPlaneResourcesMode;
+};
+
+type LoadedControlPlaneModel = {
+  baseSha: string;
+  model: ControlPlaneModel;
+};
+
+async function loadControlPlaneModel(input: {
+  enabled: boolean;
+  snapshot: ControlPlaneSnapshot | undefined;
+}): Promise<LoadedControlPlaneModel | null> {
+  if (!input.enabled || !input.snapshot?.enabled) {
+    return null;
+  }
+
+  if (!input.snapshot.base_sha || !input.snapshot.model_path) {
+    throw new Error("Control plane snapshot missing model metadata.");
+  }
+
+  const model = await readJsonFile<ControlPlaneModel>(input.snapshot.model_path);
+  return { baseSha: input.snapshot.base_sha, model };
+}
+
+async function buildResourceResolutionContext(input: {
+  repoPath: string;
+  controlPlaneConfig: ControlPlaneRunConfig;
+  controlPlaneSnapshot: ControlPlaneSnapshot | undefined;
+  staticResources: ResourceConfig[];
+}): Promise<ResourceResolutionContext> {
+  const fallbackResource = input.controlPlaneConfig.enabled
+    ? input.controlPlaneConfig.fallbackResource
+    : "";
+  const resourcesMode = input.controlPlaneConfig.resourcesMode;
+  const derivedResources: ResourceConfig[] = [];
+  let ownerResolver: ((filePath: string) => string | null) | undefined;
+  let ownershipResolver: ResourceOwnershipResolver | undefined;
+
+  const loadedModel = await loadControlPlaneModel({
+    enabled: input.controlPlaneConfig.enabled,
+    snapshot: input.controlPlaneSnapshot,
+  });
+
+  if (loadedModel) {
+    const componentResources = deriveComponentResources({
+      repoPath: input.repoPath,
+      baseSha: loadedModel.baseSha,
+      model: loadedModel.model,
+      componentResourcePrefix: input.controlPlaneConfig.componentResourcePrefix,
+    });
+    derivedResources.push(...componentResources);
+    ownerResolver = createComponentOwnerResolver({
+      model: loadedModel.model,
+      componentResourcePrefix: input.controlPlaneConfig.componentResourcePrefix,
+    });
+    ownershipResolver = createComponentOwnershipResolver({
+      model: loadedModel.model,
+      componentResourcePrefix: input.controlPlaneConfig.componentResourcePrefix,
+    });
+  }
+
+  const effectiveResources = mergeResources({
+    staticResources: input.staticResources,
+    derivedResources,
+  });
+  const knownResources = mergeResourceNames({
+    resources: effectiveResources,
+    fallbackResource,
+  });
+
+  return {
+    staticResources: input.staticResources,
+    effectiveResources,
+    knownResources,
+    ownerResolver,
+    ownershipResolver,
+    fallbackResource,
+    resourcesMode,
+  };
+}
+
+function mergeResources(input: {
+  staticResources: ResourceConfig[];
+  derivedResources: ResourceConfig[];
+}): ResourceConfig[] {
+  const merged = new Map<string, ResourceConfig>();
+
+  for (const resource of input.staticResources) {
+    merged.set(resource.name, resource);
+  }
+  for (const resource of input.derivedResources) {
+    if (!merged.has(resource.name)) {
+      merged.set(resource.name, resource);
+    }
+  }
+
+  return Array.from(merged.values()).sort(compareResourceByName);
+}
+
+function mergeResourceNames(input: {
+  resources: ResourceConfig[];
+  fallbackResource: string;
+}): string[] {
+  const names = new Set<string>();
+  for (const resource of input.resources) {
+    names.add(resource.name);
+  }
+  if (input.fallbackResource) {
+    names.add(input.fallbackResource);
+  }
+
+  return Array.from(names).sort();
+}
+
+function compareResourceByName(a: ResourceConfig, b: ResourceConfig): number {
+  return a.name.localeCompare(b.name);
+}
+
+async function emitDerivedScopeReports(input: {
+  repoPath: string;
+  runId: string;
+  tasks: TaskSpec[];
+  controlPlaneConfig: ControlPlaneRunConfig;
+  controlPlaneSnapshot: ControlPlaneSnapshot | undefined;
+  orchestratorLog: JsonlLogger;
+}): Promise<Map<string, DerivedScopeReport>> {
+  const reports = new Map<string, DerivedScopeReport>();
+  const shouldCompute =
+    input.controlPlaneConfig.enabled && input.controlPlaneConfig.lockMode !== "declared";
+  if (!shouldCompute) {
+    return reports;
+  }
+
+  const loadedModel = await loadControlPlaneModel({
+    enabled: input.controlPlaneConfig.enabled,
+    snapshot: input.controlPlaneSnapshot,
+  });
+  if (!loadedModel) {
+    return reports;
+  }
+
+  let snapshot: Awaited<ReturnType<typeof createDerivedScopeSnapshot>> | null = null;
+  try {
+    snapshot = await createDerivedScopeSnapshot({
+      repoPath: input.repoPath,
+      baseSha: loadedModel.baseSha,
+    });
+  } catch (error) {
+    logOrchestratorEvent(input.orchestratorLog, "control_plane.lock_derivation.error", {
+      message: formatErrorMessage(error),
+      base_sha: loadedModel.baseSha,
+    });
+    return reports;
+  }
+
+  try {
+    for (const task of input.tasks) {
+      try {
+        const report = await deriveTaskWriteScopeReport({
+          manifest: task.manifest,
+          model: loadedModel.model,
+          snapshotPath: snapshot.snapshotPath,
+          componentResourcePrefix: input.controlPlaneConfig.componentResourcePrefix,
+          fallbackResource: input.controlPlaneConfig.fallbackResource,
+          surfaceLocksEnabled: input.controlPlaneConfig.surfaceLocksEnabled,
+          surfacePatterns: input.controlPlaneConfig.surfacePatterns,
+        });
+        const reportPath = taskLockDerivationReportPath(
+          input.repoPath,
+          input.runId,
+          task.manifest.id,
+        );
+        await writeJsonFile(reportPath, report);
+        reports.set(task.manifest.id, report);
+
+        logOrchestratorEvent(input.orchestratorLog, "task.lock_derivation", {
+          taskId: task.manifest.id,
+          task_slug: task.slug,
+          report_path: reportPath,
+          confidence: report.confidence,
+          resources: report.derived_write_resources.length,
+        });
+      } catch (error) {
+        logOrchestratorEvent(input.orchestratorLog, "task.lock_derivation.error", {
+          taskId: task.manifest.id,
+          task_slug: task.slug,
+          message: formatErrorMessage(error),
+        });
+      }
+    }
+  } finally {
+    await snapshot.release();
+  }
+
+  return reports;
+}
+
+function buildTaskLockResolver(input: {
+  lockMode: ControlPlaneLockMode;
+  derivedScopeReports: Map<string, DerivedScopeReport>;
+  fallbackResource: string;
+}): LockResolver {
+  if (input.lockMode !== "derived") {
+    return (task) => normalizeLocks(task.manifest.locks);
+  }
+
+  const fallbackResource = input.fallbackResource.trim();
+  const fallbackLocks = normalizeLocks({
+    reads: [],
+    writes: fallbackResource ? [fallbackResource] : [],
+  });
+
+  return (task) => {
+    const report = input.derivedScopeReports.get(task.manifest.id);
+    if (!report) {
+      return fallbackLocks;
+    }
+
+    const derivedLocks = report.derived_locks ?? {
+      reads: [],
+      writes: report.derived_write_resources,
+    };
+
+    if (report.confidence !== "low" || fallbackResource.length === 0) {
+      return normalizeLocks(derivedLocks);
+    }
+
+    const widenedWrites = new Set(derivedLocks.writes);
+    widenedWrites.add(fallbackResource);
+
+    return normalizeLocks({
+      reads: derivedLocks.reads,
+      writes: Array.from(widenedWrites),
+    });
+  };
+}
+
+
+
+// =============================================================================
+// BLAST RADIUS
+// =============================================================================
+
+type BlastRadiusContext = {
+  baseSha: string;
+  model: ControlPlaneModel;
+};
+
+async function loadBlastRadiusContext(input: {
+  controlPlaneConfig: ControlPlaneRunConfig;
+  controlPlaneSnapshot: ControlPlaneSnapshot | undefined;
+}): Promise<BlastRadiusContext | null> {
+  const loadedModel = await loadControlPlaneModel({
+    enabled: input.controlPlaneConfig.enabled,
+    snapshot: input.controlPlaneSnapshot,
+  });
+
+  if (!loadedModel) {
+    return null;
+  }
+
+  return { baseSha: loadedModel.baseSha, model: loadedModel.model };
+}
+
+async function emitBlastRadiusReport(input: {
+  repoPath: string;
+  runId: string;
+  task: TaskSpec;
+  workspacePath: string;
+  blastContext: BlastRadiusContext;
+  orchestratorLog: JsonlLogger;
+}): Promise<ControlPlaneBlastRadiusReport | null> {
+  const changedFiles = await listChangedFiles(
+    input.workspacePath,
+    input.blastContext.baseSha,
+  );
+  const report = buildBlastRadiusReport({
+    task: input.task.manifest,
+    baseSha: input.blastContext.baseSha,
+    changedFiles,
+    model: input.blastContext.model,
+  });
+  const reportPath = taskBlastReportPath(
+    input.repoPath,
+    input.runId,
+    input.task.manifest.id,
+  );
+
+  await writeJsonFile(reportPath, report);
+
+  logOrchestratorEvent(input.orchestratorLog, "task.blast_radius", {
+    taskId: input.task.manifest.id,
+    task_slug: input.task.slug,
+    report_path: reportPath,
+    confidence: report.confidence,
+    touched_components: report.touched_components.length,
+    impacted_components: report.impacted_components.length,
+  });
+
+  return report;
+}
+
+
+
+// =============================================================================
+// POLICY DECISIONS
+// =============================================================================
+
+type TaskPolicyDecisionResult = {
+  policyDecision: PolicyDecision;
+  checksetDecision: ChecksetDecision;
+  checksetReport: ChecksetReport;
+  doctorCommand: string;
+};
+
+function computeTaskPolicyDecision(input: {
+  task: TaskSpec;
+  derivedScopeReports: Map<string, DerivedScopeReport>;
+  componentResourcePrefix: string;
+  blastContext: BlastRadiusContext | null;
+  checksConfig: ControlPlaneChecksRunConfig;
+  defaultDoctorCommand: string;
+  surfacePatterns: SurfacePatternSet;
+  fallbackResource: string;
+}): TaskPolicyDecisionResult {
+  const derivedScopeReport =
+    input.derivedScopeReports.get(input.task.manifest.id) ?? null;
+  const result = evaluateTaskPolicyDecision({
+    task: input.task.manifest,
+    derivedScopeReport,
+    componentResourcePrefix: input.componentResourcePrefix,
+    fallbackResource: input.fallbackResource,
+    model: input.blastContext?.model ?? null,
+    checksConfig: input.checksConfig,
+    defaultDoctorCommand: input.defaultDoctorCommand,
+    surfacePatterns: input.surfacePatterns,
+  });
+
+  return {
+    policyDecision: result.policyDecision,
+    checksetDecision: result.checksetDecision,
+    checksetReport: result.checksetReport,
+    doctorCommand: result.doctorCommand,
+  };
+}
+
+function resolveCompliancePolicyForTier(input: {
+  basePolicy: ManifestEnforcementPolicy;
+  tier?: PolicyDecision["tier"];
+}): ManifestEnforcementPolicy {
+  if (input.basePolicy === "off" || input.basePolicy === "block") {
+    return input.basePolicy;
+  }
+
+  return (input.tier ?? 0) >= 2 ? "block" : "warn";
+}
+
+
+
+// =============================================================================
+// RUN METRICS
+// =============================================================================
+
+type RunMetrics = {
+  scopeViolations: {
+    warnCount: number;
+    blockCount: number;
+  };
+  fallbackRepoRootCount: number;
+  blastRadius: {
+    impactedComponentsTotal: number;
+    reports: number;
+  };
+  validation: {
+    doctorMsTotal: number;
+    checksetMsTotal: number;
+  };
+};
+
+type RunSummaryMetrics = {
+  scope_violations: {
+    warn_count: number;
+    block_count: number;
+  };
+  fallback_repo_root_count: number;
+  avg_impacted_components: number;
+  doctor_seconds_total: number;
+  checkset_seconds_total: number;
+  derived_lock_mode_enabled: boolean;
+  avg_batch_size: number;
+};
+
+type RunSummary = {
+  run_id: string;
+  project: string;
+  status: RunState["status"];
+  started_at: string;
+  completed_at: string;
+  control_plane: {
+    enabled: boolean;
+    lock_mode: ControlPlaneLockMode;
+    scope_mode: ControlPlaneScopeMode;
+  };
+  metrics: RunSummaryMetrics;
+};
+
+function createRunMetrics(input: {
+  derivedScopeReports: Map<string, DerivedScopeReport>;
+  fallbackResource: string;
+}): RunMetrics {
+  return {
+    scopeViolations: { warnCount: 0, blockCount: 0 },
+    fallbackRepoRootCount: countFallbackRepoRoot(input.derivedScopeReports, input.fallbackResource),
+    blastRadius: { impactedComponentsTotal: 0, reports: 0 },
+    validation: { doctorMsTotal: 0, checksetMsTotal: 0 },
+  };
+}
+
+function countFallbackRepoRoot(
+  reports: Map<string, DerivedScopeReport>,
+  fallbackResource: string,
+): number {
+  const fallback = fallbackResource.trim();
+  if (!fallback) return 0;
+
+  let count = 0;
+  for (const report of reports.values()) {
+    if (report.confidence !== "low") continue;
+    if (report.derived_write_resources.includes(fallback)) {
+      count += 1;
+    }
+  }
+
+  return count;
+}
+
+function recordScopeViolations(metrics: RunMetrics, result: ManifestComplianceResult): void {
+  if (result.violations.length === 0) return;
+
+  if (result.status === "warn") {
+    metrics.scopeViolations.warnCount += result.violations.length;
+    return;
+  }
+
+  if (result.status === "block") {
+    metrics.scopeViolations.blockCount += result.violations.length;
+  }
+}
+
+function recordBlastRadius(
+  metrics: RunMetrics,
+  report: ControlPlaneBlastRadiusReport,
+): void {
+  metrics.blastRadius.impactedComponentsTotal += report.impacted_components.length;
+  metrics.blastRadius.reports += 1;
+}
+
+function recordDoctorDuration(metrics: RunMetrics, durationMs: number): void {
+  metrics.validation.doctorMsTotal += Math.max(0, durationMs);
+}
+
+function recordChecksetDuration(metrics: RunMetrics, durationMs: number): void {
+  metrics.validation.checksetMsTotal += Math.max(0, durationMs);
+}
+
+function buildRunSummary(input: {
+  runId: string;
+  projectName: string;
+  state: RunState;
+  lockMode: ControlPlaneLockMode;
+  scopeMode: ControlPlaneScopeMode;
+  controlPlaneEnabled: boolean;
+  metrics: RunMetrics;
+}): RunSummary {
+  const totalBatchTasks = input.state.batches.reduce(
+    (sum, batch) => sum + batch.tasks.length,
+    0,
+  );
+  const avgBatchSize = averageRounded(totalBatchTasks, input.state.batches.length, 2);
+  const avgImpacted = averageRounded(
+    input.metrics.blastRadius.impactedComponentsTotal,
+    input.metrics.blastRadius.reports,
+    2,
+  );
+
+  return {
+    run_id: input.runId,
+    project: input.projectName,
+    status: input.state.status,
+    started_at: input.state.started_at,
+    completed_at: input.state.updated_at,
+    control_plane: {
+      enabled: input.controlPlaneEnabled,
+      lock_mode: input.lockMode,
+      scope_mode: input.scopeMode,
+    },
+    metrics: {
+      scope_violations: {
+        warn_count: input.metrics.scopeViolations.warnCount,
+        block_count: input.metrics.scopeViolations.blockCount,
+      },
+      fallback_repo_root_count: input.metrics.fallbackRepoRootCount,
+      avg_impacted_components: avgImpacted,
+      doctor_seconds_total: secondsFromMs(input.metrics.validation.doctorMsTotal),
+      checkset_seconds_total: secondsFromMs(input.metrics.validation.checksetMsTotal),
+      derived_lock_mode_enabled: input.lockMode === "derived",
+      avg_batch_size: avgBatchSize,
+    },
+  };
+}
+
+function averageRounded(total: number, count: number, decimals: number): number {
+  if (count === 0) return 0;
+  return roundToDecimals(total / count, decimals);
+}
+
+function secondsFromMs(durationMs: number): number {
+  return roundToDecimals(durationMs / 1000, 3);
+}
+
+function roundToDecimals(value: number, decimals: number): number {
+  if (!Number.isFinite(value)) return 0;
+  return Number(value.toFixed(decimals));
+}
+
 export async function runProject(
   projectName: string,
   config: ProjectConfig,
@@ -259,6 +929,8 @@ export async function runProject(
     const useDocker = opts.useDocker ?? true;
     const stopContainersOnExit = opts.stopContainersOnExit ?? false;
     const plannedBatches: BatchPlanEntry[] = [];
+    const crashAfterContainerStart =
+      process.env.MYCELIUM_FAKE_CRASH_AFTER_CONTAINER_START === "1";
 
     const repoPath = config.repo_path;
     const workerImage = config.docker.image;
@@ -266,50 +938,143 @@ export async function runProject(
     const containerSecurityPayload = buildContainerSecurityPayload(config.docker);
     const networkMode = config.docker.network_mode;
     const containerUser = config.docker.user;
-  const docker = useDocker ? dockerClient() : null;
-  const manifestPolicy: ManifestEnforcementPolicy = config.manifest_enforcement ?? "warn";
-  const costPer1kTokens = DEFAULT_COST_PER_1K_TOKENS;
-  const mockLlmMode = isMockLlmEnabled() || config.worker.model === "mock";
-  let stopRequested: StopRequest | null = null;
+    let controlPlaneConfig = resolveControlPlaneConfig(config);
+    let lockMode: ControlPlaneLockMode;
+    let scopeComplianceMode: ControlPlaneScopeMode;
+    let shouldEnforceCompliance: boolean;
+    let compliancePolicy: ManifestEnforcementPolicy;
+    const docker = useDocker ? dockerClient() : null;
+    const manifestPolicy: ManifestEnforcementPolicy = config.manifest_enforcement ?? "warn";
+    const costPer1kTokens = DEFAULT_COST_PER_1K_TOKENS;
+    const mockLlmMode = isMockLlmEnabled() || config.worker.model === "mock";
+    let stopRequested: StopRequest | null = null;
+    let state!: RunState;
 
-  // Prepare directories
-  await ensureDir(orchestratorHome());
-  const stateStore = new StateStore(projectName, runId);
-  const orchLog = new JsonlLogger(orchestratorLogPath(projectName, runId), { runId });
-  const testValidatorConfig = config.test_validator;
-  const testValidatorMode = resolveValidatorMode(testValidatorConfig);
-  const testValidatorEnabled = testValidatorMode !== "off";
-  const doctorValidatorConfig = config.doctor_validator;
-  const doctorValidatorMode = resolveValidatorMode(doctorValidatorConfig);
-  const doctorValidatorEnabled = doctorValidatorMode !== "off";
-  let testValidatorLog: JsonlLogger | null = null;
-  let doctorValidatorLog: JsonlLogger | null = null;
-  const closeValidatorLogs = (): void => {
-    if (testValidatorLog) {
-      testValidatorLog.close();
+    // Prepare directories
+    await ensureDir(orchestratorHome());
+    const stateStore = new StateStore(projectName, runId);
+    const orchLog = new JsonlLogger(orchestratorLogPath(projectName, runId), { runId });
+    const testValidatorConfig = config.test_validator;
+    const testValidatorMode = resolveValidatorMode(testValidatorConfig);
+    const testValidatorEnabled = testValidatorMode !== "off";
+    const doctorValidatorConfig = config.doctor_validator;
+    const doctorValidatorMode = resolveValidatorMode(doctorValidatorConfig);
+    const doctorValidatorEnabled = doctorValidatorMode !== "off";
+    let testValidatorLog: JsonlLogger | null = null;
+    let doctorValidatorLog: JsonlLogger | null = null;
+    const closeValidatorLogs = (): void => {
+      if (testValidatorLog) {
+        testValidatorLog.close();
+      }
+      if (doctorValidatorLog) {
+        doctorValidatorLog.close();
+      }
+    };
+
+    logOrchestratorEvent(orchLog, "run.start", {
+      project: projectName,
+      repo_path: repoPath,
+    });
+
+    // Ensure repo is clean and on integration branch.
+    await ensureCleanWorkingTree(repoPath);
+    await checkout(repoPath, config.main_branch).catch(async () => {
+      // If branch doesn't exist, create it from current HEAD.
+      await execa("git", ["checkout", "-b", config.main_branch], {
+        cwd: repoPath,
+        stdio: "pipe",
+      });
+    });
+
+  const runResumeReason = isResume ? "resume_command" : "existing_state";
+  const hadExistingState = await stateStore.exists();
+  if (hadExistingState) {
+    state = await stateStore.load();
+
+    if (state.status !== "running") {
+      logRunResume(orchLog, { status: state.status, reason: runResumeReason });
+      logOrchestratorEvent(orchLog, "run.resume.blocked", { reason: "state_not_running" });
+      closeValidatorLogs();
+      orchLog.close();
+      return { runId, state, plan: plannedBatches };
     }
-    if (doctorValidatorLog) {
-      doctorValidatorLog.close();
+  } else if (isResume) {
+    logOrchestratorEvent(orchLog, "run.resume.blocked", { reason: "state_missing" });
+    orchLog.close();
+    throw new Error(`Cannot resume run ${runId}: state file not found.`);
+  }
+
+  let controlPlaneSnapshot: ControlPlaneSnapshot | undefined = hadExistingState
+    ? state.control_plane
+    : undefined;
+  const snapshotEnabled = controlPlaneSnapshot?.enabled ?? controlPlaneConfig.enabled;
+  if (!controlPlaneSnapshot?.base_sha) {
+    const baseSha = await resolveRunBaseSha(repoPath, config.main_branch);
+    controlPlaneSnapshot = {
+      enabled: snapshotEnabled,
+      base_sha: baseSha,
+    };
+
+    if (hadExistingState) {
+      state.control_plane = controlPlaneSnapshot;
+      await stateStore.save(state);
+    } else {
+      state = createRunState({
+        runId,
+        project: projectName,
+        repoPath,
+        mainBranch: config.main_branch,
+        taskIds: [],
+        controlPlane: controlPlaneSnapshot,
+      });
+      await stateStore.save(state);
     }
-  };
+  } else if (!hadExistingState) {
+    state = createRunState({
+      runId,
+      project: projectName,
+      repoPath,
+      mainBranch: config.main_branch,
+      taskIds: [],
+      controlPlane: controlPlaneSnapshot,
+    });
+    await stateStore.save(state);
+  }
 
-  logOrchestratorEvent(orchLog, "run.start", {
-    project: projectName,
-    repo_path: repoPath,
-  });
+  if (shouldBuildControlPlaneSnapshot(controlPlaneSnapshot)) {
+    controlPlaneSnapshot = await buildControlPlaneSnapshot({
+      repoPath,
+      baseSha: controlPlaneSnapshot.base_sha,
+      enabled: true,
+    });
+    state.control_plane = controlPlaneSnapshot;
+    await stateStore.save(state);
+  }
 
-  // Ensure repo is clean and on integration branch.
-  await ensureCleanWorkingTree(repoPath);
-  await checkout(repoPath, config.main_branch).catch(async () => {
-    // If branch doesn't exist, create it from current HEAD.
-    await execa("git", ["checkout", "-b", config.main_branch], { cwd: repoPath, stdio: "pipe" });
+  if (controlPlaneSnapshot && controlPlaneSnapshot.enabled !== controlPlaneConfig.enabled) {
+    controlPlaneConfig = {
+      ...controlPlaneConfig,
+      enabled: controlPlaneSnapshot.enabled,
+    };
+  }
+
+  lockMode = resolveEffectiveLockMode(controlPlaneConfig);
+  scopeComplianceMode = resolveScopeComplianceMode(controlPlaneConfig);
+  shouldEnforceCompliance = scopeComplianceMode === "enforce";
+  compliancePolicy = scopeComplianceMode === "off" ? "off" : manifestPolicy;
+
+  const resourceContext = await buildResourceResolutionContext({
+    repoPath,
+    controlPlaneConfig,
+    controlPlaneSnapshot,
+    staticResources: config.resources,
   });
 
   // Load tasks.
   let tasks: TaskSpec[];
   try {
     const res = await loadTaskSpecs(repoPath, config.tasks_dir, {
-      knownResources: config.resources.map((r) => r.name),
+      knownResources: resourceContext.knownResources,
     });
     tasks = res.tasks;
   } catch (err) {
@@ -330,16 +1095,33 @@ export async function runProject(
     orchLog.close();
     return {
       runId,
-      state: createRunState({
-        runId,
-        project: projectName,
-        repoPath,
-        mainBranch: config.main_branch,
-        taskIds: [],
-      }),
+      state,
       plan: plannedBatches,
     };
   }
+
+  const blastContext = await loadBlastRadiusContext({
+    controlPlaneConfig,
+    controlPlaneSnapshot,
+  });
+  const derivedScopeReports = await emitDerivedScopeReports({
+    repoPath,
+    runId,
+    tasks,
+    controlPlaneConfig,
+    controlPlaneSnapshot,
+    orchestratorLog: orchLog,
+  });
+  const runMetrics = createRunMetrics({
+    derivedScopeReports,
+    fallbackResource: controlPlaneConfig.fallbackResource,
+  });
+  const policyDecisions = new Map<string, PolicyDecision>();
+  const lockResolver = buildTaskLockResolver({
+    lockMode,
+    derivedScopeReports,
+    fallbackResource: controlPlaneConfig.fallbackResource,
+  });
 
   if (testValidatorEnabled) {
     testValidatorLog = new JsonlLogger(validatorLogPath(projectName, runId, "test-validator"), {
@@ -360,17 +1142,18 @@ export async function runProject(
 
   // Ensure worker image exists.
   if (useDocker) {
-    const haveImage = docker ? await imageExists(docker, workerImage) : false;
-    if (!haveImage) {
-      if (opts.buildImage ?? true) {
-        logOrchestratorEvent(orchLog, "docker.image.build.start", { image: workerImage });
-        await buildWorkerImage({
-          tag: workerImage,
-          dockerfile: config.docker.dockerfile,
-          context: config.docker.build_context,
-        });
-        logOrchestratorEvent(orchLog, "docker.image.build.complete", { image: workerImage });
-      } else {
+    const shouldBuildImage = opts.buildImage ?? true;
+    if (shouldBuildImage) {
+      logOrchestratorEvent(orchLog, "docker.image.build.start", { image: workerImage });
+      await buildWorkerImage({
+        tag: workerImage,
+        dockerfile: config.docker.dockerfile,
+        context: config.docker.build_context,
+      });
+      logOrchestratorEvent(orchLog, "docker.image.build.complete", { image: workerImage });
+    } else {
+      const haveImage = docker ? await imageExists(docker, workerImage) : false;
+      if (!haveImage) {
         throw new Error(
           `Docker image not found: ${workerImage}. Build it or run with --build-image.`,
         );
@@ -379,7 +1162,6 @@ export async function runProject(
   }
 
   // Create or resume run state
-  let state: RunState;
   const backfillUsageFromLogs = (): boolean => {
     let updated = false;
     const beforeTokens = state.tokens_used ?? 0;
@@ -405,36 +1187,24 @@ export async function runProject(
     }
     return updated;
   };
-  const stateExists = await stateStore.exists();
-  if (stateExists) {
-    state = await stateStore.load();
-
-    const runResumeReason = isResume ? "resume_command" : "existing_state";
-    if (state.status !== "running") {
-      logRunResume(orchLog, { status: state.status, reason: runResumeReason });
-      logOrchestratorEvent(orchLog, "run.resume.blocked", { reason: "state_not_running" });
-      closeValidatorLogs();
-      orchLog.close();
-      return { runId, state, plan: plannedBatches };
+  // Ensure new tasks found in the manifest are tracked for this run.
+  for (const t of tasks) {
+    if (!state.tasks[t.manifest.id]) {
+      state.tasks[t.manifest.id] = {
+        status: "pending",
+        attempts: 0,
+        checkpoint_commits: [],
+        validator_results: [],
+        human_review: undefined,
+        tokens_used: 0,
+        estimated_cost: 0,
+        usage_by_attempt: [],
+      };
     }
+  }
+  await stateStore.save(state);
 
-    // Ensure new tasks found in the manifest are tracked for this run.
-    for (const t of tasks) {
-      if (!state.tasks[t.manifest.id]) {
-        state.tasks[t.manifest.id] = {
-          status: "pending",
-          attempts: 0,
-          checkpoint_commits: [],
-          validator_results: [],
-          human_review: undefined,
-          tokens_used: 0,
-          estimated_cost: 0,
-          usage_by_attempt: [],
-        };
-      }
-    }
-    await stateStore.save(state);
-
+  if (hadExistingState) {
     const usageBackfilled = backfillUsageFromLogs();
     if (usageBackfilled) {
       await stateStore.save(state);
@@ -446,21 +1216,6 @@ export async function runProject(
       reason: runResumeReason,
       runningTasks,
     });
-  } else {
-    if (isResume) {
-      logOrchestratorEvent(orchLog, "run.resume.blocked", { reason: "state_missing" });
-      orchLog.close();
-      throw new Error(`Cannot resume run ${runId}: state file not found.`);
-    }
-
-    state = createRunState({
-      runId,
-      project: projectName,
-      repoPath,
-      mainBranch: config.main_branch,
-      taskIds: tasks.map((t) => t.manifest.id),
-    });
-    await stateStore.save(state);
   }
 
   const resolveStopReason = (): StopRequest | null => {
@@ -874,8 +1629,8 @@ export async function runProject(
     } finally {
       if (logStream) {
         try {
-          await logStream.completed.catch(() => undefined);
           logStream.detach();
+          await logStream.completed.catch(() => undefined);
         } catch {
           // ignore
         }
@@ -888,12 +1643,15 @@ export async function runProject(
     taskId: string;
     taskSlug: string;
     policy: ManifestEnforcementPolicy;
+    scopeMode: ControlPlaneScopeMode;
     reportPath: string;
     result: ManifestComplianceResult;
   }): void {
+    recordScopeViolations(runMetrics, args.result);
     const basePayload = {
       task_slug: args.taskSlug,
       policy: args.policy,
+      scope_mode: args.scopeMode,
       status: args.result.status,
       report_path: args.reportPath,
       changed_files: args.result.changedFiles.length,
@@ -920,6 +1678,10 @@ export async function runProject(
         file: violation.path,
         resources: violation.resources,
         reasons: violation.reasons,
+        ...(violation.component_owners
+          ? { component_owners: violation.component_owners }
+          : {}),
+        ...(violation.guidance ? { guidance: violation.guidance } : {}),
         policy: args.policy,
         enforcement: args.result.status,
         report_path: args.reportPath,
@@ -967,6 +1729,30 @@ export async function runProject(
     const rescopeFailures: { taskId: string; reason: string }[] = [];
     let doctorCanaryResult: DoctorCanaryResult | undefined;
     for (const r of params.results) {
+      const taskSpec = params.batchTasks.find((t) => t.manifest.id === r.taskId);
+
+      if (blastContext && taskSpec) {
+        try {
+          const report = await emitBlastRadiusReport({
+            repoPath,
+            runId,
+            task: taskSpec,
+            workspacePath: r.workspace,
+            blastContext,
+            orchestratorLog: orchLog,
+          });
+          if (report) {
+            recordBlastRadius(runMetrics, report);
+          }
+        } catch (error) {
+          logOrchestratorEvent(orchLog, "task.blast_radius.error", {
+            taskId: r.taskId,
+            task_slug: taskSpec.slug,
+            message: formatErrorMessage(error),
+          });
+        }
+      }
+
       if (!r.success) {
         if (r.resetToPending) {
           const reason = r.errorMessage ?? "Task reset to pending";
@@ -984,7 +1770,6 @@ export async function runProject(
         continue;
       }
 
-      const taskSpec = params.batchTasks.find((t) => t.manifest.id === r.taskId);
       if (!taskSpec) {
         const message = "Task spec missing during finalizeBatch";
         markTaskFailed(state, r.taskId, message);
@@ -1002,24 +1787,35 @@ export async function runProject(
         r.taskId,
         r.taskSlug,
       );
+      const policyDecision = policyDecisions.get(r.taskId);
+      const effectiveCompliancePolicy = resolveCompliancePolicyForTier({
+        basePolicy: compliancePolicy,
+        tier: policyDecision?.tier,
+      });
       const compliance = await runManifestCompliance({
         workspacePath: r.workspace,
         mainBranch: config.main_branch,
         manifest: taskSpec.manifest,
-        resources: config.resources,
-        policy: manifestPolicy,
+        resources: resourceContext.effectiveResources,
+        staticResources: resourceContext.staticResources,
+        fallbackResource: resourceContext.fallbackResource,
+        ownerResolver: resourceContext.ownerResolver,
+        ownershipResolver: resourceContext.ownershipResolver,
+        resourcesMode: resourceContext.resourcesMode,
+        policy: effectiveCompliancePolicy,
         reportPath: complianceReportPath,
       });
 
       logComplianceEvents({
         taskId: r.taskId,
         taskSlug: r.taskSlug,
-        policy: manifestPolicy,
+        policy: effectiveCompliancePolicy,
+        scopeMode: scopeComplianceMode,
         reportPath: complianceReportPath,
         result: compliance,
       });
 
-      if (compliance.violations.length > 0) {
+      if (compliance.violations.length > 0 && shouldEnforceCompliance) {
         const violationSummary = describeManifestViolations(compliance);
         const rescopeReason = `Rescope required: ${violationSummary}`;
         markTaskRescopeRequired(state, r.taskId, rescopeReason);
@@ -1027,7 +1823,7 @@ export async function runProject(
           taskId: r.taskId,
           violations: compliance.violations.length,
           report_path: complianceReportPath,
-          policy: manifestPolicy,
+          policy: effectiveCompliancePolicy,
         });
 
         const rescope = computeRescopeFromCompliance(taskSpec.manifest, compliance);
@@ -1091,6 +1887,7 @@ export async function runProject(
 
         let testResult: TestValidationReport | null = null;
         let testError: string | null = null;
+        const testStartedAt = Date.now();
         try {
           testResult = await runTestValidator({
             projectName,
@@ -1112,6 +1909,8 @@ export async function runProject(
             taskId: r.taskId,
             message: testError,
           });
+        } finally {
+          recordChecksetDuration(runMetrics, Date.now() - testStartedAt);
         }
 
         const outcome = await summarizeTestValidatorResult(reportPath, testResult, testError);
@@ -1185,6 +1984,7 @@ export async function runProject(
       shouldRunDoctorValidatorCadence &&
       !stopReason
     ) {
+      const doctorStartedAt = Date.now();
       const doctorOutcome = await runDoctorValidatorWithReport({
         projectName,
         repoPath,
@@ -1198,6 +1998,7 @@ export async function runProject(
         orchestratorLog: orchLog,
         logger: doctorValidatorLog ?? undefined,
       });
+      recordDoctorDuration(runMetrics, Date.now() - doctorStartedAt);
       doctorValidatorLastCount = finishedCount;
 
       if (doctorOutcome) {
@@ -1285,12 +2086,14 @@ export async function runProject(
           batch_id: params.batchId,
           command: config.doctor,
         });
+        const doctorIntegrationStartedAt = Date.now();
         const doctorRes = await execaCommand(config.doctor, {
           cwd: repoPath,
           shell: true,
           reject: false,
           timeout: config.doctor_timeout ? config.doctor_timeout * 1000 : undefined,
         });
+        recordDoctorDuration(runMetrics, Date.now() - doctorIntegrationStartedAt);
         lastIntegrationDoctorOutput = `${doctorRes.stdout}\n${doctorRes.stderr}`.trim();
         const doctorExitCode = doctorRes.exitCode ?? -1;
         lastIntegrationDoctorExitCode = doctorExitCode;
@@ -1307,11 +2110,13 @@ export async function runProject(
 
         if (doctorOk) {
           logOrchestratorEvent(orchLog, "doctor.canary.start", { batch_id: params.batchId });
+          const doctorCanaryStartedAt = Date.now();
           doctorCanaryResult = await runDoctorCanary({
             command: config.doctor,
             cwd: repoPath,
             timeoutSeconds: config.doctor_timeout,
           });
+          recordDoctorDuration(runMetrics, Date.now() - doctorCanaryStartedAt);
           lastIntegrationDoctorCanary = doctorCanaryResult;
 
           if (doctorCanaryResult.status === "unexpected_pass") {
@@ -1348,6 +2153,7 @@ export async function runProject(
       successfulTasks.length > 0 &&
       !stopReason
     ) {
+      const doctorStartedAt = Date.now();
       const doctorOutcome = await runDoctorValidatorWithReport({
         projectName,
         repoPath,
@@ -1361,6 +2167,7 @@ export async function runProject(
         orchestratorLog: orchLog,
         logger: doctorValidatorLog ?? undefined,
       });
+      recordDoctorDuration(runMetrics, Date.now() - doctorStartedAt);
 
       doctorValidatorLastCount = completed.size + failed.size;
 
@@ -1440,6 +2247,7 @@ export async function runProject(
       shouldRunDoctorValidatorSuspicious &&
       !stopReason
     ) {
+      const doctorStartedAt = Date.now();
       const doctorOutcome = await runDoctorValidatorWithReport({
         projectName,
         repoPath,
@@ -1454,6 +2262,7 @@ export async function runProject(
         orchestratorLog: orchLog,
         logger: doctorValidatorLog ?? undefined,
       });
+      recordDoctorDuration(runMetrics, Date.now() - doctorStartedAt);
 
       doctorValidatorLastCount = postMergeFinishedCount;
 
@@ -1542,7 +2351,7 @@ export async function runProject(
     }
 
     batchId += 1;
-    const { batch } = buildGreedyBatch(ready, maxParallel);
+    const { batch } = buildGreedyBatch(ready, maxParallel, lockResolver);
 
     const batchTaskIds = batch.tasks.map((t) => t.manifest.id);
     plannedBatches.push({ batchId, taskIds: batchTaskIds, locks: batch.locks });
@@ -1554,6 +2363,7 @@ export async function runProject(
       batch_id: batchId,
       tasks: batchTaskIds,
       locks: batch.locks,
+      lock_mode: lockMode,
     });
 
     if (opts.dryRun) {
@@ -1580,6 +2390,48 @@ export async function runProject(
           taskId,
           task.manifest.name,
         );
+        const defaultDoctorCommand = task.manifest.verify?.doctor ?? config.doctor;
+        const policyResult = controlPlaneConfig.enabled
+          ? computeTaskPolicyDecision({
+              task,
+              derivedScopeReports,
+              componentResourcePrefix: controlPlaneConfig.componentResourcePrefix,
+              blastContext,
+              checksConfig: controlPlaneConfig.checks,
+              defaultDoctorCommand,
+              surfacePatterns: controlPlaneConfig.surfacePatterns,
+              fallbackResource: controlPlaneConfig.fallbackResource,
+            })
+          : null;
+
+        if (policyResult) {
+          policyDecisions.set(taskId, policyResult.policyDecision);
+          const policyReportPath = taskPolicyReportPath(repoPath, runId, taskId);
+          try {
+            await writeJsonFile(policyReportPath, policyResult.policyDecision);
+          } catch (error) {
+            logOrchestratorEvent(orchLog, "task.policy.error", {
+              taskId,
+              task_slug: taskSlug,
+              message: formatErrorMessage(error),
+            });
+          }
+
+          const reportPath = taskChecksetReportPath(repoPath, runId, taskId);
+          try {
+            await writeJsonFile(reportPath, policyResult.checksetReport);
+          } catch (error) {
+            logOrchestratorEvent(orchLog, "task.checkset.error", {
+              taskId,
+              task_slug: taskSlug,
+              message: formatErrorMessage(error),
+            });
+          }
+        }
+
+        const doctorCommand = policyResult
+          ? policyResult.doctorCommand
+          : defaultDoctorCommand;
 
         const workspace = taskWorkspaceDir(projectName, runId, taskId);
         const tLogsDir = taskLogsDir(projectName, runId, taskId, taskSlug);
@@ -1690,7 +2542,7 @@ export async function runProject(
                 "spec.md",
               ),
               TASK_BRANCH: branchName,
-              DOCTOR_CMD: task.manifest.verify?.doctor ?? config.doctor,
+              DOCTOR_CMD: doctorCommand,
               DOCTOR_TIMEOUT: config.doctor_timeout ? String(config.doctor_timeout) : undefined,
               MAX_RETRIES: String(config.max_retries),
               CHECKPOINT_COMMITS: config.worker.checkpoint_commits ? "true" : "false",
@@ -1739,6 +2591,11 @@ export async function runProject(
             await startContainer(container);
             logOrchestratorEvent(orchLog, "container.start", { taskId, container_id: containerId });
 
+            if (crashAfterContainerStart) {
+              // Simulate an orchestrator crash for resume drills; the worker container keeps running.
+              process.kill(process.pid, "SIGKILL");
+            }
+
             const waited = await waitContainer(container);
 
             logOrchestratorEvent(orchLog, "container.exit", {
@@ -1774,8 +2631,8 @@ export async function runProject(
               success: false as const,
             };
           } finally {
-            await logStream.completed.catch(() => undefined);
             logStream.detach();
+            await logStream.completed.catch(() => undefined);
             taskEvents.close();
           }
         }
@@ -1803,14 +2660,13 @@ export async function runProject(
               taskBranch: branchName,
               manifestPath,
               specPath,
-              doctorCmd: task.manifest.verify?.doctor ?? config.doctor,
+              doctorCmd: doctorCommand,
               doctorTimeoutSeconds: config.doctor_timeout,
               maxRetries: config.max_retries,
               bootstrapCmds: config.bootstrap,
               runLogsDir: tLogsDir,
               codexHome,
               codexModel: config.worker.model,
-              codexReasoningEffort,
               checkpointCommits: config.worker.checkpoint_commits,
               workingDirectory: workspace,
               defaultTestPaths: config.test_paths,
@@ -1861,6 +2717,31 @@ export async function runProject(
     state.status = failed.size > 0 ? "failed" : "complete";
   }
   await stateStore.save(state);
+
+  const runSummary = buildRunSummary({
+    runId,
+    projectName,
+    state,
+    lockMode,
+    scopeMode: scopeComplianceMode,
+    controlPlaneEnabled: controlPlaneConfig.enabled,
+    metrics: runMetrics,
+  });
+  const runSummaryPath = runSummaryReportPath(repoPath, runId);
+  try {
+    await writeJsonFile(runSummaryPath, runSummary);
+    logOrchestratorEvent(orchLog, "run.summary", {
+      status: state.status,
+      report_path: runSummaryPath,
+      metrics: runSummary.metrics,
+    });
+  } catch (error) {
+    logOrchestratorEvent(orchLog, "run.summary.error", {
+      status: state.status,
+      report_path: runSummaryPath,
+      message: formatErrorMessage(error),
+    });
+  }
 
   logOrchestratorEvent(orchLog, "run.complete", { status: state.status });
   closeValidatorLogs();

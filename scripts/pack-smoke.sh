@@ -39,6 +39,12 @@ for required in \
   "bin/mycelium" \
   "dist/index.js" \
   "dist/worker/index.js" \
+  "dist/ui/index.html" \
+  "dist/ui/styles.css" \
+  "dist/ui/app.js" \
+  "dist/ui/views/list.js" \
+  "dist/ui/views/garden.js" \
+  "dist/ui/views/map.js" \
   "templates/Dockerfile" \
   "templates/codex-config.toml" \
   "templates/codex/config-worker.toml" \

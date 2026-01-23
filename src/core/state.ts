@@ -104,6 +104,18 @@ export const BatchStateSchema = z.object({
 
 export type BatchState = z.infer<typeof BatchStateSchema>;
 
+export const ControlPlaneSnapshotSchema = z.object({
+  enabled: z.boolean(),
+  base_sha: z.string().optional(),
+  model_hash: z.string().optional(),
+  model_path: z.string().optional(),
+  built_at: z.string().optional(),
+  schema_version: z.number().int().optional(),
+  extractor_versions: z.record(z.string()).optional(),
+});
+
+export type ControlPlaneSnapshot = z.infer<typeof ControlPlaneSnapshotSchema>;
+
 export const RunStateSchema = z.object({
   run_id: z.string(),
   project: z.string(),
@@ -116,6 +128,7 @@ export const RunStateSchema = z.object({
   tasks: z.record(TaskStateSchema),
   tokens_used: z.number().int().nonnegative().default(0),
   estimated_cost: z.number().nonnegative().default(0),
+  control_plane: ControlPlaneSnapshotSchema.optional(),
 });
 
 export type RunState = z.infer<typeof RunStateSchema>;
@@ -126,6 +139,7 @@ export function createRunState(args: {
   repoPath: string;
   mainBranch: string;
   taskIds: string[];
+  controlPlane?: ControlPlaneSnapshot;
 }): RunState {
   const now = isoNow();
   const tasks: Record<string, TaskState> = {};
@@ -154,6 +168,7 @@ export function createRunState(args: {
     tasks,
     tokens_used: 0,
     estimated_cost: 0,
+    control_plane: args.controlPlane,
   };
 }
 

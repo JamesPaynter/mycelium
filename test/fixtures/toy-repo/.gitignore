@@ -1,3 +1,4 @@
 node_modules/
 .tasks/
-.task-orchestrator/
+.mycelium/codex-home/
+.mycelium/worker-state.json

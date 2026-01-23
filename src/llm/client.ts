@@ -6,13 +6,10 @@ import { OrchestratorError } from "../core/errors.js";
 
 export type LlmProvider = "openai" | "anthropic" | "codex";
 
-export type ReasoningEffort = "none" | "minimal" | "low" | "medium" | "high" | "xhigh";
-
 export type LlmCompletionOptions = {
   schema?: Record<string, unknown>;
   temperature?: number;
   timeoutMs?: number;
-  reasoningEffort?: ReasoningEffort;
 };
 
 export type LlmCompletionResult<TParsed = unknown> = {

@@ -4,8 +4,8 @@
 - Project: `pilot-local` in `/tmp/pilot-mycelium` (fresh clone of this repo).
 - Worker mode: `--local-worker` (Codex runs on host; Docker available but not required for this pass).
 - Doctor command: fail-once guard via `WORKER_FAIL_ONCE_FILE`, then `npm test -- --runInBand`.
-- Tasks planned from `planning-docs/pilot-run.md` → 3 doc-only tasks (`.mycelium/tasks/001-003`).
-- Run ID: `20260114-140052`; logs live under `/tmp/pilot-mycelium/.mycelium/logs/pilot-local/run-20260114-140052/`.
+- Tasks planned from `planning-docs/pilot-run.md` → 3 doc-only tasks (`.tasks/001-003`).
+- Run ID: `20260114-140052`; logs live under `~/.mycelium/logs/pilot-local/run-20260114-140052/`.
 
 ## Metrics (run 20260114-140052)
 - Tasks completed: 3 (doc-only) across 3 batches (`max_parallel=1`).
@@ -19,7 +19,7 @@
 
 ## Docker prerequisites & troubleshooting
 - Known-good baseline: Docker 20.10+, daemon running, and access to `/var/run/docker.sock`. If iptables is restricted, `dockerd --iptables=false --storage-driver=vfs` avoids NAT setup for dev runs.
-- On Docker Desktop: enable virtualization, allocate ≥4GB RAM, and allow file sharing for the repo (including `.mycelium`).
+- On Docker Desktop: enable virtualization, allocate ≥4GB RAM, and allow file sharing for the repo + `~/.mycelium`.
 - Permission errors: verify the current user is in the `docker` group or run `--local-worker` to bypass Docker while diagnosing.
 - Network pulls: ensure base images can be fetched before `run` or prebuild the worker image (`npm run docker:build-worker`).
 

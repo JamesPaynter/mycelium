@@ -32,8 +32,8 @@ Add baseline Dockerfile template and Codex config template aligned with correcte
 - [x] Document how config points to docker.image or dockerfile override.
 
 ## Verification
-- `docker build -f templates/Dockerfile -t task-orchestrator-worker:dev .`
-- `Manual: run `docker run --rm task-orchestrator-worker:dev node -v``
+- `docker build -f templates/Dockerfile -t mycelium-worker:dev .`
+- `Manual: run `docker run --rm mycelium-worker:dev node -v``
 
 ## Dependencies
 ### Blocks

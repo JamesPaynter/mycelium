@@ -10,24 +10,39 @@ export type BatchPlan = {
   locks: NormalizedLocks;
 };
 
+export type LockResolver = (task: TaskSpec) => NormalizedLocks;
+
+function resolveTaskLocks(task: TaskSpec): NormalizedLocks {
+  return normalizeLocks(task.manifest.locks);
+}
+
 export function buildGreedyBatch(
   available: TaskSpec[],
   maxParallel: number,
+  resolveLocks: LockResolver = resolveTaskLocks,
 ): { batch: BatchPlan; remaining: TaskSpec[] } {
   assertMaxParallel(maxParallel);
 
   const sorted = sortByTaskId(available);
-  return buildBatchFromSorted(sorted, maxParallel);
+  return buildBatchFromSorted(sorted, maxParallel, resolveLocks);
 }
 
-export function buildBatches(available: TaskSpec[], maxParallel: number): BatchPlan[] {
+export function buildBatches(
+  available: TaskSpec[],
+  maxParallel: number,
+  resolveLocks: LockResolver = resolveTaskLocks,
+): BatchPlan[] {
   assertMaxParallel(maxParallel);
 
   const batches: BatchPlan[] = [];
   let remaining = sortByTaskId(available);
 
   while (remaining.length > 0) {
-    const { batch, remaining: nextRemaining } = buildBatchFromSorted(remaining, maxParallel);
+    const { batch, remaining: nextRemaining } = buildBatchFromSorted(
+      remaining,
+      maxParallel,
+      resolveLocks,
+    );
     batches.push(batch);
     remaining = nextRemaining;
   }
@@ -50,6 +65,7 @@ type BatchLocks = {
 function buildBatchFromSorted(
   available: TaskSpec[],
   maxParallel: number,
+  resolveLocks: LockResolver,
 ): { batch: BatchPlan; remaining: TaskSpec[] } {
   const remaining = [...available];
   const batchLocks = createBatchLocks();
@@ -58,7 +74,7 @@ function buildBatchFromSorted(
   for (const task of [...remaining]) {
     if (batch.length >= maxParallel) break;
 
-    const locks = normalizeLocks(task.manifest.locks);
+    const locks = resolveLocks(task);
     if (canRunInSameBatch(locks, batchLocks)) {
       batch.push(task);
       addToBatch(locks, batchLocks);

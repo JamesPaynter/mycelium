@@ -5,7 +5,6 @@ import yaml from "js-yaml";
 import type { ZodIssue } from "zod";
 
 import { ProjectConfigSchema, type ProjectConfig } from "./config.js";
-import { buildMyceliumGitignore } from "./mycelium-gitignore.js";
 import { normalizeTestPaths, DEFAULT_TEST_PATHS } from "./test-paths.js";
 import { ConfigError } from "./errors.js";
 
@@ -101,7 +100,7 @@ export function loadProjectConfig(configPath: string): ProjectConfig {
   const normalizedTestPaths = normalizeTestPaths(cfg.test_paths);
 
   // Normalize relative paths against the config directory for portability.
-  const resolved: ProjectConfig = {
+  return {
     ...cfg,
     test_paths: normalizedTestPaths.length > 0 ? normalizedTestPaths : DEFAULT_TEST_PATHS,
     repo_path: path.resolve(configDir, cfg.repo_path),
@@ -111,30 +110,4 @@ export function loadProjectConfig(configPath: string): ProjectConfig {
       build_context: path.resolve(configDir, cfg.docker.build_context),
     },
   };
-
-  syncMyceliumGitignore(resolved);
-  return resolved;
-}
-
-function syncMyceliumGitignore(config: ProjectConfig): void {
-  if (!fs.existsSync(config.repo_path)) return;
-
-  const myceliumDir = path.join(config.repo_path, ".mycelium");
-  const ignorePath = path.join(myceliumDir, ".gitignore");
-  const content = buildMyceliumGitignore({
-    repoPath: config.repo_path,
-    tasksDir: config.tasks_dir,
-    planningDir: config.planning_dir,
-    versioning: config.versioning,
-  });
-
-  try {
-    fs.mkdirSync(myceliumDir, { recursive: true });
-    const current = fs.existsSync(ignorePath) ? fs.readFileSync(ignorePath, "utf8") : null;
-    if (current !== content) {
-      fs.writeFileSync(ignorePath, content, "utf8");
-    }
-  } catch {
-    // Ignore gitignore sync failures; config load should still succeed.
-  }
 }

@@ -20,11 +20,15 @@ RUN apt-get update && apt-get install -y \
   && rm -rf /var/lib/apt/lists/*
 
 COPY package.json package-lock.json tsconfig.json ./
+COPY index.ts ./
 COPY src ./src
+COPY scripts ./scripts
+COPY templates ./templates
 COPY worker ./worker
 
 RUN npm ci
 RUN npm run build
+RUN ln -s ../templates dist/templates || true
 
 
 FROM node:20-bookworm
@@ -48,6 +52,8 @@ COPY package.json package-lock.json ./
 RUN npm ci --omit=dev
 
 COPY --from=build /app/dist ./dist
+COPY --from=build /app/templates ./templates
+COPY bin ./bin
 
 # Create non-root user for worker processes
 RUN if ! id -u worker >/dev/null 2>&1; then useradd -m -s /bin/bash worker; fi \
@@ -56,9 +62,10 @@ RUN if ! id -u worker >/dev/null 2>&1; then useradd -m -s /bin/bash worker; fi \
 
 USER worker
 ENV HOME=/home/worker
+ENV PATH="/app/bin:${PATH}"
 
 # Default workspace mount point
 WORKDIR /workspace
 
-# Worker entrypoint (orchestrator passes env vars and mounts)
+# Worker entrypoint (Mycelium passes env vars and mounts)
 CMD ["node", "/app/dist/worker/index.js"]

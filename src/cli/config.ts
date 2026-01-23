@@ -4,17 +4,28 @@ import type { ProjectConfig } from "../core/config.js";
 import { loadProjectConfig } from "../core/config-loader.js";
 import { findRepoRoot, resolveProjectConfigPath } from "../core/config-discovery.js";
 
-export function loadConfigForCli(args: {
+// =============================================================================
+// CONFIG DISCOVERY (CLI)
+//
+// Goals:
+// - provide deterministic, low-friction config resolution
+// - allow both repo-scoped configs and global per-project configs
+// - optionally auto-scaffold a repo config to remove "first-run" friction
+// =============================================================================
+
+export type LoadConfigForCliArgs = {
   projectName?: string;
   explicitConfigPath?: string;
   initIfMissing?: boolean;
   cwd?: string;
-}): {
+};
+
+export async function loadConfigForCli(args: LoadConfigForCliArgs): Promise<{
   config: ProjectConfig;
   configPath: string;
   created: boolean;
   projectName: string;
-} {
+}> {
   const cwd = args.cwd ?? process.cwd();
   let projectName = args.projectName;
 
@@ -48,5 +59,11 @@ export function loadConfigForCli(args: {
   if (!process.env.MYCELIUM_HOME) {
     process.env.MYCELIUM_HOME = path.join(config.repo_path, ".mycelium");
   }
-  return { config, configPath: resolved.configPath, created: resolved.created, projectName };
+
+  return {
+    config,
+    configPath: resolved.configPath,
+    created: resolved.created,
+    projectName,
+  };
 }

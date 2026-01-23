@@ -23,7 +23,7 @@ Add the top-level CLI with subcommand routing and global options.
 | src/cli/status.ts | add | status subcommand stub with argument parsing. |
 | src/cli/logs.ts | add | logs subcommand stub with argument parsing. |
 | src/cli/clean.ts | add | clean subcommand stub with argument parsing. |
-| package.json | modify | Add bin entry (task-orchestrator) and start script. |
+| package.json | modify | Add bin entry (mycelium) and start script. |
 
 ## Blast Radius
 - Scope: Command surface and user entrypoint for all functionality.
@@ -34,7 +34,7 @@ Add the top-level CLI with subcommand routing and global options.
 - [x] Pick CLI library (e.g., commander) and implement root command.
 - [x] Add subcommands and shared options: --project, --config, --verbose, --dry-run.
 - [x] Ensure `--help` output renders and exits 0.
-- [x] Add a bin mapping so `npx task-orchestrator` or local install works.
+- [x] Add a bin mapping so `npx mycelium` or local install works.
 
 ## Verification
 - `npm run build`

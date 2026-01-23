@@ -1,7 +1,6 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 
-import type { ModelReasoningEffort } from "@openai/codex-sdk";
 import { execa, execaCommand } from "execa";
 
 import { isTestPath, resolveTestPaths } from "../src/core/test-paths.js";
@@ -43,7 +42,6 @@ export type WorkerConfig = {
   runLogsDir: string;
   codexHome: string;
   codexModel?: string;
-  codexReasoningEffort?: ModelReasoningEffort;
   workingDirectory: string;
   checkpointCommits: boolean;
   defaultTestPaths?: string[];
@@ -115,7 +113,6 @@ export async function runWorker(config: WorkerConfig, logger?: WorkerLogger): Pr
   const codex = createCodexRunner({
     codexHome: config.codexHome,
     model: config.codexModel,
-    modelReasoningEffort: config.codexReasoningEffort,
     workingDirectory: config.workingDirectory,
     threadId: workerState.threadId,
     taskId: config.taskId,
@@ -308,6 +305,17 @@ function buildInitialPrompt(args: {
     "- If doctor fails, iterate until it passes.",
   ];
 
+  const repoNavigation = [
+    "Repo navigation tools (use before grepping):",
+    "Prefer `mycelium cp` for ownership, dependencies, blast radius, and symbol navigation.",
+    "- mycelium cp components list",
+    "- mycelium cp owner <path>",
+    "- mycelium cp blast <path>",
+    "- mycelium cp symbols find <query>",
+    "- mycelium cp symbols def <symbol>",
+    "- mycelium cp symbols refs <symbol>",
+  ].join("\n");
+
   if (args.strictTddContext?.stage === "tests") {
     rules.unshift("- Stage A: edit tests only; production code changes are not allowed yet.");
   }
@@ -321,6 +329,7 @@ function buildInitialPrompt(args: {
     branchLine,
     stageContext,
     `Task spec:\n${args.spec.trim()}`,
+    repoNavigation,
     rules.join("\n"),
   ];
 
@@ -641,7 +650,7 @@ async function ensureGitIdentity(cwd: string, log: WorkerLogger): Promise<void> 
 }
 
 async function listChangedPaths(cwd: string): Promise<string[]> {
-  const status = await execa("git", ["status", "--porcelain"], {
+  const status = await execa("git", ["status", "--porcelain", "--untracked-files=all"], {
     cwd,
     stdio: "pipe",
   });
@@ -668,7 +677,8 @@ function diffChangedPaths(before: string[], after: string[]): string[] {
 function filterInternalChanges(files: string[], workingDirectory: string, runLogsDir: string): string[] {
   const logsRelative = normalizeToPosix(path.relative(workingDirectory, runLogsDir));
   return files.filter((file) => {
-    if (file.startsWith(".mycelium/")) return false;
+    if (file === ".mycelium/worker-state.json") return false;
+    if (file.startsWith(".mycelium/codex-home/")) return false;
     if (file.startsWith(".git/")) return false;
     if (logsRelative && !logsRelative.startsWith("..") && logsRelative !== ".") {
       if (file === logsRelative || file.startsWith(`${logsRelative}/`)) return false;

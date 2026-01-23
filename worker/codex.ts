@@ -4,7 +4,6 @@ import path from "node:path";
 import {
   Codex,
   type ApprovalMode,
-  type ModelReasoningEffort,
   type SandboxMode,
   type Thread,
   type ThreadEvent,
@@ -16,7 +15,6 @@ import { isMockLlmEnabled } from "../src/llm/mock.js";
 export type CodexRunnerOptions = {
   codexHome: string;
   model?: string;
-  modelReasoningEffort?: ModelReasoningEffort;
   workingDirectory: string;
   sandboxMode?: SandboxMode;
   approvalPolicy?: ApprovalMode;
@@ -61,7 +59,6 @@ export class CodexRunner {
       workingDirectory: opts.workingDirectory,
       sandboxMode: opts.sandboxMode ?? "danger-full-access",
       approvalPolicy: opts.approvalPolicy ?? "never",
-      modelReasoningEffort: opts.modelReasoningEffort,
     };
 
     if (opts.model) {
@@ -145,12 +142,59 @@ class MockCodexRunner {
 
     await this.applyMockChanges(input);
 
+    // Optional deterministic token accounting for budget tests.
+    // If MOCK_CODEX_USAGE is provided, we emit a synthetic Codex "turn.completed" event
+    // that includes usage tokens. The worker loop logs this event as type "codex.event",
+    // enabling budget enforcement tests without calling external APIs.
+    const usageEvent = this.maybeUsageEvent();
+    if (usageEvent) {
+      handlers.onEvent(usageEvent);
+    }
+
     const event = {
       type: "mock.event",
       message: `mocked codex output for ${this.taskId ?? "task"}`,
       turn: this.turn,
     } as unknown as ThreadEvent;
     handlers.onEvent(event);
+  }
+
+  private maybeUsageEvent(): ThreadEvent | null {
+    const raw = process.env.MOCK_CODEX_USAGE;
+    if (!raw) return null;
+
+    try {
+      const parsed = JSON.parse(raw) as Partial<{
+        input_tokens: number;
+        cached_input_tokens: number;
+        output_tokens: number;
+      }>;
+
+      const input = typeof parsed.input_tokens === "number" ? parsed.input_tokens : 0;
+      const cached = typeof parsed.cached_input_tokens === "number" ? parsed.cached_input_tokens : 0;
+      const output = typeof parsed.output_tokens === "number" ? parsed.output_tokens : 0;
+
+      return {
+        type: "turn.completed",
+        usage: {
+          input_tokens: Math.max(0, input),
+          cached_input_tokens: Math.max(0, cached),
+          output_tokens: Math.max(0, output),
+        },
+      } as unknown as ThreadEvent;
+    } catch {
+      // If a simple integer was provided, treat it as output tokens.
+      const numeric = Number(raw);
+      if (!Number.isFinite(numeric) || numeric <= 0) return null;
+      return {
+        type: "turn.completed",
+        usage: {
+          input_tokens: 0,
+          cached_input_tokens: 0,
+          output_tokens: numeric,
+        },
+      } as unknown as ThreadEvent;
+    }
   }
 
   private async applyMockChanges(prompt: string): Promise<void> {

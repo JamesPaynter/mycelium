@@ -3,8 +3,7 @@
 # NOTE: The orchestrator writes a per-task config.toml at runtime based on
 # the configured model, so this file is mainly reference.
 
-model = "gpt-5.2-codex"
-model_reasoning_effort = "xhigh"
+model = "gpt-5.1-codex-max"
 approval_policy = "never"
 # In Docker we typically rely on the container for isolation.
 # Use with care.

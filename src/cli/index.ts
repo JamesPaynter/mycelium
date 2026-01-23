@@ -5,21 +5,23 @@ import { loadConfigForCli } from "./config.js";
 
 import { autopilotCommand } from "./autopilot.js";
 import { cleanCommand } from "./clean.js";
+import { registerControlPlaneCommand } from "./control-plane.js";
 import { initCommand } from "./init.js";
 import { registerLogsCommand } from "./logs.js";
 import { planProject } from "./plan.js";
 import { resumeCommand } from "./resume.js";
 import { runCommand } from "./run.js";
 import { statusCommand } from "./status.js";
+import { uiCommand } from "./ui.js";
 
 export function buildCli(): Command {
   const program = new Command();
 
-  const resolveConfig = (
+  const resolveConfig = async (
     projectName: string | undefined,
     explicitConfig?: string,
-  ): { config: ProjectConfig; projectName: string } => {
-    const { config, configPath, created, projectName: resolvedProjectName } = loadConfigForCli({
+  ): Promise<{ config: ProjectConfig; projectName: string }> => {
+    const { config, configPath, created, projectName: resolvedProjectName } = await loadConfigForCli({
       projectName,
       explicitConfigPath: explicitConfig,
       initIfMissing: true,
@@ -44,6 +46,7 @@ export function buildCli(): Command {
     .option("-v, --verbose", "Verbose output", false);
 
   registerLogsCommand(program);
+  registerControlPlaneCommand(program);
 
   program
     .command("init")
@@ -79,7 +82,7 @@ export function buildCli(): Command {
     )
     .action(async (opts) => {
       const globals = program.opts();
-      const { config, projectName } = resolveConfig(opts.project, globals.config);
+      const { config, projectName } = await resolveConfig(opts.project, globals.config);
       await autopilotCommand(projectName, config, {
         planInput: opts.planInput,
         planOutput: opts.planOutput,
@@ -105,7 +108,7 @@ export function buildCli(): Command {
     .option("--dry-run", "Do not write tasks; just print JSON", false)
     .action(async (opts) => {
       const globals = program.opts();
-      const { config, projectName } = resolveConfig(opts.project, globals.config);
+      const { config, projectName } = await resolveConfig(opts.project, globals.config);
       await planProject(projectName, config, {
         input: opts.input,
         output: opts.output,
@@ -126,6 +129,11 @@ export function buildCli(): Command {
     .option("--max-parallel <n>", "Max parallel containers", (v) => parseInt(v, 10))
     .option("--dry-run", "Plan batches but do not start containers", false)
     .option("--no-build-image", "Do not auto-build the worker image if missing")
+    .option("--ui", "Enable the UI server (overrides config)")
+    .option("--no-ui", "Disable the UI server")
+    .option("--ui-port <n>", "UI server port", (v) => parseInt(v, 10))
+    .option("--ui-open", "Open the UI in a browser")
+    .option("--no-ui-open", "Do not open the UI in a browser")
     .option(
       "--stop-containers-on-exit",
       "Stop task containers when the CLI receives SIGINT/SIGTERM",
@@ -138,7 +146,7 @@ export function buildCli(): Command {
     )
     .action(async (opts) => {
       const globals = program.opts();
-      const { config, projectName } = resolveConfig(opts.project, globals.config);
+      const { config, projectName } = await resolveConfig(opts.project, globals.config);
       await runCommand(projectName, config, {
         runId: opts.runId,
         tasks: opts.tasks,
@@ -147,6 +155,9 @@ export function buildCli(): Command {
         buildImage: opts.buildImage,
         useDocker: !opts.localWorker,
         stopContainersOnExit: opts.stopContainersOnExit,
+        ui: opts.ui,
+        uiPort: opts.uiPort,
+        uiOpen: opts.uiOpen,
       });
     });
 
@@ -157,6 +168,11 @@ export function buildCli(): Command {
     .option("--max-parallel <n>", "Max parallel containers", (v) => parseInt(v, 10))
     .option("--dry-run", "Plan batches but do not start containers", false)
     .option("--no-build-image", "Do not auto-build the worker image if missing")
+    .option("--ui", "Enable the UI server (overrides config)")
+    .option("--no-ui", "Disable the UI server")
+    .option("--ui-port <n>", "UI server port", (v) => parseInt(v, 10))
+    .option("--ui-open", "Open the UI in a browser")
+    .option("--no-ui-open", "Do not open the UI in a browser")
     .option(
       "--stop-containers-on-exit",
       "Stop task containers when the CLI receives SIGINT/SIGTERM",
@@ -169,7 +185,7 @@ export function buildCli(): Command {
     )
     .action(async (opts) => {
       const globals = program.opts();
-      const { config, projectName } = resolveConfig(opts.project, globals.config);
+      const { config, projectName } = await resolveConfig(opts.project, globals.config);
       await resumeCommand(projectName, config, {
         runId: opts.runId,
         maxParallel: opts.maxParallel,
@@ -177,6 +193,27 @@ export function buildCli(): Command {
         buildImage: opts.buildImage,
         useDocker: !opts.localWorker,
         stopContainersOnExit: opts.stopContainersOnExit,
+        ui: opts.ui,
+        uiPort: opts.uiPort,
+        uiOpen: opts.uiOpen,
+      });
+    });
+
+  program
+    .command("ui")
+    .description("Start the UI server for a run")
+    .option("--project <name>", "Project name (default: repo folder name)")
+    .option("--run-id <id>", "Run ID (default: latest)")
+    .option("--port <n>", "UI server port", (v) => parseInt(v, 10))
+    .option("--open", "Open the UI in a browser")
+    .option("--no-open", "Do not open the UI in a browser")
+    .action(async (opts) => {
+      const globals = program.opts();
+      const { config, projectName } = await resolveConfig(opts.project, globals.config);
+      await uiCommand(projectName, config, {
+        runId: opts.runId,
+        port: opts.port,
+        openBrowser: opts.open,
       });
     });
 
@@ -186,7 +223,7 @@ export function buildCli(): Command {
     .option("--run-id <id>", "Run ID (default: latest)")
     .action(async (opts) => {
       const globals = program.opts();
-      const { config, projectName } = resolveConfig(opts.project, globals.config);
+      const { config, projectName } = await resolveConfig(opts.project, globals.config);
       await statusCommand(projectName, config, { runId: opts.runId });
     });
 
@@ -200,7 +237,7 @@ export function buildCli(): Command {
     .option("--no-containers", "Skip Docker container cleanup", false)
     .action(async (opts) => {
       const globals = program.opts();
-      const { config, projectName } = resolveConfig(opts.project, globals.config);
+      const { config, projectName } = await resolveConfig(opts.project, globals.config);
       await cleanCommand(projectName, config, {
         runId: opts.runId,
         keepLogs: opts.keepLogs,

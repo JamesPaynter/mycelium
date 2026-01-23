@@ -49,6 +49,7 @@ describe("graceful stop signals", () => {
       await fse.copy(FIXTURE_REPO, repoDir);
       await writeBootstrapDelayScript(repoDir);
       await initGitRepo(repoDir);
+      await writeImplementationPlan(repoDir);
 
       const configPath = path.join(tmpRoot, "project.yaml");
       await writeProjectConfig(configPath, repoDir);
@@ -85,6 +86,15 @@ describe("graceful stop signals", () => {
       expect(stopEvents.length).toBeGreaterThan(0);
       expect(stopEvents.some((event) => event.reason === "signal")).toBe(true);
 
+      const baseSha = stoppedRun.state.control_plane?.base_sha;
+      expect(baseSha).toBeDefined();
+      if (!baseSha) {
+        throw new Error("Expected control_plane.base_sha to be set on stop.");
+      }
+
+      const updatedHead = await commitRepoChange(repoDir);
+      expect(updatedHead).not.toBe(baseSha);
+
       const resumedRun = await runProject(projectName, config, {
         runId,
         maxParallel: 1,
@@ -93,6 +103,7 @@ describe("graceful stop signals", () => {
         resume: true,
       });
 
+      expect(resumedRun.state.control_plane?.base_sha).toBe(baseSha);
       expect(resumedRun.state.status).toBe("complete");
     },
     30_000,
@@ -152,6 +163,29 @@ async function writeBootstrapDelayScript(repoDir: string): Promise<void> {
   ].join("\n");
 
   await fs.writeFile(path.join(repoDir, "bootstrap-delay.js"), script, "utf8");
+}
+
+async function writeImplementationPlan(repoDir: string): Promise<void> {
+  const planDir = path.join(repoDir, ".mycelium", "planning");
+  await fse.ensureDir(planDir);
+  const content = ["# Implementation Plan", "", "- Placeholder tasks", ""].join("\n");
+  await fs.writeFile(path.join(planDir, "implementation-plan.md"), content, "utf8");
+}
+
+async function commitRepoChange(repoDir: string): Promise<string> {
+  const relativePath = path.join("notes", "resume-marker.txt");
+  const absolutePath = path.join(repoDir, relativePath);
+
+  await fs.writeFile(absolutePath, "resume marker\n", "utf8");
+  await execa("git", ["add", relativePath], { cwd: repoDir });
+  await execa("git", ["commit", "-m", "resume marker"], { cwd: repoDir });
+
+  return await gitHead(repoDir, "HEAD");
+}
+
+async function gitHead(repoDir: string, ref: string): Promise<string> {
+  const result = await execa("git", ["rev-parse", ref], { cwd: repoDir });
+  return result.stdout.trim();
 }
 
 async function readJsonl(filePath: string): Promise<JsonlEvent[]> {

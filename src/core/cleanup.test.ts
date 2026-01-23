@@ -21,11 +21,7 @@ describe("cleanup", () => {
   });
 
   afterEach(async () => {
-    if (originalHome === undefined) {
-      delete process.env.MYCELIUM_HOME;
-    } else {
-      process.env.MYCELIUM_HOME = originalHome;
-    }
+    process.env.MYCELIUM_HOME = originalHome;
     await fse.remove(tmpHome);
   });
 

@@ -1,0 +1,9 @@
+{
+  "name": "control-plane-mini-repo",
+  "private": true,
+  "workspaces": [
+    "apps/*",
+    "packages/*",
+    "infra/*"
+  ]
+}
