@@ -23,6 +23,7 @@ import { ensureCodexAuthForHome } from "./codexAuth.js";
 import { resolveCodexReasoningEffort } from "./codex-reasoning.js";
 
 import type {
+  ControlPlaneChecksMode,
   ControlPlaneLockMode,
   ControlPlaneResourcesMode,
   ControlPlaneScopeMode,
@@ -55,6 +56,7 @@ import {
   taskEventsLogPath,
   taskComplianceReportPath,
   taskBlastReportPath,
+  taskChecksetReportPath,
   taskDerivedScopeReportPath,
   taskLogsDir,
   taskWorkspaceDir,
@@ -117,6 +119,12 @@ import {
   buildBlastRadiusReport,
   type ControlPlaneBlastRadiusReport,
 } from "../control-plane/integration/blast-radius.js";
+import {
+  computeChecksetDecision,
+  computeChecksetImpactFromGraph,
+  resolveDoctorCommandForChecksetMode,
+  type ChecksetDecision,
+} from "../control-plane/policy/checkset.js";
 
 const LABEL_PREFIX = "mycelium";
 
@@ -263,6 +271,13 @@ function buildContainerSecurityPayload(config: ProjectConfig["docker"]): JsonObj
   return payload;
 }
 
+type ControlPlaneChecksRunConfig = {
+  mode: ControlPlaneChecksMode;
+  commandsByComponent: Record<string, string>;
+  maxComponentsForScoped: number;
+  fallbackCommand?: string;
+};
+
 type ControlPlaneRunConfig = {
   enabled: boolean;
   componentResourcePrefix: string;
@@ -270,10 +285,12 @@ type ControlPlaneRunConfig = {
   resourcesMode: ControlPlaneResourcesMode;
   scopeMode: ControlPlaneScopeMode;
   lockMode: ControlPlaneLockMode;
+  checks: ControlPlaneChecksRunConfig;
 };
 
 function resolveControlPlaneConfig(config: ProjectConfig): ControlPlaneRunConfig {
   const raw = (config.control_plane ?? {}) as Partial<ProjectConfig["control_plane"]>;
+  const rawChecks = (raw.checks ?? {}) as Partial<ProjectConfig["control_plane"]["checks"]>;
   return {
     enabled: raw.enabled === true,
     componentResourcePrefix: raw.component_resource_prefix ?? "component:",
@@ -281,6 +298,12 @@ function resolveControlPlaneConfig(config: ProjectConfig): ControlPlaneRunConfig
     resourcesMode: raw.resources_mode ?? "prefer-derived",
     scopeMode: raw.scope_mode ?? "enforce",
     lockMode: raw.lock_mode ?? "declared",
+    checks: {
+      mode: rawChecks.mode ?? "off",
+      commandsByComponent: rawChecks.commands_by_component ?? {},
+      maxComponentsForScoped: rawChecks.max_components_for_scoped ?? 3,
+      fallbackCommand: rawChecks.fallback_command,
+    },
   };
 }
 
@@ -606,6 +629,114 @@ async function emitBlastRadiusReport(input: {
   return report;
 }
 
+
+
+// =============================================================================
+// CHECKSET
+// =============================================================================
+
+type ChecksetReport = {
+  task_id: string;
+  task_name: string;
+  required_components: ChecksetDecision["required_components"];
+  selected_command: ChecksetDecision["selected_command"];
+  fallback_reason?: ChecksetDecision["fallback_reason"];
+  confidence: ChecksetDecision["confidence"];
+  rationale: ChecksetDecision["rationale"];
+};
+
+function resolveTaskTouchedComponents(input: {
+  task: TaskSpec;
+  derivedScopeReports: Map<string, DerivedScopeReport>;
+  componentResourcePrefix: string;
+}): string[] {
+  const declaredLocks = normalizeLocks(input.task.manifest.locks);
+  const derivedResources =
+    input.derivedScopeReports.get(input.task.manifest.id)?.derived_write_resources ?? [];
+
+  const derivedComponents = extractComponentIdsFromResources(
+    derivedResources,
+    input.componentResourcePrefix,
+  );
+  const declaredComponents = extractComponentIdsFromResources(
+    declaredLocks.writes,
+    input.componentResourcePrefix,
+  );
+
+  return Array.from(new Set([...derivedComponents, ...declaredComponents])).sort();
+}
+
+function extractComponentIdsFromResources(resources: string[], prefix: string): string[] {
+  const components = new Set<string>();
+
+  for (const resource of resources) {
+    if (!resource.startsWith(prefix)) {
+      continue;
+    }
+
+    const componentId = resource.slice(prefix.length).trim();
+    if (componentId.length > 0) {
+      components.add(componentId);
+    }
+  }
+
+  return Array.from(components).sort();
+}
+
+function buildChecksetReport(input: {
+  task: TaskSpec;
+  decision: ChecksetDecision;
+}): ChecksetReport {
+  return {
+    task_id: input.task.manifest.id,
+    task_name: input.task.manifest.name,
+    required_components: input.decision.required_components,
+    selected_command: input.decision.selected_command,
+    fallback_reason: input.decision.fallback_reason,
+    confidence: input.decision.confidence,
+    rationale: input.decision.rationale,
+  };
+}
+
+function computeTaskCheckset(input: {
+  task: TaskSpec;
+  derivedScopeReports: Map<string, DerivedScopeReport>;
+  componentResourcePrefix: string;
+  blastContext: BlastRadiusContext | null;
+  checksConfig: ControlPlaneChecksRunConfig;
+  defaultDoctorCommand: string;
+}): { decision: ChecksetDecision; report: ChecksetReport } {
+  const touchedComponents = resolveTaskTouchedComponents({
+    task: input.task,
+    derivedScopeReports: input.derivedScopeReports,
+    componentResourcePrefix: input.componentResourcePrefix,
+  });
+  const impact =
+    input.blastContext && touchedComponents.length > 0
+      ? computeChecksetImpactFromGraph({
+          touchedComponents,
+          model: input.blastContext.model,
+        })
+      : null;
+  const fallbackCommand =
+    input.checksConfig.fallbackCommand?.trim() || input.defaultDoctorCommand;
+
+  const decision = computeChecksetDecision({
+    touchedComponents,
+    impactedComponents: impact?.impactedComponents,
+    impactConfidence: impact?.confidence,
+    impactWideningReasons: impact?.wideningReasons,
+    commandsByComponent: input.checksConfig.commandsByComponent,
+    maxComponentsForScoped: input.checksConfig.maxComponentsForScoped,
+    fallbackCommand,
+    // Placeholder: surface change signals are wired in 072.
+    surfaceChange: false,
+  });
+
+  const report = buildChecksetReport({ task: input.task, decision });
+  return { decision, report };
+}
+
 export async function runProject(
   projectName: string,
   config: ProjectConfig,
@@ -641,6 +772,7 @@ export async function runProject(
     const networkMode = config.docker.network_mode;
     const containerUser = config.docker.user;
     const controlPlaneConfig = resolveControlPlaneConfig(config);
+    const checksetMode = controlPlaneConfig.enabled ? controlPlaneConfig.checks.mode : "off";
     const lockMode = resolveEffectiveLockMode(controlPlaneConfig);
     const scopeComplianceMode = resolveScopeComplianceMode(controlPlaneConfig);
     const shouldEnforceCompliance = scopeComplianceMode === "enforce";
@@ -2035,6 +2167,39 @@ export async function runProject(
           taskId,
           task.manifest.name,
         );
+        const defaultDoctorCommand = task.manifest.verify?.doctor ?? config.doctor;
+        const checksetResult =
+          checksetMode === "off"
+            ? null
+            : computeTaskCheckset({
+                task,
+                derivedScopeReports,
+                componentResourcePrefix: controlPlaneConfig.componentResourcePrefix,
+                blastContext,
+                checksConfig: controlPlaneConfig.checks,
+                defaultDoctorCommand,
+              });
+
+        if (checksetResult) {
+          const reportPath = taskChecksetReportPath(repoPath, runId, taskId);
+          try {
+            await writeJsonFile(reportPath, checksetResult.report);
+          } catch (error) {
+            logOrchestratorEvent(orchLog, "task.checkset.error", {
+              taskId,
+              task_slug: taskSlug,
+              message: formatErrorMessage(error),
+            });
+          }
+        }
+
+        const doctorCommand = checksetResult
+          ? resolveDoctorCommandForChecksetMode({
+              mode: checksetMode,
+              decision: checksetResult.decision,
+              defaultDoctorCommand,
+            })
+          : defaultDoctorCommand;
 
         const workspace = taskWorkspaceDir(projectName, runId, taskId);
         const tLogsDir = taskLogsDir(projectName, runId, taskId, taskSlug);
@@ -2145,7 +2310,7 @@ export async function runProject(
                 "spec.md",
               ),
               TASK_BRANCH: branchName,
-              DOCTOR_CMD: task.manifest.verify?.doctor ?? config.doctor,
+              DOCTOR_CMD: doctorCommand,
               DOCTOR_TIMEOUT: config.doctor_timeout ? String(config.doctor_timeout) : undefined,
               MAX_RETRIES: String(config.max_retries),
               CHECKPOINT_COMMITS: config.worker.checkpoint_commits ? "true" : "false",
@@ -2263,7 +2428,7 @@ export async function runProject(
               taskBranch: branchName,
               manifestPath,
               specPath,
-              doctorCmd: task.manifest.verify?.doctor ?? config.doctor,
+              doctorCmd: doctorCommand,
               doctorTimeoutSeconds: config.doctor_timeout,
               maxRetries: config.max_retries,
               bootstrapCmds: config.bootstrap,

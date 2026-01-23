@@ -20,6 +20,16 @@ const ResourceSchema = z
 const ControlPlaneResourcesModeSchema = z.enum(["prefer-derived"]);
 const ControlPlaneScopeModeSchema = z.enum(["off", "shadow", "enforce"]);
 const ControlPlaneLockModeSchema = z.enum(["declared", "shadow", "derived"]);
+const ControlPlaneChecksModeSchema = z.enum(["off", "report", "enforce"]);
+
+const ControlPlaneChecksSchema = z
+  .object({
+    mode: ControlPlaneChecksModeSchema.default("off"),
+    commands_by_component: z.record(z.string().min(1)).default({}),
+    max_components_for_scoped: z.number().int().positive().default(3),
+    fallback_command: z.string().min(1).optional(),
+  })
+  .strict();
 
 const ControlPlaneSchema = z
   .object({
@@ -29,6 +39,7 @@ const ControlPlaneSchema = z
     resources_mode: ControlPlaneResourcesModeSchema.default("prefer-derived"),
     scope_mode: ControlPlaneScopeModeSchema.default("enforce"),
     lock_mode: ControlPlaneLockModeSchema.default("declared"),
+    checks: ControlPlaneChecksSchema.default({}),
   })
   .strict();
 
@@ -162,6 +173,8 @@ export type ControlPlaneConfig = z.infer<typeof ControlPlaneSchema>;
 export type ControlPlaneResourcesMode = z.infer<typeof ControlPlaneResourcesModeSchema>;
 export type ControlPlaneScopeMode = z.infer<typeof ControlPlaneScopeModeSchema>;
 export type ControlPlaneLockMode = z.infer<typeof ControlPlaneLockModeSchema>;
+export type ControlPlaneChecksMode = z.infer<typeof ControlPlaneChecksModeSchema>;
+export type ControlPlaneChecksConfig = z.infer<typeof ControlPlaneChecksSchema>;
 export type DockerConfig = z.infer<typeof DockerSchema>;
 export type DockerNetworkMode = z.infer<typeof DockerNetworkModeSchema>;
 export type ProjectConfig = z.infer<typeof ProjectConfigSchema>;
