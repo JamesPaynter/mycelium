@@ -82,8 +82,8 @@ Shared code:
 
 ## Repo navigation tools
 
-Prefer Control Plane navigation queries before grepping when you need ownership,
-dependencies, blast radius, or symbol info.
+Prefer `mycelium cp` Control Plane navigation queries before grepping when you need
+ownership, dependencies, blast radius, or symbol info.
 
 Command cheat sheet:
 

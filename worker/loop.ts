@@ -307,6 +307,7 @@ function buildInitialPrompt(args: {
 
   const repoNavigation = [
     "Repo navigation tools (use before grepping):",
+    "Prefer `mycelium cp` for ownership, dependencies, blast radius, and symbol navigation.",
     "- mycelium cp components list",
     "- mycelium cp owner <path>",
     "- mycelium cp blast <path>",
