@@ -35,180 +35,195 @@
       </div>
     </header>
 
+    <nav class="view-nav panel" style="--delay: 0.02s;" aria-label="View selector">
+      <div class="view-tabs" role="tablist">
+        <button class="view-tab" type="button" data-view="list" role="tab" aria-selected="true">List</button>
+        <button class="view-tab" type="button" data-view="garden" role="tab" aria-selected="false">Garden</button>
+        <button class="view-tab" type="button" data-view="map" role="tab" aria-selected="false">Map</button>
+      </div>
+      <div class="view-hint">Switch between List, Garden, and Map views.</div>
+    </nav>
+
     <div id="global-error" class="error-banner hidden"></div>
 
-    <section class="overview panel" style="--delay: 0.05s;">
-      <div class="overview-header">
-        <div>
-          <h2>Run Overview</h2>
-          <div class="subtext" id="overview-subtext">Waiting for project + run.</div>
-        </div>
-        <div class="overview-meta">
-          <div class="meta-item">
-            <span class="label">Status</span>
-            <span id="run-status" class="value">—</span>
-          </div>
-          <div class="meta-item">
-            <span class="label">Started</span>
-            <span id="run-started" class="value">—</span>
-          </div>
-          <div class="meta-item">
-            <span class="label">Updated</span>
-            <span id="run-updated" class="value">—</span>
-          </div>
-        </div>
-      </div>
-
-      <div class="overview-grid" id="overview-grid"></div>
-
-      <div class="overview-lists">
-        <div class="overview-list" id="human-review-list">
-          <h3>Human Review</h3>
-          <div class="list-body" id="human-review-body">
-            <div class="empty">No human review items.</div>
-          </div>
-        </div>
-        <div class="overview-list" id="top-spenders-list">
-          <h3>Top Spenders</h3>
-          <div class="list-body" id="top-spenders-body">
-            <div class="empty">No spend data yet.</div>
-          </div>
-        </div>
-      </div>
-    </section>
-
-    <main class="main-grid">
-      <section class="panel tasks-panel" style="--delay: 0.1s;">
-        <div class="panel-header">
+    <div id="view-list" class="view" data-view="list">
+      <section class="overview panel" style="--delay: 0.05s;">
+        <div class="overview-header">
           <div>
-            <h2>Tasks</h2>
-            <div class="subtext" id="tasks-subtext">Select a task to view details.</div>
+            <h2>Run Overview</h2>
+            <div class="subtext" id="overview-subtext">Waiting for project + run.</div>
           </div>
-          <div class="panel-meta">
-            <span id="tasks-count">0 tasks</span>
+          <div class="overview-meta">
+            <div class="meta-item">
+              <span class="label">Status</span>
+              <span id="run-status" class="value">—</span>
+            </div>
+            <div class="meta-item">
+              <span class="label">Started</span>
+              <span id="run-started" class="value">—</span>
+            </div>
+            <div class="meta-item">
+              <span class="label">Updated</span>
+              <span id="run-updated" class="value">—</span>
+            </div>
           </div>
         </div>
-        <div class="table-wrap">
-          <table>
-            <thead>
-              <tr>
-                <th>Task</th>
-                <th>Status</th>
-                <th>Attempts</th>
-                <th>Updated</th>
-              </tr>
-            </thead>
-            <tbody id="tasks-table-body"></tbody>
-          </table>
+
+        <div class="overview-grid" id="overview-grid"></div>
+
+        <div class="overview-lists">
+          <div class="overview-list" id="human-review-list">
+            <h3>Human Review</h3>
+            <div class="list-body" id="human-review-body">
+              <div class="empty">No human review items.</div>
+            </div>
+          </div>
+          <div class="overview-list" id="top-spenders-list">
+            <h3>Top Spenders</h3>
+            <div class="list-body" id="top-spenders-body">
+              <div class="empty">No spend data yet.</div>
+            </div>
+          </div>
         </div>
       </section>
 
-      <section class="panel detail-panel" style="--delay: 0.15s;">
-        <div class="panel-header">
-          <div>
-            <h2>Task Detail</h2>
-            <div class="subtext" id="task-detail-subtext">No task selected.</div>
+      <main class="main-grid">
+        <section class="panel tasks-panel" style="--delay: 0.1s;">
+          <div class="panel-header">
+            <div>
+              <h2>Tasks</h2>
+              <div class="subtext" id="tasks-subtext">Select a task to view details.</div>
+            </div>
+            <div class="panel-meta">
+              <span id="tasks-count">0 tasks</span>
+            </div>
           </div>
-          <div class="panel-meta">
-            <span id="selected-task-status" class="status-pill">—</span>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Task</th>
+                  <th>Status</th>
+                  <th>Attempts</th>
+                  <th>Updated</th>
+                </tr>
+              </thead>
+              <tbody id="tasks-table-body"></tbody>
+            </table>
           </div>
-        </div>
+        </section>
 
-        <div class="detail-body">
-          <div class="detail-meta" id="task-meta">
-            <div class="meta-item">
-              <span class="label">Task ID</span>
-              <span id="task-id" class="value">—</span>
+        <section class="panel detail-panel" style="--delay: 0.15s;">
+          <div class="panel-header">
+            <div>
+              <h2>Task Detail</h2>
+              <div class="subtext" id="task-detail-subtext">No task selected.</div>
             </div>
-            <div class="meta-item">
-              <span class="label">Attempts</span>
-              <span id="task-attempts" class="value">—</span>
-            </div>
-            <div class="meta-item">
-              <span class="label">Branch</span>
-              <span id="task-branch" class="value">—</span>
-            </div>
-            <div class="meta-item">
-              <span class="label">Thread</span>
-              <span id="task-thread" class="value">—</span>
-            </div>
-          </div>
-
-          <div class="filters">
-            <div class="field wide">
-              <label for="type-filter-input">Type filter (typeGlob)</label>
-              <input id="type-filter-input" type="text" placeholder="doctor.*" autocomplete="off" />
-            </div>
-            <div class="filter-buttons">
-              <button class="btn small" data-filter="">All</button>
-              <button class="btn small" data-filter="bootstrap.*">Bootstrap</button>
-              <button class="btn small" data-filter="doctor.*">Doctor</button>
-              <button class="btn small" data-filter="git.*">Git</button>
-            </div>
-            <div class="filter-meta">
-              <span id="cursor-info">Cursor: —</span>
-              <button id="reset-cursor" class="btn tiny ghost">Reset cursor</button>
+            <div class="panel-meta">
+              <span id="selected-task-status" class="status-pill">—</span>
             </div>
           </div>
 
-          <div class="events-panel">
-            <div class="events-header">
-              <h3>Event Tail</h3>
-              <div class="events-meta" id="events-meta">Awaiting events.</div>
-            </div>
-            <div id="events-list" class="events-list"></div>
-          </div>
-
-          <div class="diagnostics">
-            <h3>Diagnostics</h3>
-            <div class="diag-grid">
-              <div class="diag-card">
-                <div class="diag-header">
-                  <div>
-                    <h4>Doctor</h4>
-                    <div class="subtext">Latest doctor snippet</div>
-                  </div>
-                  <div class="diag-controls">
-                    <input id="doctor-attempt-input" type="number" min="1" placeholder="attempt" />
-                    <button id="doctor-fetch" class="btn small">Fetch</button>
-                  </div>
-                </div>
-                <pre id="doctor-output" class="diag-output">No data.</pre>
+          <div class="detail-body">
+            <div class="detail-meta" id="task-meta">
+              <div class="meta-item">
+                <span class="label">Task ID</span>
+                <span id="task-id" class="value">—</span>
               </div>
-
-              <div class="diag-card">
-                <div class="diag-header">
-                  <div>
-                    <h4>Compliance</h4>
-                    <div class="subtext">Task compliance report</div>
-                  </div>
-                  <button id="compliance-fetch" class="btn small">Fetch</button>
-                </div>
-                <pre id="compliance-output" class="diag-output">No data.</pre>
+              <div class="meta-item">
+                <span class="label">Attempts</span>
+                <span id="task-attempts" class="value">—</span>
               </div>
-
-              <div class="diag-card">
-                <div class="diag-header">
-                  <div>
-                    <h4>Validator</h4>
-                    <div class="subtext">Validator report</div>
-                  </div>
-                  <div class="diag-controls">
-                    <input id="validator-input" type="text" placeholder="validator name" autocomplete="off" />
-                    <button id="validator-fetch" class="btn small">Fetch</button>
-                  </div>
-                </div>
-                <pre id="validator-output" class="diag-output">No data.</pre>
+              <div class="meta-item">
+                <span class="label">Branch</span>
+                <span id="task-branch" class="value">—</span>
+              </div>
+              <div class="meta-item">
+                <span class="label">Thread</span>
+                <span id="task-thread" class="value">—</span>
               </div>
             </div>
-          </div>
 
-          <div id="detail-error" class="error-banner hidden"></div>
-        </div>
-      </section>
-    </main>
+            <div class="filters">
+              <div class="field wide">
+                <label for="type-filter-input">Type filter (typeGlob)</label>
+                <input id="type-filter-input" type="text" placeholder="doctor.*" autocomplete="off" />
+              </div>
+              <div class="filter-buttons">
+                <button class="btn small" data-filter="">All</button>
+                <button class="btn small" data-filter="bootstrap.*">Bootstrap</button>
+                <button class="btn small" data-filter="doctor.*">Doctor</button>
+                <button class="btn small" data-filter="git.*">Git</button>
+              </div>
+              <div class="filter-meta">
+                <span id="cursor-info">Cursor: —</span>
+                <button id="reset-cursor" class="btn tiny ghost">Reset cursor</button>
+              </div>
+            </div>
+
+            <div class="events-panel">
+              <div class="events-header">
+                <h3>Event Tail</h3>
+                <div class="events-meta" id="events-meta">Awaiting events.</div>
+              </div>
+              <div id="events-list" class="events-list"></div>
+            </div>
+
+            <div class="diagnostics">
+              <h3>Diagnostics</h3>
+              <div class="diag-grid">
+                <div class="diag-card">
+                  <div class="diag-header">
+                    <div>
+                      <h4>Doctor</h4>
+                      <div class="subtext">Latest doctor snippet</div>
+                    </div>
+                    <div class="diag-controls">
+                      <input id="doctor-attempt-input" type="number" min="1" placeholder="attempt" />
+                      <button id="doctor-fetch" class="btn small">Fetch</button>
+                    </div>
+                  </div>
+                  <pre id="doctor-output" class="diag-output">No data.</pre>
+                </div>
+
+                <div class="diag-card">
+                  <div class="diag-header">
+                    <div>
+                      <h4>Compliance</h4>
+                      <div class="subtext">Task compliance report</div>
+                    </div>
+                    <button id="compliance-fetch" class="btn small">Fetch</button>
+                  </div>
+                  <pre id="compliance-output" class="diag-output">No data.</pre>
+                </div>
+
+                <div class="diag-card">
+                  <div class="diag-header">
+                    <div>
+                      <h4>Validator</h4>
+                      <div class="subtext">Validator report</div>
+                    </div>
+                    <div class="diag-controls">
+                      <input id="validator-input" type="text" placeholder="validator name" autocomplete="off" />
+                      <button id="validator-fetch" class="btn small">Fetch</button>
+                    </div>
+                  </div>
+                  <pre id="validator-output" class="diag-output">No data.</pre>
+                </div>
+              </div>
+            </div>
+
+            <div id="detail-error" class="error-banner hidden"></div>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <section id="view-garden" class="view view-placeholder panel" data-view="garden" hidden></section>
+
+    <section id="view-map" class="view view-placeholder panel" data-view="map" hidden></section>
   </div>
 
-  <script src="./app.js" defer></script>
+  <script type="module" src="./app.js"></script>
 </body>
 </html>
