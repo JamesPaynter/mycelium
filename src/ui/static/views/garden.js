@@ -1,3 +1,5 @@
+import { renderTaskInspector } from "./list.js";
+
 // Garden view renderer for the Mycelium UI.
 // Purpose: render running tasks as mushrooms and status counts as landmarks.
 // Usage: created by app.js and driven via onSummary callbacks.
@@ -53,12 +55,18 @@ export function createGardenView({ appState, actions, fetchApi }) {
     gardenSlots: buildInitialSlots(INITIAL_SLOT_COUNT),
     slotByTaskId: new Map(),
     taskIdBySlot: new Map(),
+    shell: null,
+    stage: null,
     garden: null,
     landmarks: null,
     bed: null,
     emptyState: null,
     emptyTitleEl: null,
     emptyCopyEl: null,
+    inspectorPanel: null,
+    inspector: null,
+    isInspectorOpen: false,
+    lastSelectedTaskId: null,
     landmarkCountEls: new Map(),
     mushroomByTaskId: new Map(),
     spawnTimeouts: new Map(),
@@ -99,11 +107,16 @@ export function createGardenView({ appState, actions, fetchApi }) {
 
   function reset() {
     viewState.latestSummary = null;
+    viewState.lastSelectedTaskId = null;
     resetSlotAllocator();
     clearPendingMushroomTimers();
     clearEventTracking();
     clearMushrooms();
     stopEventsPolling();
+    if (viewState.inspector) {
+      viewState.inspector.reset();
+    }
+    setInspectorOpen(false);
     renderEmptyState();
   }
 
@@ -111,10 +124,17 @@ export function createGardenView({ appState, actions, fetchApi }) {
     viewState.isActive = isActive;
     if (!isActive) {
       stopEventsPolling();
+      if (viewState.inspector) {
+        viewState.inspector.setActive(false);
+      }
       return;
     }
 
     startEventsPolling();
+    if (viewState.inspector) {
+      viewState.inspector.setActive(viewState.isInspectorOpen);
+      viewState.inspector.setPollingPaused();
+    }
     if (viewState.latestSummary) {
       renderGarden(viewState.latestSummary);
       return;
@@ -126,10 +146,16 @@ export function createGardenView({ appState, actions, fetchApi }) {
   function setPollingPaused() {
     if (appState.pollingPaused) {
       stopEventsPolling();
+      if (viewState.inspector) {
+        viewState.inspector.setPollingPaused();
+      }
       return;
     }
 
     startEventsPolling();
+    if (viewState.inspector) {
+      viewState.inspector.setPollingPaused();
+    }
   }
 
 
@@ -188,6 +214,7 @@ export function createGardenView({ appState, actions, fetchApi }) {
     syncSlotAssignments(runningTasks);
     syncMushrooms(runningTasks);
     syncRunningTaskEventTracking(runningTasks);
+    syncInspectorSelection(summary);
   }
 
 
@@ -201,6 +228,12 @@ export function createGardenView({ appState, actions, fetchApi }) {
     }
 
     container.innerHTML = "";
+
+    const shell = document.createElement("div");
+    shell.className = "garden-shell";
+
+    const stage = document.createElement("div");
+    stage.className = "garden-stage";
 
     const garden = document.createElement("div");
     garden.className = "garden";
@@ -222,14 +255,32 @@ export function createGardenView({ appState, actions, fetchApi }) {
     bed.appendChild(emptyState);
 
     garden.append(landmarks, bed);
-    container.appendChild(garden);
+    stage.appendChild(garden);
 
+    const inspectorPanel = document.createElement("aside");
+    inspectorPanel.className = "garden-inspector panel";
+
+    shell.append(stage, inspectorPanel);
+    container.appendChild(shell);
+
+    viewState.shell = shell;
+    viewState.stage = stage;
     viewState.garden = garden;
     viewState.landmarks = landmarks;
     viewState.bed = bed;
     viewState.emptyState = emptyState;
     viewState.emptyTitleEl = emptyTitleEl;
     viewState.emptyCopyEl = emptyCopyEl;
+    viewState.inspectorPanel = inspectorPanel;
+    viewState.inspector = renderTaskInspector(inspectorPanel, appState, {
+      fetchApi,
+      showCloseButton: true,
+      onClose: () => {
+        setInspectorOpen(false);
+      },
+    });
+    viewState.inspector.init();
+    setInspectorOpen(false);
   }
 
   function createEmptyStateElements() {
@@ -440,6 +491,7 @@ export function createGardenView({ appState, actions, fetchApi }) {
     mushroom.addEventListener("click", () => {
       actions.setSelectedTask(taskId);
       updateSelectedMushroom(taskId);
+      openInspectorForTask(taskId);
     });
 
     const float = document.createElement("div");
@@ -618,6 +670,68 @@ export function createGardenView({ appState, actions, fetchApi }) {
 
 
   // =============================================================================
+  // INSPECTOR
+  // =============================================================================
+
+  function setInspectorOpen(isOpen) {
+    viewState.isInspectorOpen = isOpen;
+
+    if (viewState.inspectorPanel) {
+      viewState.inspectorPanel.hidden = !isOpen;
+    }
+
+    if (viewState.shell) {
+      viewState.shell.classList.toggle("inspector-open", isOpen);
+    }
+
+    if (viewState.inspector) {
+      viewState.inspector.setActive(isOpen && viewState.isActive);
+      viewState.inspector.setPollingPaused();
+    }
+  }
+
+  function openInspectorForTask(taskId) {
+    if (!viewState.inspector) {
+      return;
+    }
+
+    const selectedTask = findTaskById(viewState.latestSummary, taskId);
+    viewState.lastSelectedTaskId = String(taskId);
+    setInspectorOpen(true);
+    viewState.inspector.onSelectionChanged(selectedTask);
+  }
+
+  function syncInspectorSelection(summary) {
+    if (!viewState.inspector) {
+      return;
+    }
+
+    const selectedTaskId = appState.selectedTaskId;
+    if (!selectedTaskId) {
+      viewState.lastSelectedTaskId = null;
+      if (viewState.isInspectorOpen) {
+        viewState.inspector.onSelectionChanged(null);
+      } else {
+        viewState.inspector.updateTaskDetail(null);
+      }
+      return;
+    }
+
+    const normalizedSelectedId = String(selectedTaskId);
+    const selectedTask = findTaskById(summary, normalizedSelectedId);
+    const hasSelectionChanged = normalizedSelectedId !== viewState.lastSelectedTaskId;
+    viewState.lastSelectedTaskId = normalizedSelectedId;
+
+    if (hasSelectionChanged && viewState.isInspectorOpen) {
+      viewState.inspector.onSelectionChanged(selectedTask);
+      return;
+    }
+
+    viewState.inspector.updateTaskDetail(selectedTask);
+  }
+
+
+  // =============================================================================
   // EVENTS POLLING
   // =============================================================================
 
@@ -742,6 +856,15 @@ export function createGardenView({ appState, actions, fetchApi }) {
     return summary.tasks
       .filter((task) => task.status === "running")
       .sort((first, second) => String(first.id).localeCompare(String(second.id)));
+  }
+
+  function findTaskById(summary, taskId) {
+    if (!summary?.tasks?.length || taskId === null || taskId === undefined) {
+      return null;
+    }
+
+    const normalizedId = String(taskId);
+    return summary.tasks.find((task) => String(task.id) === normalizedId) ?? null;
   }
 
   function formatCount(value) {
