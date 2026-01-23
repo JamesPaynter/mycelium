@@ -248,6 +248,32 @@ body {
   text-align: left;
 }
 
+.garden-shell {
+  display: grid;
+  grid-template-columns: minmax(280px, 1fr) minmax(320px, 420px);
+  gap: 18px;
+  align-items: stretch;
+}
+
+.garden-stage {
+  min-width: 0;
+  border-radius: inherit;
+  overflow: hidden;
+}
+
+.garden-stage .garden {
+  height: 100%;
+}
+
+.garden-inspector.panel {
+  margin-top: 0;
+}
+
+.garden-inspector {
+  max-height: 100%;
+  overflow: auto;
+}
+
 .garden {
   position: relative;
   min-height: 420px;
@@ -793,6 +819,44 @@ body {
   gap: 18px;
 }
 
+.task-inspector .panel-header {
+  align-items: center;
+}
+
+.task-inspector .panel-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.drawer-close {
+  appearance: none;
+  border: 1px solid var(--line);
+  background: var(--panel);
+  color: var(--muted);
+  width: 32px;
+  height: 32px;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.9rem;
+  line-height: 1;
+  cursor: pointer;
+  transition: transform 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+}
+
+.drawer-close:hover {
+  color: var(--ink);
+  border-color: var(--accent);
+  transform: translateY(-1px);
+}
+
+.drawer-close:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
 .detail-meta {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
@@ -1100,6 +1164,10 @@ body {
 
   .table-wrap {
     max-height: 360px;
+  }
+
+  .garden-shell {
+    grid-template-columns: 1fr;
   }
 
   .garden {
