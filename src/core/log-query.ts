@@ -12,6 +12,21 @@ export type LogSearchResult = {
   line: string;
 };
 
+export type JsonlCursorReadResult = {
+  lines: string[];
+  cursor: number;
+  nextCursor: number;
+  truncated: boolean;
+};
+
+const DEFAULT_JSONL_CURSOR_MAX_BYTES = 512 * 1024;
+
+
+
+// =============================================================================
+// JSONL QUERIES
+// =============================================================================
+
 export function readJsonlFile(filePath: string, filter: JsonlFilter = {}): string[] {
   if (!fs.existsSync(filePath)) return [];
 
@@ -44,6 +59,63 @@ export function filterJsonlLines(lines: string[], filter: JsonlFilter = {}): str
 
     return true;
   });
+}
+
+export async function readJsonlFromCursor(
+  filePath: string,
+  cursor: number,
+  filter: JsonlFilter = {},
+  opts: { maxBytes?: number } = {},
+): Promise<JsonlCursorReadResult> {
+  if (!fs.existsSync(filePath)) {
+    return { lines: [], cursor, nextCursor: cursor, truncated: false };
+  }
+
+  const fileSize = fs.statSync(filePath).size;
+  const normalizedCursor = Math.max(0, cursor);
+  let effectiveCursor = normalizedCursor;
+
+  if (fileSize < effectiveCursor) {
+    effectiveCursor = 0;
+  }
+
+  if (fileSize <= effectiveCursor) {
+    return {
+      lines: [],
+      cursor: effectiveCursor,
+      nextCursor: effectiveCursor,
+      truncated: false,
+    };
+  }
+
+  const maxBytes = opts.maxBytes ?? DEFAULT_JSONL_CURSOR_MAX_BYTES;
+  if (maxBytes <= 0) {
+    return {
+      lines: [],
+      cursor: effectiveCursor,
+      nextCursor: effectiveCursor,
+      truncated: fileSize > effectiveCursor,
+    };
+  }
+
+  const remainingBytes = fileSize - effectiveCursor;
+  const bytesToRead = Math.min(remainingBytes, maxBytes);
+  const end = effectiveCursor + bytesToRead - 1;
+  const buffer = await readStreamRange(filePath, effectiveCursor, end);
+
+  const lastNewlineIndex = buffer.lastIndexOf(0x0a);
+  let nextCursor = effectiveCursor;
+  let lines: string[] = [];
+
+  if (lastNewlineIndex >= 0) {
+    const completeBuffer = buffer.slice(0, lastNewlineIndex + 1);
+    nextCursor = effectiveCursor + completeBuffer.length;
+    const rawLines = completeBuffer.toString("utf8").split(/\r?\n/).filter(Boolean);
+    lines = filterJsonlLines(rawLines, filter);
+  }
+
+  const truncated = remainingBytes > maxBytes;
+  return { lines, cursor: effectiveCursor, nextCursor, truncated };
 }
 
 export function followJsonlFile(
@@ -90,6 +162,12 @@ export function followJsonlFile(
   return () => clearInterval(timer);
 }
 
+
+
+// =============================================================================
+// TASK LOG PATHS
+// =============================================================================
+
 export function findTaskLogDir(runLogsDir: string, taskId: string): string | null {
   const tasksDir = path.join(runLogsDir, "tasks");
   if (!fs.existsSync(tasksDir)) {
@@ -112,6 +190,12 @@ export function taskEventsLogPathForId(runLogsDir: string, taskId: string): stri
   const events = path.join(taskDir, "events.jsonl");
   return fs.existsSync(events) ? events : null;
 }
+
+
+
+// =============================================================================
+// LOG SEARCH
+// =============================================================================
 
 export function searchLogs(
   baseDir: string,
@@ -139,6 +223,12 @@ export function searchLogs(
   return matches;
 }
 
+
+
+// =============================================================================
+// INTERNAL HELPERS
+// =============================================================================
+
 function listFiles(dir: string): string[] {
   const entries = fs.readdirSync(dir, { withFileTypes: true });
   const files: string[] = [];
@@ -153,6 +243,19 @@ function listFiles(dir: string): string[] {
   }
 
   return files;
+}
+
+function readStreamRange(filePath: string, start: number, end: number): Promise<Buffer> {
+  return new Promise((resolve, reject) => {
+    const chunks: Buffer[] = [];
+    const stream = fs.createReadStream(filePath, { start, end });
+
+    stream.on("data", (chunk) => {
+      chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+    });
+    stream.on("error", (error) => reject(error));
+    stream.on("end", () => resolve(Buffer.concat(chunks)));
+  });
 }
 
 function safeParseJson(line: string): Record<string, unknown> | null {
