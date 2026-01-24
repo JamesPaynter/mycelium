@@ -93,7 +93,7 @@ import {
   type ValidatorStatus,
 } from "./state.js";
 import { ensureDir, defaultRunId, isoNow, readJsonFile, writeJsonFile } from "./utils.js";
-import { prepareTaskWorkspace } from "./workspaces.js";
+import { prepareTaskWorkspace, removeTaskWorkspace } from "./workspaces.js";
 import {
   runDoctorValidator,
   type DoctorValidationReport,
@@ -936,7 +936,10 @@ export async function runProject(
       runId = opts.runId ?? defaultRunId();
     }
     const maxParallel = opts.maxParallel ?? config.max_parallel;
-    const cleanupOnSuccess = opts.cleanupOnSuccess ?? false;
+    const cleanupConfig = config.cleanup ?? { workspaces: "never", containers: "never" };
+    const cleanupWorkspacesOnSuccess = cleanupConfig.workspaces === "on_success";
+    const cleanupContainersOnSuccess =
+      opts.cleanupOnSuccess ?? (cleanupConfig.containers === "on_success");
     const useDocker = opts.useDocker ?? true;
     const stopContainersOnExit = opts.stopContainersOnExit ?? false;
     const plannedBatches: BatchPlanEntry[] = [];
@@ -1574,6 +1577,56 @@ export async function runProject(
     return null;
   };
 
+  async function cleanupSuccessfulBatchArtifacts(args: {
+    batchStatus: "complete" | "failed";
+    integrationDoctorPassed?: boolean;
+    successfulTasks: TaskSuccessResult[];
+  }): Promise<void> {
+    if (!cleanupWorkspacesOnSuccess && !cleanupContainersOnSuccess) return;
+    if (args.batchStatus !== "complete") return;
+    if (args.integrationDoctorPassed !== true) return;
+    if (args.successfulTasks.length === 0) return;
+
+    // Skip cleanup when a stop signal is pending so resuming keeps the workspace state.
+    if (stopRequested !== null || stopController.reason !== null) return;
+
+    if (cleanupContainersOnSuccess && docker) {
+      for (const task of args.successfulTasks) {
+        const containerInfo = await findTaskContainer(
+          task.taskId,
+          state.tasks[task.taskId]?.container_id,
+        );
+        if (!containerInfo) continue;
+
+        const container = docker.getContainer(containerInfo.id);
+        await removeContainer(container);
+        logOrchestratorEvent(orchLog, "container.cleanup", {
+          taskId: task.taskId,
+          container_id: containerInfo.id,
+          ...(containerInfo.name ? { name: containerInfo.name } : {}),
+        });
+      }
+    }
+
+    if (cleanupWorkspacesOnSuccess) {
+      for (const task of args.successfulTasks) {
+        try {
+          await removeTaskWorkspace(projectName, runId, task.taskId);
+          logOrchestratorEvent(orchLog, "workspace.cleanup", {
+            taskId: task.taskId,
+            workspace: task.workspace,
+          });
+        } catch (error) {
+          logOrchestratorEvent(orchLog, "workspace.cleanup.error", {
+            taskId: task.taskId,
+            workspace: task.workspace,
+            message: formatErrorMessage(error),
+          });
+        }
+      }
+    }
+  }
+
   async function resumeRunningTask(task: TaskSpec): Promise<TaskRunResult> {
     const taskId = task.manifest.id;
     const taskState = state.tasks[taskId];
@@ -1651,10 +1704,6 @@ export async function runProject(
         isRunning ? "container.exit" : "container.exited-on-resume",
         { taskId, container_id: containerId, exit_code: waited.exitCode },
       );
-
-      if (cleanupOnSuccess && waited.exitCode === 0) {
-        await removeContainer(container);
-      }
 
       await syncWorkerStateIntoTask(taskId, meta.workspace);
 
@@ -2595,6 +2644,12 @@ export async function runProject(
       }
     }
 
+    await cleanupSuccessfulBatchArtifacts({
+      batchStatus,
+      integrationDoctorPassed,
+      successfulTasks,
+    });
+
     logOrchestratorEvent(orchLog, "batch.complete", { batch_id: params.batchId });
     return stopReason;
   }
@@ -2911,10 +2966,6 @@ export async function runProject(
               exit_code: waited.exitCode,
             });
 
-            if (cleanupOnSuccess && waited.exitCode === 0) {
-              await removeContainer(container);
-            }
-
             await syncWorkerStateIntoTask(taskId, workspace);
 
             if (waited.exitCode === 0) {
@@ -3059,7 +3110,6 @@ export async function runProject(
   closeValidatorLogs();
   orchLog.close();
 
-  // Optional cleanup of successful workspaces can be added later.
   return { runId, state, plan: plannedBatches };
   } finally {
     stopController.cleanup();

@@ -57,6 +57,7 @@ npm run dev -- autopilot --project <project-name> --local-worker --max-parallel 
 - Validators: `test_validator`, `style_validator`, `architecture_validator`, and `doctor_validator` respect `enabled` + `mode` (`warn|block`); architecture validator uses `docs_glob` + `fail_if_docs_missing`, doctor validator cadence via `run_every_n_tasks` and also when integration doctor fails or the canary passes unexpectedly.
 - Doctor canary: configure `doctor_canary` (`mode: off|env`, `env_var`, `warn_on_unexpected_pass`) to control the integration doctor re-run and warning behavior.
 - Budgets: `budgets.mode warn|block` with `max_tokens_per_task` / `max_cost_per_run`; defaults warn.
+- Cleanup: `cleanup.workspaces` / `cleanup.containers` set to `on_success` to remove task workspaces/containers after the integration doctor passes; defaults `never`.
 - Docker: `docker.image`, `dockerfile`, `build_context`, `user`, `network_mode`, `memory_mb`, `cpu_quota`, `pids_limit`; `--local-worker` skips Docker.
 - Layout: `.mycelium/tasks` + `.mycelium/planning` live in the target repo; logs/state default to `<repo>/.mycelium/{logs,state}`; workspaces live under `~/.mycelium/workspaces/<project>/run-<id>/task-<id>`.
 
