@@ -933,6 +933,8 @@ export async function runProject(
       process.env.MYCELIUM_FAKE_CRASH_AFTER_CONTAINER_START === "1";
 
     const repoPath = config.repo_path;
+    const tasksRootAbs = path.join(repoPath, config.tasks_dir);
+    const tasksDirPosix = config.tasks_dir.split(path.sep).join(path.posix.sep);
     const workerImage = config.docker.image;
     const containerResources = buildContainerResources(config.docker);
     const containerSecurityPayload = buildContainerSecurityPayload(config.docker);
@@ -2441,6 +2443,8 @@ export async function runProject(
           config.worker.model,
           config.worker.reasoning_effort,
         );
+        const taskRelativeDir = path.relative(tasksRootAbs, task.taskDir);
+        const taskRelativeDirPosix = taskRelativeDir.split(path.sep).join(path.posix.sep);
 
         await ensureDir(tLogsDir);
 
@@ -2531,14 +2535,14 @@ export async function runProject(
               TASK_SLUG: taskSlug,
               TASK_MANIFEST_PATH: path.posix.join(
                 "/workspace",
-                config.tasks_dir,
-                path.basename(task.taskDir),
+                tasksDirPosix,
+                taskRelativeDirPosix,
                 "manifest.json",
               ),
               TASK_SPEC_PATH: path.posix.join(
                 "/workspace",
-                config.tasks_dir,
-                path.basename(task.taskDir),
+                tasksDirPosix,
+                taskRelativeDirPosix,
                 "spec.md",
               ),
               TASK_BRANCH: branchName,
@@ -2642,15 +2646,10 @@ export async function runProject(
         const manifestPath = path.join(
           workspace,
           config.tasks_dir,
-          path.basename(task.taskDir),
+          taskRelativeDir,
           "manifest.json",
         );
-        const specPath = path.join(
-          workspace,
-          config.tasks_dir,
-          path.basename(task.taskDir),
-          "spec.md",
-        );
+        const specPath = path.join(workspace, config.tasks_dir, taskRelativeDir, "spec.md");
         const workerLogger = createLocalWorkerLogger(taskEvents, { taskId, taskSlug });
 
         const previousLogCodexPrompts = process.env.LOG_CODEX_PROMPTS;

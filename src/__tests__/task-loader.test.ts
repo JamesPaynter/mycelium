@@ -28,7 +28,7 @@ afterEach(() => {
 
 describe("loadTaskSpecs", () => {
   it("loads manifests and sorts numerically by id", async () => {
-    const { root, tasksDir } = createTasksDir();
+    const { root, tasksDir } = createLegacyTasksDir();
 
     writeTask(tasksDir, "010", {
       ...baseManifest,
@@ -50,7 +50,7 @@ describe("loadTaskSpecs", () => {
   });
 
   it("validates resource locks against known resources", async () => {
-    const { root, tasksDir } = createTasksDir();
+    const { root, tasksDir } = createLegacyTasksDir();
 
     writeTask(tasksDir, "001", {
       ...baseManifest,
@@ -64,7 +64,7 @@ describe("loadTaskSpecs", () => {
   });
 
   it("surfaces schema errors without throwing when strict=false", async () => {
-    const { root, tasksDir } = createTasksDir();
+    const { root, tasksDir } = createLegacyTasksDir();
 
     writeTask(tasksDir, "003", {
       ...baseManifest,
@@ -82,7 +82,7 @@ describe("loadTaskSpecs", () => {
   });
 
   it("requires verify.fast when tdd_mode is strict", async () => {
-    const { root, tasksDir } = createTasksDir();
+    const { root, tasksDir } = createLegacyTasksDir();
 
     writeTask(tasksDir, "004", {
       ...baseManifest,
@@ -94,15 +94,67 @@ describe("loadTaskSpecs", () => {
 
     await expect(loadTaskSpecs(root, ".tasks")).rejects.toBeInstanceOf(TaskError);
   });
+
+  it("loads tasks from backlog and active when backlog exists", async () => {
+    const { root, tasksDir, backlogDir, activeDir, archiveDir } = createKanbanTasksDir();
+
+    writeTask(backlogDir, "002", {
+      ...baseManifest,
+      id: "002",
+      name: "Backlog Task",
+    });
+    writeTask(activeDir, "001", {
+      ...baseManifest,
+      id: "001",
+      name: "Active Task",
+    });
+    writeTask(archiveDir, "003", {
+      ...baseManifest,
+      id: "003",
+      name: "Archived Task",
+    });
+
+    const { tasks, errors } = await loadTaskSpecs(root, ".tasks");
+    const relativeDirs = tasks.map((task) => path.relative(tasksDir, task.taskDir));
+
+    expect(errors).toHaveLength(0);
+    expect(tasks.map((task) => task.manifest.id)).toEqual(["001", "002"]);
+    expect(relativeDirs).toEqual([
+      path.join("active", "001-task"),
+      path.join("backlog", "002-task"),
+    ]);
+  });
 });
 
-function createTasksDir(): { root: string; tasksDir: string } {
+function createLegacyTasksDir(): { root: string; tasksDir: string } {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "task-loader-"));
   tempRoots.push(root);
 
   const tasksDir = path.join(root, ".tasks");
   fs.mkdirSync(tasksDir, { recursive: true });
   return { root, tasksDir };
+}
+
+function createKanbanTasksDir(): {
+  root: string;
+  tasksDir: string;
+  backlogDir: string;
+  activeDir: string;
+  archiveDir: string;
+} {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "task-loader-"));
+  tempRoots.push(root);
+
+  const tasksDir = path.join(root, ".tasks");
+  const backlogDir = path.join(tasksDir, "backlog");
+  const activeDir = path.join(tasksDir, "active");
+  const archiveDir = path.join(tasksDir, "archive");
+
+  fs.mkdirSync(backlogDir, { recursive: true });
+  fs.mkdirSync(activeDir, { recursive: true });
+  fs.mkdirSync(archiveDir, { recursive: true });
+
+  return { root, tasksDir, backlogDir, activeDir, archiveDir };
 }
 
 function writeTask(tasksDir: string, id: string, manifest: Record<string, unknown>): void {
