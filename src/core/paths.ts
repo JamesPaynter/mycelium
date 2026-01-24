@@ -40,6 +40,10 @@ export function runHistoryIndexPath(projectName: string): string {
   return path.join(runHistoryDir(projectName), "runs.json");
 }
 
+export function taskLedgerPath(projectName: string): string {
+  return path.join(runHistoryDir(projectName), "tasks.json");
+}
+
 export function runStateDir(projectName: string): string {
   return stateBaseDir(projectName);
 }
