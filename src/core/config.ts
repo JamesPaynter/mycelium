@@ -194,6 +194,7 @@ export const ProjectConfigSchema = z
     worker: WorkerSchema,
 
     test_validator: ValidatorSchema.optional(),
+    style_validator: ValidatorSchema.optional(),
     doctor_validator: DoctorValidatorSchema.optional(),
     log_summaries: LogSummariesSchema.optional(),
     ui: UiSchema.default({}),

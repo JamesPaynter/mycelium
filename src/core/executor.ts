@@ -101,6 +101,7 @@ import {
   type DoctorValidatorTrigger,
 } from "../validators/doctor-validator.js";
 import { runTestValidator, type TestValidationReport } from "../validators/test-validator.js";
+import { runStyleValidator, type StyleValidationReport } from "../validators/style-validator.js";
 import { runWorker } from "../../worker/loop.js";
 import type { WorkerLogger, WorkerLogEventInput } from "../../worker/logging.js";
 import { loadWorkerState, type WorkerCheckpoint } from "../../worker/state.js";
@@ -965,15 +966,22 @@ export async function runProject(
     const testValidatorConfig = config.test_validator;
     const testValidatorMode = resolveValidatorMode(testValidatorConfig);
     const testValidatorEnabled = testValidatorMode !== "off";
+    const styleValidatorConfig = config.style_validator;
+    const styleValidatorMode = resolveValidatorMode(styleValidatorConfig);
+    const styleValidatorEnabled = styleValidatorMode !== "off";
     const doctorValidatorConfig = config.doctor_validator;
     const doctorValidatorMode = resolveValidatorMode(doctorValidatorConfig);
     const doctorValidatorEnabled = doctorValidatorMode !== "off";
     const doctorCanaryConfig = config.doctor_canary;
     let testValidatorLog: JsonlLogger | null = null;
+    let styleValidatorLog: JsonlLogger | null = null;
     let doctorValidatorLog: JsonlLogger | null = null;
     const closeValidatorLogs = (): void => {
       if (testValidatorLog) {
         testValidatorLog.close();
+      }
+      if (styleValidatorLog) {
+        styleValidatorLog.close();
       }
       if (doctorValidatorLog) {
         doctorValidatorLog.close();
@@ -1134,6 +1142,11 @@ export async function runProject(
 
   if (testValidatorEnabled) {
     testValidatorLog = new JsonlLogger(validatorLogPath(projectName, runId, "test-validator"), {
+      runId,
+    });
+  }
+  if (styleValidatorEnabled) {
+    styleValidatorLog = new JsonlLogger(validatorLogPath(projectName, runId, "style-validator"), {
       runId,
     });
   }
@@ -1981,6 +1994,80 @@ export async function runProject(
             validator: "test",
             taskId: r.taskId,
             mode: testValidatorMode,
+            status: outcome.status,
+          });
+        }
+      }
+    }
+
+    if (styleValidatorEnabled && styleValidatorConfig) {
+      for (const r of readyForValidation) {
+        const taskSpec = params.batchTasks.find((t) => t.manifest.id === r.taskId);
+        if (!taskSpec) continue;
+
+        const reportPath = validatorReportPath(
+          projectName,
+          runId,
+          "style-validator",
+          r.taskId,
+          r.taskSlug,
+        );
+
+        let styleResult: StyleValidationReport | null = null;
+        let styleError: string | null = null;
+        const styleStartedAt = Date.now();
+        try {
+          styleResult = await runStyleValidator({
+            projectName,
+            repoPath,
+            runId,
+            tasksRoot: tasksRootAbs,
+            task: taskSpec,
+            taskSlug: r.taskSlug,
+            workspacePath: r.workspace,
+            mainBranch: config.main_branch,
+            config: styleValidatorConfig,
+            orchestratorLog: orchLog,
+            logger: styleValidatorLog ?? undefined,
+          });
+        } catch (err) {
+          styleError = err instanceof Error ? err.message : String(err);
+          logOrchestratorEvent(orchLog, "validator.error", {
+            validator: "style",
+            taskId: r.taskId,
+            message: styleError,
+          });
+        } finally {
+          recordChecksetDuration(runMetrics, Date.now() - styleStartedAt);
+        }
+
+        const outcome = await summarizeStyleValidatorResult(reportPath, styleResult, styleError);
+        const relativeReport = relativeReportPath(projectName, runId, outcome.reportPath);
+
+        setValidatorResult(state, r.taskId, {
+          validator: "style",
+          status: outcome.status,
+          mode: styleValidatorMode,
+          summary: outcome.summary ?? undefined,
+          report_path: relativeReport,
+        });
+
+        if (shouldBlockValidator(styleValidatorMode, outcome.status)) {
+          blockedTasks.add(r.taskId);
+          const reason =
+            outcome.summary !== null && outcome.summary.trim().length > 0
+              ? `Style validator blocked merge: ${outcome.summary}`
+              : "Style validator blocked merge (mode=block)";
+          markTaskNeedsHumanReview(state, r.taskId, {
+            validator: "style",
+            reason,
+            summary: outcome.summary ?? undefined,
+            reportPath: relativeReport,
+          });
+          logOrchestratorEvent(orchLog, "validator.block", {
+            validator: "style",
+            taskId: r.taskId,
+            mode: styleValidatorMode,
             status: outcome.status,
           });
         }
@@ -2910,6 +2997,32 @@ async function summarizeTestValidatorResult(
   };
 }
 
+async function summarizeStyleValidatorResult(
+  reportPath: string,
+  result: StyleValidationReport | null,
+  error?: string | null,
+): Promise<ValidatorRunSummary> {
+  const reportFromDisk = await readValidatorReport<StyleValidationReport>(reportPath);
+  const resolved = result ?? reportFromDisk;
+  const status: ValidatorStatus =
+    resolved === null ? "error" : resolved.pass ? "pass" : "fail";
+  let summary: string | null = resolved ? summarizeStyleReport(resolved) : null;
+
+  if (!summary && error) {
+    summary = error;
+  }
+  if (!summary && status === "error") {
+    summary = "Style validator returned no result (see validator log).";
+  }
+
+  const exists = resolved !== null || (await fse.pathExists(reportPath));
+  return {
+    status,
+    summary,
+    reportPath: exists ? reportPath : null,
+  };
+}
+
 async function runDoctorValidatorWithReport(args: {
   projectName: string;
   repoPath: string;
@@ -3081,6 +3194,14 @@ function summarizeTestReport(report: TestValidationReport): string {
   }
   if (report.coverage_gaps.length > 0) {
     parts.push(`Coverage gaps: ${report.coverage_gaps.length}`);
+  }
+  return parts.filter(Boolean).join(" | ");
+}
+
+function summarizeStyleReport(report: StyleValidationReport): string {
+  const parts = [report.summary];
+  if (report.concerns.length > 0) {
+    parts.push(`Concerns: ${report.concerns.length}`);
   }
   return parts.filter(Boolean).join(" | ");
 }

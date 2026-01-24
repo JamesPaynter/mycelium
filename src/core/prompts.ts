@@ -9,7 +9,11 @@ import Handlebars from "handlebars";
 // TYPES
 // =============================================================================
 
-export type PromptTemplateName = "planner" | "test-validator" | "doctor-validator";
+export type PromptTemplateName =
+  | "planner"
+  | "test-validator"
+  | "style-validator"
+  | "doctor-validator";
 
 export type PromptTemplateValues = Record<string, string>;
 
