@@ -144,6 +144,15 @@ const BudgetsSchema = z
   })
   .strict();
 
+const CleanupPolicySchema = z.enum(["never", "on_success"]);
+
+const CleanupSchema = z
+  .object({
+    workspaces: CleanupPolicySchema.default("never"),
+    containers: CleanupPolicySchema.default("never"),
+  })
+  .strict();
+
 const DockerNetworkModeSchema = z.enum(["bridge", "none"]);
 
 const DockerSchema = z
@@ -205,11 +214,14 @@ export const ProjectConfigSchema = z
     log_summaries: LogSummariesSchema.optional(),
     ui: UiSchema.default({}),
     budgets: BudgetsSchema.default({}),
+    cleanup: CleanupSchema.default({}),
   })
   .strict();
 
 export type LlmProvider = z.infer<typeof LlmProviderSchema>;
 export type BudgetsConfig = z.infer<typeof BudgetsSchema>;
+export type CleanupConfig = z.infer<typeof CleanupSchema>;
+export type CleanupPolicy = z.infer<typeof CleanupPolicySchema>;
 export type PlannerConfig = z.infer<typeof PlannerSchema>;
 export type WorkerConfig = z.infer<typeof WorkerSchema>;
 export type ValidatorConfig = z.infer<typeof ValidatorSchema>;
