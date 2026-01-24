@@ -4,6 +4,166 @@ import { renderTaskInspector } from "./list.js";
 // Purpose: render running tasks as mushrooms and status counts as landmarks.
 // Usage: created by app.js and driven via onSummary callbacks.
 
+const ACTIVE_TASK_STATUSES = new Set(["running", "needs_review", "needs_rescope"]);
+const TERMINAL_TASK_STATUSES = new Set(["failed", "complete"]);
+const MAX_VISIBLE_AGENTS = 20;
+
+function isTaskActiveStatus(status) {
+  return ACTIVE_TASK_STATUSES.has(status);
+}
+
+function isTaskTerminalStatus(status) {
+  return TERMINAL_TASK_STATUSES.has(status);
+}
+
+function deriveWorkstationId(status, role) {
+  if (status === "needs_review") {
+    return "reviewer";
+  }
+  if (status === "needs_rescope") {
+    return "researcher";
+  }
+  if (status !== "running") {
+    return null;
+  }
+
+  if (role === "researcher") {
+    return "researcher";
+  }
+  if (role === "coder") {
+    return "coder";
+  }
+  if (role === "reviewer") {
+    return "reviewer";
+  }
+  if (role === "artist") {
+    return "artist";
+  }
+  if (role === "worker") {
+    return "worker";
+  }
+
+  return "worker";
+}
+
+function compareVisibilityPriority(first, second) {
+  if (first.tokensUsed !== second.tokensUsed) {
+    return second.tokensUsed - first.tokensUsed;
+  }
+  if (first.cost !== second.cost) {
+    return second.cost - first.cost;
+  }
+  if (first.startedAt !== second.startedAt) {
+    return first.startedAt - second.startedAt;
+  }
+
+  return String(first.id).localeCompare(String(second.id));
+}
+
+export function snapshotDiff(prevById, nextTasks) {
+  const nextById = new Map();
+  for (const task of nextTasks) {
+    nextById.set(task.id, task);
+  }
+
+  const added = new Set();
+  const removed = new Set();
+  const changed = new Set();
+  const changesById = new Map();
+
+  const allIds = new Set([...prevById.keys(), ...nextById.keys()]);
+  for (const taskId of allIds) {
+    const prevTask = prevById.get(taskId) ?? null;
+    const nextTask = nextById.get(taskId) ?? null;
+
+    if (!prevTask && nextTask) {
+      added.add(taskId);
+      changed.add(taskId);
+      changesById.set(taskId, {
+        statusChanged: true,
+        roleChanged: true,
+        workstationChanged: true,
+        becameTerminal: isTaskTerminalStatus(nextTask.status),
+        becameActive: isTaskActiveStatus(nextTask.status),
+      });
+      continue;
+    }
+
+    if (prevTask && !nextTask) {
+      removed.add(taskId);
+      changed.add(taskId);
+      continue;
+    }
+
+    if (!prevTask || !nextTask) {
+      continue;
+    }
+
+    const statusChanged = prevTask.status !== nextTask.status;
+    const roleChanged = prevTask.role !== nextTask.role;
+    const workstationChanged = prevTask.workstationId !== nextTask.workstationId;
+    const becameTerminal =
+      !isTaskTerminalStatus(prevTask.status) && isTaskTerminalStatus(nextTask.status);
+    const becameActive = !isTaskActiveStatus(prevTask.status) && isTaskActiveStatus(nextTask.status);
+
+    if (statusChanged || roleChanged || workstationChanged || becameTerminal || becameActive) {
+      changed.add(taskId);
+      changesById.set(taskId, {
+        statusChanged,
+        roleChanged,
+        workstationChanged,
+        becameTerminal,
+        becameActive,
+      });
+    }
+  }
+
+  return {
+    nextById,
+    added,
+    removed,
+    changed,
+    changesById,
+  };
+}
+
+export function selectVisibleTaskIds({ candidates, pinnedTaskIds, maxVisible = MAX_VISIBLE_AGENTS }) {
+  const visible = new Set();
+  if (!Array.isArray(candidates) || candidates.length === 0 || maxVisible <= 0) {
+    return visible;
+  }
+
+  const safePinned = pinnedTaskIds ?? new Set();
+  const candidatesById = new Map(candidates.map((task) => [task.id, task]));
+
+  const pinnedTasks = [];
+  for (const taskId of safePinned) {
+    const task = candidatesById.get(taskId);
+    if (task) {
+      pinnedTasks.push(task);
+    }
+  }
+
+  pinnedTasks.sort(compareVisibilityPriority);
+  for (const task of pinnedTasks) {
+    if (visible.size >= maxVisible) {
+      return visible;
+    }
+    visible.add(task.id);
+  }
+
+  const remainingTasks = candidates.filter((task) => !visible.has(task.id));
+  remainingTasks.sort(compareVisibilityPriority);
+  for (const task of remainingTasks) {
+    if (visible.size >= maxVisible) {
+      break;
+    }
+    visible.add(task.id);
+  }
+
+  return visible;
+}
+
 export function createGardenView({ appState, actions, fetchApi }) {
   const container = document.getElementById("view-garden");
 
@@ -66,8 +226,6 @@ export function createGardenView({ appState, actions, fetchApi }) {
     },
   ];
 
-  const ACTIVE_TASK_STATUSES = new Set(["running", "needs_review", "needs_rescope"]);
-  const MAX_VISIBLE_AGENTS = 20;
   const MAX_WORKSTATION_SLOTS = 4;
   const WORKSTATION_SLOT_POSITIONS = {
     worker: [
@@ -107,6 +265,11 @@ export function createGardenView({ appState, actions, fetchApi }) {
   const EVENTS_POLL_INTERVAL_MS = 2000;
   const MAX_EVENT_BYTES = 32768;
   const PULSE_DURATION_MS = 400;
+  const END_GRACE_MS = 2000;
+  const TICK_INTERVAL_MS = 500;
+  const MOVE_STEP_COUNT = 4;
+  const MOVE_LANE_Y_PCT = 55;
+  const TERMINAL_POSE_TICKS = { min: 1, max: 2 };
   const KNOT_POSITION = { xPct: 50, yPct: 65 };
   const KNOT_RADIUS_RANGE = { min: 6, max: 14 };
   const KNOT_RADIUS_SCALE = 0.015;
@@ -119,6 +282,13 @@ export function createGardenView({ appState, actions, fetchApi }) {
     latestSummary: null,
     normalizedTasks: [],
     normalizedTaskById: new Map(),
+    prevSnapshotById: new Map(),
+    visibleTaskIds: new Set(),
+    transitionsByTaskId: new Map(),
+    transitionTimerId: null,
+    reservedSlotsByStation: new Map(),
+    terminalGraceUntilByTaskId: new Map(),
+    terminalStationByTaskId: new Map(),
     firstSeenAtByTaskId: new Map(),
     workstationElementsById: new Map(),
     workstationTaskIdsById: new Map(),
@@ -143,11 +313,13 @@ export function createGardenView({ appState, actions, fetchApi }) {
     emptyState: null,
     emptyTitleEl: null,
     emptyCopyEl: null,
+    lastEmptyStateKey: "",
     inspectorPanel: null,
     inspector: null,
     isInspectorOpen: false,
     lastSelectedTaskId: null,
     landmarkCountEls: new Map(),
+    failureMarkerTimeoutsByStation: new Map(),
     mushroomByTaskId: new Map(),
     spawnTimeouts: new Map(),
     despawnTimeouts: new Map(),
@@ -191,10 +363,16 @@ export function createGardenView({ appState, actions, fetchApi }) {
     viewState.lastSelectedTaskId = null;
     viewState.normalizedTasks = [];
     viewState.normalizedTaskById.clear();
+    viewState.prevSnapshotById.clear();
+    viewState.visibleTaskIds.clear();
+    clearTransitions();
+    clearTerminalGrace();
     viewState.firstSeenAtByTaskId.clear();
     viewState.workstationTaskIdsById.clear();
+    viewState.lastEmptyStateKey = "";
     resetWorkstationSlots();
     clearPendingMushroomTimers();
+    clearFailureMarkers();
     clearEventTracking();
     clearMushrooms();
     clearMyceliumThreads();
@@ -210,6 +388,7 @@ export function createGardenView({ appState, actions, fetchApi }) {
     viewState.isActive = isActive;
     if (!isActive) {
       stopEventsPolling();
+      stopTransitionTimer();
       if (viewState.inspector) {
         viewState.inspector.setActive(false);
       }
@@ -223,6 +402,9 @@ export function createGardenView({ appState, actions, fetchApi }) {
     }
     if (viewState.latestSummary) {
       renderGarden(viewState.latestSummary);
+      if (viewState.transitionsByTaskId.size > 0) {
+        startTransitionTimer();
+      }
       return;
     }
 
@@ -291,21 +473,54 @@ export function createGardenView({ appState, actions, fetchApi }) {
     ensureGardenFrame();
 
     const normalizedTasks = normalizeTaskSnapshots(summary);
+    const previousSnapshotById = viewState.prevSnapshotById;
+    const diff = snapshotDiff(previousSnapshotById, normalizedTasks);
     viewState.normalizedTasks = normalizedTasks;
-    viewState.normalizedTaskById = buildNormalizedTaskMap(normalizedTasks);
+    viewState.normalizedTaskById = diff.nextById;
+    viewState.prevSnapshotById = diff.nextById;
+
+    const now = Date.now();
+    pruneTerminalGrace(now);
+    updateTerminalGrace(diff, previousSnapshotById, now);
+    clearTransitionsForRemovedTasks(diff);
 
     const runningTasks = getRunningTasks(normalizedTasks);
     const activeTasks = normalizedTasks.filter((task) => isTaskActiveStatus(task.status));
-    const tasksByStation = mapTasksToWorkstations(activeTasks);
-    const visibleTaskIds = selectVisibleTaskIds(activeTasks);
+    const terminalGraceTasks = getTerminalGraceTasks(normalizedTasks, now);
+    const candidates = [...activeTasks, ...terminalGraceTasks];
+    const pinnedTaskIds = buildPinnedTaskIds(diff, now);
+    const visibleTaskIds = selectVisibleTaskIds({
+      candidates,
+      pinnedTaskIds,
+      maxVisible: MAX_VISIBLE_AGENTS,
+    });
+    const visibleSetChanged = !areSetsEqual(visibleTaskIds, viewState.visibleTaskIds);
+    const hasMeaningfulChanges = diff.changed.size > 0;
+    const hasActiveTransitions = viewState.transitionsByTaskId.size > 0;
+
     const taskCounts = summary?.taskCounts ?? {};
     const emptyTitle = options.emptyTitle ?? "No running tasks yet.";
     const emptyCopy = options.emptyCopy ?? "Mushrooms appear as tasks move into running.";
+    const emptyStateKey = `${emptyTitle}|${emptyCopy}`;
+    const emptyStateChanged =
+      runningTasks.length === 0 && emptyStateKey !== viewState.lastEmptyStateKey;
+
+    if (!hasActiveTransitions && !hasMeaningfulChanges && !visibleSetChanged && !emptyStateChanged) {
+      return;
+    }
+
+    viewState.visibleTaskIds = visibleTaskIds;
+    viewState.lastEmptyStateKey = emptyStateKey;
+
+    const tasksByStation = mapTasksToWorkstations(activeTasks);
+    const slotCandidatesByStation = mapTasksToWorkstations(candidates);
+    const originSlotsByTaskId = reserveMoveOrigins(diff, previousSnapshotById);
 
     updateLandmarkCounts(taskCounts);
     updateEmptyState(emptyTitle, emptyCopy, runningTasks.length === 0);
-    syncWorkstationSlots(tasksByStation);
-    const slottedVisibleTasks = buildSlottedVisibleTasks(tasksByStation, visibleTaskIds);
+    syncWorkstationSlots(slotCandidatesByStation, visibleTaskIds);
+    buildTransitionsFromDiff(diff, previousSnapshotById, originSlotsByTaskId, now);
+    const slottedVisibleTasks = buildSlottedVisibleTasks(slotCandidatesByStation, visibleTaskIds);
     syncWorkstationIndicators(tasksByStation, visibleTaskIds);
     syncMushrooms(slottedVisibleTasks);
     scheduleMyceliumOverlayUpdate();
@@ -514,13 +729,18 @@ export function createGardenView({ appState, actions, fetchApi }) {
 
     overflowWrap.append(overflowPile, overflowLabel);
 
-    station.append(node, overflowWrap);
+    const failureMarker = document.createElement("div");
+    failureMarker.className = "workstation-failure-marker";
+    failureMarker.setAttribute("aria-hidden", "true");
+
+    station.append(node, overflowWrap, failureMarker);
     return {
       element: station,
       badge,
       indicator,
       overflowWrap,
       overflowLabel,
+      failureMarker,
     };
   }
 
@@ -593,6 +813,7 @@ export function createGardenView({ appState, actions, fetchApi }) {
     const cost = normalizeMetricValue(task?.cost);
     const startedAt = resolveTaskStartedAt(id, task?.startedAt);
     const name = task?.name ? String(task.name) : null;
+    const workstationId = deriveWorkstationId(status, role);
 
     return {
       id,
@@ -602,6 +823,7 @@ export function createGardenView({ appState, actions, fetchApi }) {
       cost,
       startedAt,
       name,
+      workstationId,
     };
   }
 
@@ -627,14 +849,6 @@ export function createGardenView({ appState, actions, fetchApi }) {
     return Number.isFinite(numeric) ? numeric : 0;
   }
 
-  function buildNormalizedTaskMap(tasks) {
-    const taskMap = new Map();
-    for (const task of tasks) {
-      taskMap.set(task.id, task);
-    }
-    return taskMap;
-  }
-
   function getNormalizedTaskForId(taskId) {
     const normalizedId = String(taskId);
     const cached = viewState.normalizedTaskById.get(normalizedId);
@@ -655,11 +869,115 @@ export function createGardenView({ appState, actions, fetchApi }) {
       cost: 0,
       startedAt: resolveTaskStartedAt(normalizedId, null),
       name: null,
+      workstationId: deriveWorkstationId("running", null),
     };
   }
 
-  function isTaskActiveStatus(status) {
-    return ACTIVE_TASK_STATUSES.has(status);
+
+  // =============================================================================
+  // SNAPSHOT DIFF + VISIBILITY
+  // =============================================================================
+
+  function pruneTerminalGrace(now) {
+    for (const [taskId, graceUntil] of viewState.terminalGraceUntilByTaskId.entries()) {
+      if (graceUntil > now) {
+        const task = viewState.normalizedTaskById.get(taskId);
+        if (task && isTaskTerminalStatus(task.status)) {
+          continue;
+        }
+      }
+
+      viewState.terminalGraceUntilByTaskId.delete(taskId);
+      viewState.terminalStationByTaskId.delete(taskId);
+    }
+  }
+
+  function updateTerminalGrace(diff, previousSnapshotById, now) {
+    for (const taskId of diff.changed) {
+      const changes = diff.changesById.get(taskId);
+      if (!changes?.becameTerminal) {
+        continue;
+      }
+
+      const previousTask = previousSnapshotById.get(taskId);
+      const stationId = previousTask?.workstationId ?? null;
+      if (!stationId) {
+        continue;
+      }
+
+      viewState.terminalGraceUntilByTaskId.set(taskId, now + END_GRACE_MS);
+      viewState.terminalStationByTaskId.set(taskId, stationId);
+
+      const nextTask = diff.nextById.get(taskId);
+      if (nextTask?.status === "failed") {
+        activateFailureMarker(stationId);
+      }
+    }
+  }
+
+  function getTerminalGraceTasks(normalizedTasks, now) {
+    const terminalTasks = [];
+    for (const task of normalizedTasks) {
+      if (!isTaskTerminalStatus(task.status)) {
+        continue;
+      }
+
+      const graceUntil = viewState.terminalGraceUntilByTaskId.get(task.id);
+      if (!graceUntil || graceUntil <= now) {
+        continue;
+      }
+
+      const stationId = viewState.terminalStationByTaskId.get(task.id);
+      if (!stationId) {
+        continue;
+      }
+
+      terminalTasks.push({
+        ...task,
+        workstationId: stationId,
+      });
+    }
+
+    return terminalTasks;
+  }
+
+  function buildPinnedTaskIds(diff, now) {
+    const pinned = new Set(diff.changed);
+    for (const taskId of viewState.transitionsByTaskId.keys()) {
+      pinned.add(taskId);
+    }
+    for (const [taskId, graceUntil] of viewState.terminalGraceUntilByTaskId.entries()) {
+      if (graceUntil > now) {
+        pinned.add(taskId);
+      }
+    }
+    return pinned;
+  }
+
+  function areSetsEqual(first, second) {
+    if (first === second) {
+      return true;
+    }
+    if (!first || !second || first.size !== second.size) {
+      return false;
+    }
+    for (const value of first) {
+      if (!second.has(value)) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  function clearTransitionsForRemovedTasks(diff) {
+    for (const taskId of diff.removed) {
+      stopTransitionForTask(taskId);
+    }
+  }
+
+  function clearTerminalGrace() {
+    viewState.terminalGraceUntilByTaskId.clear();
+    viewState.terminalStationByTaskId.clear();
   }
 
 
@@ -668,33 +986,11 @@ export function createGardenView({ appState, actions, fetchApi }) {
   // =============================================================================
 
   function mapTaskToWorkstation(task) {
-    if (task.status === "needs_review") {
-      return "reviewer";
-    }
-    if (task.status === "needs_rescope") {
-      return "researcher";
-    }
-    if (task.status !== "running") {
-      return null;
+    if (task.workstationId !== undefined) {
+      return task.workstationId;
     }
 
-    if (task.role === "researcher") {
-      return "researcher";
-    }
-    if (task.role === "coder") {
-      return "coder";
-    }
-    if (task.role === "reviewer") {
-      return "reviewer";
-    }
-    if (task.role === "artist") {
-      return "artist";
-    }
-    if (task.role === "worker") {
-      return "worker";
-    }
-
-    return "worker";
+    return deriveWorkstationId(task.status, task.role);
   }
 
   function mapTasksToWorkstations(tasks) {
@@ -713,26 +1009,6 @@ export function createGardenView({ appState, actions, fetchApi }) {
     }
 
     return tasksByStation;
-  }
-
-  function selectVisibleTaskIds(tasks) {
-    const sorted = [...tasks].sort(compareVisibilityPriority);
-    const visible = sorted.slice(0, MAX_VISIBLE_AGENTS);
-    return new Set(visible.map((task) => task.id));
-  }
-
-  function compareVisibilityPriority(first, second) {
-    if (first.tokensUsed !== second.tokensUsed) {
-      return second.tokensUsed - first.tokensUsed;
-    }
-    if (first.cost !== second.cost) {
-      return second.cost - first.cost;
-    }
-    if (first.startedAt !== second.startedAt) {
-      return first.startedAt - second.startedAt;
-    }
-
-    return String(first.id).localeCompare(String(second.id));
   }
 
 
@@ -780,6 +1056,39 @@ export function createGardenView({ appState, actions, fetchApi }) {
     }
   }
 
+  function activateFailureMarker(stationId) {
+    const elements = viewState.workstationElementsById.get(stationId);
+    if (!elements?.failureMarker) {
+      return;
+    }
+
+    const existingTimeout = viewState.failureMarkerTimeoutsByStation.get(stationId);
+    if (existingTimeout) {
+      window.clearTimeout(existingTimeout);
+    }
+
+    elements.failureMarker.classList.add("is-active");
+    const timeoutId = window.setTimeout(() => {
+      elements.failureMarker.classList.remove("is-active");
+      viewState.failureMarkerTimeoutsByStation.delete(stationId);
+    }, END_GRACE_MS);
+
+    viewState.failureMarkerTimeoutsByStation.set(stationId, timeoutId);
+  }
+
+  function clearFailureMarkers() {
+    for (const timeoutId of viewState.failureMarkerTimeoutsByStation.values()) {
+      window.clearTimeout(timeoutId);
+    }
+    viewState.failureMarkerTimeoutsByStation.clear();
+
+    for (const elements of viewState.workstationElementsById.values()) {
+      if (elements.failureMarker) {
+        elements.failureMarker.classList.remove("is-active");
+      }
+    }
+  }
+
 
   // =============================================================================
   // WORKSTATION SLOTS
@@ -790,33 +1099,64 @@ export function createGardenView({ appState, actions, fetchApi }) {
     viewState.taskIdByStationSlot.clear();
   }
 
-  function syncWorkstationSlots(tasksByStation) {
+  function syncWorkstationSlots(tasksByStation, visibleTaskIds) {
     for (const { id: stationId } of WORKSTATION_DEFINITIONS) {
       const stationTasks = tasksByStation.get(stationId) ?? [];
       const slotByTaskId = getStationSlotAssignments(stationId);
       const taskIdBySlot = getStationSlotOccupancy(stationId);
+      const reservedSlots = viewState.reservedSlotsByStation.get(stationId) ?? new Map();
       const mappedTaskIds = new Set(stationTasks.map((task) => task.id));
 
       for (const [taskId, slotIndex] of slotByTaskId.entries()) {
         if (mappedTaskIds.has(taskId)) {
           continue;
         }
-        slotByTaskId.delete(taskId);
-        taskIdBySlot.delete(slotIndex);
-      }
-
-      const unassignedTasks = stationTasks
-        .filter((task) => !slotByTaskId.has(task.id))
-        .sort(compareSlotAssignmentOrder);
-
-      for (const task of unassignedTasks) {
-        const slotIndex = findFirstAvailableStationSlot(taskIdBySlot);
-        if (slotIndex === null) {
-          break;
+        const reservedTaskId = reservedSlots.get(slotIndex);
+        if (reservedTaskId === taskId) {
+          continue;
         }
-        slotByTaskId.set(task.id, slotIndex);
-        taskIdBySlot.set(slotIndex, task.id);
+        if (reservedTaskId) {
+          slotByTaskId.delete(taskId);
+          continue;
+        }
+        slotByTaskId.delete(taskId);
       }
+
+      taskIdBySlot.clear();
+      for (const [taskId, slotIndex] of slotByTaskId.entries()) {
+        taskIdBySlot.set(slotIndex, taskId);
+      }
+      for (const [slotIndex, taskId] of reservedSlots.entries()) {
+        taskIdBySlot.set(slotIndex, taskId);
+      }
+
+      const tasksById = new Map(stationTasks.map((task) => [task.id, task]));
+      const unassignedTasks = stationTasks.filter((task) => !slotByTaskId.has(task.id));
+      const prioritizedTasks = unassignedTasks.filter((task) => visibleTaskIds.has(task.id));
+      const remainingTasks = unassignedTasks.filter((task) => !visibleTaskIds.has(task.id));
+
+      prioritizedTasks.sort(compareSlotAssignmentOrder);
+      remainingTasks.sort(compareSlotAssignmentOrder);
+
+      assignTasksToSlots({
+        tasks: prioritizedTasks,
+        slotByTaskId,
+        taskIdBySlot,
+        tasksById,
+        visibleTaskIds,
+        reservedSlots,
+        allowEviction: true,
+      });
+
+      assignTasksToSlots({
+        tasks: remainingTasks,
+        slotByTaskId,
+        taskIdBySlot,
+        tasksById,
+        visibleTaskIds,
+        reservedSlots,
+        allowEviction: false,
+      });
     }
   }
 
@@ -893,6 +1233,466 @@ export function createGardenView({ appState, actions, fetchApi }) {
     return String(first.id).localeCompare(String(second.id));
   }
 
+  function assignTasksToSlots({
+    tasks,
+    slotByTaskId,
+    taskIdBySlot,
+    tasksById,
+    visibleTaskIds,
+    reservedSlots,
+    allowEviction,
+  }) {
+    for (const task of tasks) {
+      let slotIndex = findFirstAvailableStationSlot(taskIdBySlot);
+      if (slotIndex === null && allowEviction) {
+        slotIndex = findEvictableSlotIndex(taskIdBySlot, tasksById, visibleTaskIds, reservedSlots);
+        if (slotIndex !== null) {
+          const evictedTaskId = taskIdBySlot.get(slotIndex);
+          if (evictedTaskId) {
+            slotByTaskId.delete(evictedTaskId);
+            taskIdBySlot.delete(slotIndex);
+          }
+        }
+      }
+      if (slotIndex === null) {
+        continue;
+      }
+      slotByTaskId.set(task.id, slotIndex);
+      taskIdBySlot.set(slotIndex, task.id);
+    }
+  }
+
+  function findEvictableSlotIndex(taskIdBySlot, tasksById, visibleTaskIds, reservedSlots) {
+    let lowestPriority = null;
+    for (const [slotIndex, taskId] of taskIdBySlot.entries()) {
+      if (reservedSlots.has(slotIndex)) {
+        continue;
+      }
+      if (visibleTaskIds.has(taskId)) {
+        continue;
+      }
+      const task = tasksById.get(taskId);
+      if (!task) {
+        continue;
+      }
+      if (!lowestPriority || compareVisibilityPriority(task, lowestPriority.task) > 0) {
+        lowestPriority = { slotIndex, task };
+      }
+    }
+
+    return lowestPriority ? lowestPriority.slotIndex : null;
+  }
+
+  function getReservedStationSlots(stationId) {
+    const existing = viewState.reservedSlotsByStation.get(stationId);
+    if (existing) {
+      return existing;
+    }
+
+    const reservedSlots = new Map();
+    viewState.reservedSlotsByStation.set(stationId, reservedSlots);
+    return reservedSlots;
+  }
+
+  function reserveStationSlot(stationId, slotIndex, taskId) {
+    if (slotIndex === null || slotIndex === undefined) {
+      return;
+    }
+
+    const reservedSlots = getReservedStationSlots(stationId);
+    reservedSlots.set(slotIndex, taskId);
+  }
+
+  function releaseStationSlot(stationId, slotIndex, taskId) {
+    if (slotIndex === null || slotIndex === undefined) {
+      return;
+    }
+
+    const reservedSlots = viewState.reservedSlotsByStation.get(stationId);
+    if (!reservedSlots) {
+      return;
+    }
+
+    if (taskId && reservedSlots.get(slotIndex) !== taskId) {
+      return;
+    }
+
+    reservedSlots.delete(slotIndex);
+    if (reservedSlots.size === 0) {
+      viewState.reservedSlotsByStation.delete(stationId);
+    }
+  }
+
+  function releaseReservedSlotsForTask(taskId) {
+    for (const [stationId, reservedSlots] of viewState.reservedSlotsByStation.entries()) {
+      for (const [slotIndex, reservedTaskId] of reservedSlots.entries()) {
+        if (reservedTaskId !== taskId) {
+          continue;
+        }
+        reservedSlots.delete(slotIndex);
+      }
+      if (reservedSlots.size === 0) {
+        viewState.reservedSlotsByStation.delete(stationId);
+      }
+    }
+  }
+
+
+  // =============================================================================
+  // TRANSITIONS
+  // =============================================================================
+
+  function reserveMoveOrigins(diff, previousSnapshotById) {
+    const originSlotsByTaskId = new Map();
+    for (const taskId of diff.changed) {
+      if (viewState.transitionsByTaskId.has(taskId)) {
+        continue;
+      }
+
+      const changes = diff.changesById.get(taskId);
+      if (!changes?.workstationChanged || changes.becameTerminal) {
+        continue;
+      }
+      if (diff.added.has(taskId)) {
+        continue;
+      }
+
+      const previousTask = previousSnapshotById.get(taskId);
+      const nextTask = diff.nextById.get(taskId);
+      if (!previousTask || !nextTask) {
+        continue;
+      }
+      if (!previousTask.workstationId || !nextTask.workstationId) {
+        continue;
+      }
+
+      const slotIndex = findAssignedSlotIndex(previousTask.workstationId, taskId);
+      const originReservation = { stationId: previousTask.workstationId, slotIndex };
+      originSlotsByTaskId.set(taskId, originReservation);
+      if (slotIndex !== null) {
+        reserveStationSlot(previousTask.workstationId, slotIndex, taskId);
+      }
+    }
+
+    return originSlotsByTaskId;
+  }
+
+  function buildTransitionsFromDiff(diff, previousSnapshotById, originSlotsByTaskId, now) {
+    for (const taskId of diff.changed) {
+      if (viewState.transitionsByTaskId.has(taskId)) {
+        continue;
+      }
+
+      const changes = diff.changesById.get(taskId);
+      if (!changes) {
+        continue;
+      }
+
+      const nextTask = diff.nextById.get(taskId);
+      if (!nextTask) {
+        continue;
+      }
+
+      if (changes.becameTerminal) {
+        if (viewState.terminalStationByTaskId.has(taskId)) {
+          startPoseTransition(taskId, nextTask.status, now);
+        }
+        continue;
+      }
+
+      if (!changes.workstationChanged || diff.added.has(taskId)) {
+        continue;
+      }
+
+      const previousTask = previousSnapshotById.get(taskId);
+      if (!previousTask) {
+        continue;
+      }
+
+      if (!previousTask.workstationId || !nextTask.workstationId) {
+        releaseMoveOriginReservation(originSlotsByTaskId.get(taskId), taskId);
+        continue;
+      }
+
+      const originReservation = originSlotsByTaskId.get(taskId) ?? {
+        stationId: previousTask.workstationId,
+        slotIndex: findAssignedSlotIndex(previousTask.workstationId, taskId),
+      };
+      const startPoint = resolveStationSlotPoint(
+        previousTask.workstationId,
+        originReservation?.slotIndex ?? null,
+      );
+      const destinationSlotIndex = findAssignedSlotIndex(nextTask.workstationId, taskId);
+      const endPoint = resolveStationSlotPoint(nextTask.workstationId, destinationSlotIndex);
+
+      if (!startPoint || !endPoint) {
+        releaseMoveOriginReservation(originReservation, taskId);
+        continue;
+      }
+
+      const steps = buildMoveSteps(startPoint, endPoint);
+      startMoveTransition(taskId, steps, originReservation, now);
+    }
+
+    startTransitionTimer();
+  }
+
+  function startMoveTransition(taskId, steps, originReservation, now) {
+    const transition = {
+      type: "move",
+      steps,
+      stepIndex: 0,
+      nextTickAt: now + TICK_INTERVAL_MS,
+      originReservation,
+    };
+    viewState.transitionsByTaskId.set(taskId, transition);
+    applyMoveTransitionStep(taskId, transition);
+  }
+
+  function startPoseTransition(taskId, status, now) {
+    const poseClass = resolvePoseClassForStatus(status);
+    if (!poseClass) {
+      return;
+    }
+
+    const transition = {
+      type: "pose",
+      poseClass,
+      ticksRemaining: resolveTerminalPoseTicks(taskId),
+      nextTickAt: now + TICK_INTERVAL_MS,
+    };
+    viewState.transitionsByTaskId.set(taskId, transition);
+    applyPoseTransition(taskId, transition);
+  }
+
+  function resolvePoseClassForStatus(status) {
+    if (status === "failed") {
+      return "pose-failed";
+    }
+    if (status === "complete") {
+      return "pose-complete";
+    }
+    return null;
+  }
+
+  function resolveTerminalPoseTicks(taskId) {
+    if (TERMINAL_POSE_TICKS.min === TERMINAL_POSE_TICKS.max) {
+      return TERMINAL_POSE_TICKS.min;
+    }
+
+    const roll = stableRandom(taskId, "pose");
+    return roll > 0.5 ? TERMINAL_POSE_TICKS.max : TERMINAL_POSE_TICKS.min;
+  }
+
+  function startTransitionTimer() {
+    if (viewState.transitionTimerId !== null) {
+      return;
+    }
+    if (!viewState.isActive) {
+      return;
+    }
+    if (viewState.transitionsByTaskId.size === 0) {
+      return;
+    }
+
+    viewState.transitionTimerId = window.setInterval(() => {
+      advanceTransitions();
+    }, TICK_INTERVAL_MS);
+  }
+
+  function stopTransitionTimer() {
+    if (viewState.transitionTimerId === null) {
+      return;
+    }
+
+    window.clearInterval(viewState.transitionTimerId);
+    viewState.transitionTimerId = null;
+  }
+
+  function advanceTransitions() {
+    const now = Date.now();
+    for (const [taskId, transition] of [...viewState.transitionsByTaskId.entries()]) {
+      if (transition.nextTickAt > now) {
+        continue;
+      }
+
+      if (transition.type === "move") {
+        if (transition.stepIndex < transition.steps.length - 1) {
+          transition.stepIndex += 1;
+          transition.nextTickAt = now + TICK_INTERVAL_MS;
+          applyMoveTransitionStep(taskId, transition);
+        } else {
+          finalizeMoveTransition(taskId, transition);
+        }
+        continue;
+      }
+
+      if (transition.type === "pose") {
+        transition.ticksRemaining -= 1;
+        if (transition.ticksRemaining <= 0) {
+          clearPoseTransition(taskId);
+          viewState.transitionsByTaskId.delete(taskId);
+          continue;
+        }
+        transition.nextTickAt = now + TICK_INTERVAL_MS;
+        applyPoseTransition(taskId, transition);
+      }
+    }
+
+    if (viewState.transitionsByTaskId.size === 0) {
+      stopTransitionTimer();
+    }
+  }
+
+  function applyMoveTransitionStep(taskId, transition) {
+    const mushroom = viewState.mushroomByTaskId.get(taskId);
+    if (!mushroom) {
+      return;
+    }
+
+    const step = transition.steps?.[transition.stepIndex];
+    if (!step) {
+      return;
+    }
+
+    applySlotPosition(mushroom, step);
+    scheduleMyceliumOverlayUpdate();
+  }
+
+  function finalizeMoveTransition(taskId, transition) {
+    applyMoveTransitionStep(taskId, transition);
+    releaseMoveOriginReservation(transition.originReservation, taskId);
+    viewState.transitionsByTaskId.delete(taskId);
+  }
+
+  function releaseMoveOriginReservation(originReservation, taskId) {
+    if (!originReservation) {
+      return;
+    }
+
+    const { stationId, slotIndex } = originReservation;
+    if (!stationId || slotIndex === null || slotIndex === undefined) {
+      return;
+    }
+
+    releaseStationSlot(stationId, slotIndex, taskId);
+
+    const slotByTaskId = viewState.slotAssignmentsByStation.get(stationId);
+    if (slotByTaskId?.get(taskId) === slotIndex) {
+      slotByTaskId.delete(taskId);
+    }
+
+    const taskIdBySlot = viewState.taskIdByStationSlot.get(stationId);
+    if (taskIdBySlot?.get(slotIndex) === taskId) {
+      taskIdBySlot.delete(slotIndex);
+    }
+  }
+
+  function applyPoseTransition(taskId, transition) {
+    const mushroom = viewState.mushroomByTaskId.get(taskId);
+    if (!mushroom) {
+      return;
+    }
+    updateMushroomPose(mushroom, transition);
+  }
+
+  function clearPoseTransition(taskId) {
+    const mushroom = viewState.mushroomByTaskId.get(taskId);
+    if (mushroom) {
+      updateMushroomPose(mushroom, null);
+    }
+  }
+
+  function stopTransitionForTask(taskId) {
+    const transition = viewState.transitionsByTaskId.get(taskId);
+    if (!transition) {
+      return;
+    }
+
+    if (transition.type === "move") {
+      releaseMoveOriginReservation(transition.originReservation, taskId);
+    }
+
+    if (transition.type === "pose") {
+      clearPoseTransition(taskId);
+    }
+
+    viewState.transitionsByTaskId.delete(taskId);
+    releaseReservedSlotsForTask(taskId);
+
+    if (viewState.transitionsByTaskId.size === 0) {
+      stopTransitionTimer();
+    }
+  }
+
+  function clearTransitions() {
+    stopTransitionTimer();
+    for (const [taskId, transition] of viewState.transitionsByTaskId.entries()) {
+      if (transition.type === "pose") {
+        clearPoseTransition(taskId);
+      }
+    }
+    viewState.transitionsByTaskId.clear();
+    viewState.reservedSlotsByStation.clear();
+  }
+
+  function findAssignedSlotIndex(stationId, taskId) {
+    if (!stationId) {
+      return null;
+    }
+
+    const slotByTaskId = viewState.slotAssignmentsByStation.get(stationId);
+    if (!slotByTaskId) {
+      return null;
+    }
+
+    const slotIndex = slotByTaskId.get(taskId);
+    if (slotIndex === undefined || slotIndex === null) {
+      return null;
+    }
+    return slotIndex;
+  }
+
+  function resolveStationSlotPoint(stationId, slotIndex) {
+    if (!stationId) {
+      return null;
+    }
+
+    if (slotIndex !== null && slotIndex !== undefined) {
+      const slotPoint = WORKSTATION_SLOT_POSITIONS[stationId]?.[slotIndex];
+      if (slotPoint) {
+        return slotPoint;
+      }
+    }
+
+    return resolveStationAnchorPoint(stationId);
+  }
+
+  function resolveStationAnchorPoint(stationId) {
+    const station = WORKSTATION_DEFINITIONS.find((definition) => definition.id === stationId);
+    if (!station) {
+      return null;
+    }
+
+    return {
+      xPct: station.anchor.xPct,
+      yPct: station.anchor.yPct,
+    };
+  }
+
+  function buildMoveSteps(startPoint, endPoint) {
+    const start = { xPct: startPoint.xPct, yPct: startPoint.yPct };
+    const end = { xPct: endPoint.xPct, yPct: endPoint.yPct };
+    const steps = [
+      start,
+      { xPct: start.xPct, yPct: MOVE_LANE_Y_PCT },
+      { xPct: end.xPct, yPct: MOVE_LANE_Y_PCT },
+      end,
+    ];
+
+    return steps.slice(0, MOVE_STEP_COUNT);
+  }
+
 
   // =============================================================================
   // MUSHROOMS
@@ -916,20 +1716,24 @@ export function createGardenView({ appState, actions, fetchApi }) {
       const { task, slotPoint } = entry;
       const taskId = task.id;
       const mushroom = viewState.mushroomByTaskId.get(taskId);
+      const transition = viewState.transitionsByTaskId.get(taskId);
+      const resolvedSlotPoint = resolveTransitionSlotPoint(transition, slotPoint);
 
       if (mushroom) {
         cancelDespawn(taskId, mushroom);
-        applySlotPosition(mushroom, slotPoint);
+        applySlotPosition(mushroom, resolvedSlotPoint);
         updateMushroomSelection(mushroom, taskId);
         updateMushroomStatus(mushroom, task);
         updateMushroomActivity(mushroom, task);
+        updateMushroomPose(mushroom, transition);
         continue;
       }
 
-      const newMushroom = createMushroom(task, slotPoint);
+      const newMushroom = createMushroom(task, resolvedSlotPoint);
       viewState.mushroomByTaskId.set(taskId, newMushroom);
       mount.appendChild(newMushroom);
       updateMushroomActivity(newMushroom, task);
+      updateMushroomPose(newMushroom, transition);
       triggerSpawn(taskId, newMushroom);
     }
   }
@@ -987,6 +1791,28 @@ export function createGardenView({ appState, actions, fetchApi }) {
 
     mushroom.style.setProperty("--slot-x", `${slotPoint.xPct}%`);
     mushroom.style.setProperty("--slot-y", `${slotPoint.yPct}%`);
+  }
+
+  function resolveTransitionSlotPoint(transition, slotPoint) {
+    if (transition?.type !== "move") {
+      return slotPoint;
+    }
+
+    return transition.steps?.[transition.stepIndex] ?? slotPoint;
+  }
+
+  function updateMushroomPose(mushroom, transition) {
+    const poseClass = resolvePoseClass(transition);
+    mushroom.classList.toggle("pose-failed", poseClass === "pose-failed");
+    mushroom.classList.toggle("pose-complete", poseClass === "pose-complete");
+  }
+
+  function resolvePoseClass(transition) {
+    if (!transition || transition.type !== "pose" || transition.ticksRemaining <= 0) {
+      return null;
+    }
+
+    return transition.poseClass;
   }
 
   function updateMushroomSelection(mushroom, taskId) {

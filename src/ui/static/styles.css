@@ -993,6 +993,26 @@ body {
   border: 1px solid rgba(255, 255, 255, 0.75);
 }
 
+.workstation-failure-marker {
+  position: absolute;
+  left: var(--station-x, 50%);
+  top: var(--station-y, 50%);
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  transform: translate(-50%, -50%) translate(28px, -22px);
+  background: var(--danger);
+  box-shadow: 0 0 0 4px rgba(214, 64, 64, 0.18);
+  opacity: 0;
+  transition: opacity 0.2s ease;
+  z-index: 3;
+  pointer-events: none;
+}
+
+.workstation-failure-marker.is-active {
+  opacity: 0.9;
+}
+
 .workstation-overflow {
   position: absolute;
   left: var(--overflow-x, 50%);
@@ -1109,6 +1129,22 @@ body {
   flex-direction: column;
   align-items: center;
   gap: 8px;
+}
+
+.mushroom.pose-failed .mushroom-float {
+  transform: rotate(-6deg) translateY(4px);
+}
+
+.mushroom.pose-failed .mushroom-cap {
+  background: linear-gradient(160deg, #d26a5a 0%, #b34c44 100%);
+}
+
+.mushroom.pose-complete .mushroom-float {
+  transform: translateY(-4px);
+}
+
+.mushroom.pose-complete .mushroom-cap {
+  background: linear-gradient(160deg, #6bbd7b 0%, #4c9a62 100%);
 }
 
 .bob {
