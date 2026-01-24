@@ -10,6 +10,7 @@ import {
   validateResourceLocks,
   type TaskSpec,
 } from "./task-manifest.js";
+import { detectTasksLayout } from "./task-layout.js";
 import { slugify } from "./utils.js";
 
 export type TaskValidationError = {
@@ -42,7 +43,12 @@ export async function loadTaskSpecs(
     return { tasks: [], errors: [] };
   }
 
-  const manifestPaths = await fg(["*/manifest.json"], { cwd: tasksDirAbs, absolute: true });
+  const layout = detectTasksLayout(tasksDirAbs);
+  const manifestGlobs =
+    layout === "legacy"
+      ? ["*/manifest.json"]
+      : ["backlog/*/manifest.json", "active/*/manifest.json"];
+  const manifestPaths = await fg(manifestGlobs, { cwd: tasksDirAbs, absolute: true });
   const tasks: TaskSpec[] = [];
   const errors: TaskValidationError[] = [];
 

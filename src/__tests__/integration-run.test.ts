@@ -104,6 +104,40 @@ describe("integration: plan + run (mock LLM)", () => {
     expect(runSummary.metrics.doctor_seconds_total).toBeTypeOf("number");
     expect(runSummary.metrics.checkset_seconds_total).toBeTypeOf("number");
   });
+
+  it("loads tasks from legacy layout when plan output targets root", async () => {
+    const tmpRoot = await fs.mkdtemp(path.join(os.tmpdir(), "to-int-legacy-"));
+    tempRoots.push(tmpRoot);
+
+    const repoDir = path.join(tmpRoot, "repo");
+    await fse.copy(FIXTURE_REPO, repoDir);
+    await initGitRepo(repoDir);
+
+    const configPath = path.join(tmpRoot, "project.yaml");
+    await writeProjectConfig(configPath, repoDir);
+
+    process.env.MYCELIUM_HOME = path.join(tmpRoot, ".mycelium");
+    process.env.MOCK_LLM = "1";
+    process.env.MOCK_LLM_OUTPUT_PATH = path.join(repoDir, "mock-planner-output.json");
+
+    const config = loadProjectConfig(configPath);
+
+    const planResult = await planProject("toy-project", config, {
+      input: "docs/planning/implementation-plan.md",
+      output: ".tasks",
+    });
+    expect(planResult.outputDir).toBe(path.join(repoDir, ".tasks"));
+    expect(await fse.pathExists(path.join(repoDir, ".tasks", "backlog"))).toBe(false);
+
+    const runResult = await runProject("toy-project", config, {
+      maxParallel: 2,
+      useDocker: false,
+      buildImage: false,
+    });
+
+    expect(runResult.state.status).toBe("complete");
+    expect(runResult.plan[0]?.taskIds.sort()).toEqual(["001", "002"]);
+  });
 });
 
 async function initGitRepo(repoDir: string): Promise<void> {

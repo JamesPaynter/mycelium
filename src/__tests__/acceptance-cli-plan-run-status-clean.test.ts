@@ -92,7 +92,7 @@ describe("acceptance: CLI plan -> run -> status -> clean", () => {
 
       expect(errorSpy).not.toHaveBeenCalled();
 
-      const tasksDir = path.join(repoDir, ".mycelium", "tasks");
+      const tasksDir = path.join(repoDir, ".mycelium", "tasks", "backlog");
       const taskEntries = await fs.readdir(tasksDir);
       expect(taskEntries.some((entry) => entry.startsWith("001-"))).toBe(true);
       expect(taskEntries.some((entry) => entry.startsWith("002-"))).toBe(true);

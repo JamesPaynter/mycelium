@@ -4,6 +4,7 @@ import type { ProjectConfig } from "../core/config.js";
 import { JsonlLogger } from "../core/logger.js";
 import { plannerLogPath } from "../core/paths.js";
 import { planFromImplementationPlan, type PlanResult } from "../core/planner.js";
+import { resolveTasksBacklogDir } from "../core/task-layout.js";
 import { defaultRunId } from "../core/utils.js";
 
 export async function planProject(
@@ -21,11 +22,12 @@ export async function planProject(
   const log = new JsonlLogger(plannerLogPath(projectName, logRunId), { runId: logRunId });
 
   try {
+    const tasksRoot = path.join(config.repo_path, config.tasks_dir);
     const outputDir = opts.output
       ? path.isAbsolute(opts.output)
         ? opts.output
         : path.join(config.repo_path, opts.output)
-      : path.join(config.repo_path, config.tasks_dir);
+      : resolveTasksBacklogDir(tasksRoot);
 
     const res = await planFromImplementationPlan({
       projectName,
