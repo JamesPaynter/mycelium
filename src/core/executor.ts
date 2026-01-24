@@ -90,6 +90,7 @@ import {
   type ControlPlaneSnapshot,
   type DoctorCanarySummary,
   type RunState,
+  type TaskStatus,
   type ValidatorResult,
   type ValidatorStatus,
 } from "./state.js";
@@ -313,10 +314,14 @@ function resolveControlPlaneConfig(config: ProjectConfig): ControlPlaneRunConfig
     (raw.surface_patterns ?? {}) as ControlPlaneSurfacePatternsConfig;
   const rawSurfaceLocks =
     (raw.surface_locks ?? {}) as Partial<ProjectConfig["control_plane"]["surface_locks"]>;
+  const fallbackResourceRaw = raw.fallback_resource ?? "repo-root";
+  const fallbackResource = fallbackResourceRaw.trim().length > 0
+    ? fallbackResourceRaw.trim()
+    : "repo-root";
   return {
     enabled: raw.enabled === true,
     componentResourcePrefix: raw.component_resource_prefix ?? "component:",
-    fallbackResource: raw.fallback_resource ?? "repo-root",
+    fallbackResource,
     resourcesMode: raw.resources_mode ?? "prefer-derived",
     scopeMode: raw.scope_mode ?? "enforce",
     lockMode: raw.lock_mode ?? "declared",
@@ -421,9 +426,7 @@ async function buildResourceResolutionContext(input: {
   controlPlaneSnapshot: ControlPlaneSnapshot | undefined;
   staticResources: ResourceConfig[];
 }): Promise<ResourceResolutionContext> {
-  const fallbackResource = input.controlPlaneConfig.enabled
-    ? input.controlPlaneConfig.fallbackResource
-    : "";
+  const fallbackResource = input.controlPlaneConfig.fallbackResource;
   const resourcesMode = input.controlPlaneConfig.resourcesMode;
   const derivedResources: ResourceConfig[] = [];
   let ownerResolver: ((filePath: string) => string | null) | undefined;
@@ -1023,12 +1026,19 @@ export async function runProject(
   if (hadExistingState) {
     state = await stateStore.load();
 
-    if (state.status !== "running") {
+    const canResume =
+      state.status === "running" || (isResume && state.status === "paused");
+    if (!canResume) {
       logRunResume(orchLog, { status: state.status, reason: runResumeReason });
       logOrchestratorEvent(orchLog, "run.resume.blocked", { reason: "state_not_running" });
       closeValidatorLogs();
       orchLog.close();
       return { runId, state, plan: plannedBatches };
+    }
+
+    if (state.status === "paused" && isResume) {
+      state.status = "running";
+      await stateStore.save(state);
     }
   } else if (isResume) {
     logOrchestratorEvent(orchLog, "run.resume.blocked", { reason: "state_missing" });
@@ -1830,10 +1840,6 @@ export async function runProject(
     return `${count} undeclared access request(s)${detail}`;
   }
 
-  function buildManifestBlockReason(result: ManifestComplianceResult): string {
-    return `Manifest enforcement blocked: ${describeManifestViolations(result)}`;
-  }
-
   async function finalizeBatch(params: {
     batchId: number;
     batchTasks: TaskSpec[];
@@ -1841,8 +1847,6 @@ export async function runProject(
   }): Promise<
     | "merge_conflict"
     | "integration_doctor_failed"
-    | "manifest_enforcement_blocked"
-    | "validator_blocked"
     | "budget_block"
     | undefined
   > {
@@ -1860,7 +1864,6 @@ export async function runProject(
     const runUsageAfter = recomputeRunUsage(state);
 
     const hadPendingResets = params.results.some((r) => !r.success && r.resetToPending);
-    const rescopeFailures: { taskId: string; reason: string }[] = [];
     let doctorCanaryResult: DoctorCanaryResult | undefined;
     for (const r of params.results) {
       const taskSpec = params.batchTasks.find((t) => t.manifest.id === r.taskId);
@@ -1990,14 +1993,9 @@ export async function runProject(
           violations: compliance.violations.length,
           report_path: complianceReportPath,
         });
-        rescopeFailures.push({ taskId: r.taskId, reason: failedReason });
         continue;
       }
 
-    }
-
-    if (rescopeFailures.length > 0) {
-      state.status = "failed";
     }
 
     await stateStore.save(state);
@@ -2248,8 +2246,6 @@ export async function runProject(
     let stopReason:
       | "merge_conflict"
       | "integration_doctor_failed"
-      | "manifest_enforcement_blocked"
-      | "validator_blocked"
       | "budget_block"
       | undefined;
     let mergeConflictDetail: { taskId: string; branchName: string; message: string } | null = null;
@@ -2335,19 +2331,10 @@ export async function runProject(
       }
     }
 
-    if (blockedTasks.size > 0 && !stopReason) {
-      stopReason = "validator_blocked";
-      state.status = "failed";
-    }
-
     await stateStore.save(state);
     refreshStatusSets();
 
     const successfulTasks = buildValidatedTaskSummaries(params.batchTasks);
-
-    if (rescopeFailures.length > 0 && !stopReason) {
-      stopReason = "manifest_enforcement_blocked";
-    }
 
     if (successfulTasks.length > 0 && !stopReason) {
       logOrchestratorEvent(orchLog, "batch.merging", {
@@ -2533,8 +2520,6 @@ export async function runProject(
               summary: doctorOutcome.summary ?? undefined,
               reportPath: relativeReport,
             });
-            state.status = "failed";
-            stopReason = "validator_blocked";
             logOrchestratorEvent(orchLog, "validator.block", {
               validator: "doctor",
               taskId: r.taskId,
@@ -2774,6 +2759,31 @@ export async function runProject(
 
     const ready = topologicalReady(pendingTasks, completed);
     if (ready.length === 0) {
+      const blockedInfo = collectBlockedDependencies(pendingTasks, state, completed);
+      if (blockedInfo.blocked.length > 0 && !blockedInfo.hasNonBlockedDeps) {
+        const blockedTasksPayload = blockedInfo.blocked.map((entry) => ({
+          task_id: entry.taskId,
+          unmet_deps: entry.unmetDeps.map((dep) => ({
+            dep_id: dep.depId,
+            dep_status: dep.depStatus,
+            ...(dep.depLastError ? { dep_last_error: dep.depLastError } : {}),
+          })),
+        }));
+
+        logOrchestratorEvent(orchLog, "run.paused", {
+          reason: "blocked_dependencies",
+          message:
+            "No dependency-satisfied tasks remain; pending tasks are blocked by tasks requiring attention.",
+          pending_task_count: pendingTasks.length,
+          blocked_task_count: blockedTasksPayload.length,
+          blocked_tasks: blockedTasksPayload,
+          resume_command: `mycelium resume --project ${projectName} --run-id ${runId}`,
+        });
+        state.status = "paused";
+        await stateStore.save(state);
+        break;
+      }
+
       logOrchestratorEvent(orchLog, "run.deadlock", {
         message: "No dependency-satisfied tasks remaining. Check dependencies field.",
       });
@@ -3160,7 +3170,24 @@ export async function runProject(
   if (stopAfterLoop) return stopAfterLoop;
 
   if (state.status === "running") {
-    state.status = failed.size > 0 ? "failed" : "complete";
+    const blockedTasks = summarizeBlockedTasks(state.tasks);
+    if (blockedTasks.length > 0) {
+      const blockedTasksPayload = blockedTasks.map((task) => ({
+        task_id: task.taskId,
+        status: task.status,
+        ...(task.lastError ? { last_error: task.lastError } : {}),
+      }));
+      state.status = "paused";
+      logOrchestratorEvent(orchLog, "run.paused", {
+        reason: "blocked_tasks",
+        message: "Run paused with tasks requiring attention.",
+        blocked_task_count: blockedTasksPayload.length,
+        blocked_tasks: blockedTasksPayload,
+        resume_command: `mycelium resume --project ${projectName} --run-id ${runId}`,
+      });
+    } else {
+      state.status = "complete";
+    }
   }
   await stateStore.save(state);
 
@@ -3579,6 +3606,94 @@ function normalizeAbortReason(reason: unknown): string | undefined {
   return String(reason);
 }
 
+
+
+// =============================================================================
+// STATUS HELPERS
+// =============================================================================
+
+const BLOCKED_TASK_STATUSES: TaskStatus[] = [
+  "failed",
+  "needs_human_review",
+  "needs_rescope",
+  "rescope_required",
+];
+
+type BlockedDependencyDetail = {
+  depId: string;
+  depStatus: TaskStatus | "unknown";
+  depLastError?: string;
+};
+
+type BlockedDependencySummary = {
+  taskId: string;
+  unmetDeps: BlockedDependencyDetail[];
+};
+
+type BlockedTaskSummary = {
+  taskId: string;
+  status: TaskStatus;
+  lastError?: string;
+};
+
+function isBlockedTaskStatus(status: TaskStatus): boolean {
+  return BLOCKED_TASK_STATUSES.includes(status);
+}
+
+function collectBlockedDependencies(
+  pendingTasks: TaskSpec[],
+  state: RunState,
+  completed: Set<string>,
+): { blocked: BlockedDependencySummary[]; hasNonBlockedDeps: boolean } {
+  const blocked: BlockedDependencySummary[] = [];
+  let hasNonBlockedDeps = false;
+
+  for (const task of pendingTasks) {
+    const deps = task.manifest.dependencies ?? [];
+    const unmetDeps = deps.filter((dep) => !completed.has(dep));
+    if (unmetDeps.length === 0) {
+      hasNonBlockedDeps = true;
+      continue;
+    }
+
+    const blockedDeps: BlockedDependencyDetail[] = [];
+    for (const depId of unmetDeps) {
+      const depState = state.tasks[depId];
+      if (!depState) {
+        hasNonBlockedDeps = true;
+        continue;
+      }
+
+      if (isBlockedTaskStatus(depState.status)) {
+        blockedDeps.push({
+          depId,
+          depStatus: depState.status,
+          ...(depState.last_error ? { depLastError: depState.last_error } : {}),
+        });
+      } else {
+        hasNonBlockedDeps = true;
+      }
+    }
+
+    if (blockedDeps.length > 0) {
+      blocked.push({ taskId: task.manifest.id, unmetDeps: blockedDeps });
+    }
+  }
+
+  return { blocked, hasNonBlockedDeps };
+}
+
+function summarizeBlockedTasks(tasks: RunState["tasks"]): BlockedTaskSummary[] {
+  return Object.entries(tasks)
+    .filter(([, task]) => isBlockedTaskStatus(task.status))
+    .map(([taskId, task]) => ({
+      taskId,
+      status: task.status,
+      ...(task.last_error ? { lastError: task.last_error } : {}),
+    }))
+    .sort((a, b) => a.taskId.localeCompare(b.taskId, undefined, { numeric: true }));
+}
+
 function buildStatusSets(state: RunState): { completed: Set<string>; failed: Set<string> } {
   const completed = new Set<string>(
     Object.entries(state.tasks)
@@ -3587,13 +3702,7 @@ function buildStatusSets(state: RunState): { completed: Set<string>; failed: Set
   );
   const failed = new Set<string>(
     Object.entries(state.tasks)
-      .filter(
-        ([, s]) =>
-          s.status === "failed" ||
-          s.status === "needs_rescope" ||
-          s.status === "rescope_required" ||
-          s.status === "needs_human_review",
-      )
+      .filter(([, s]) => isBlockedTaskStatus(s.status))
       .map(([id]) => id),
   );
   return { completed, failed };

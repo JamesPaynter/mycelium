@@ -137,7 +137,7 @@ describe("acceptance: CLI plan -> run -> status -> clean", () => {
 
       const statusOutput = logSpy.mock.calls.flat().map(String).join("\n");
       expect(statusOutput).toContain(`Run: ${runId}`);
-      expect(statusOutput).toMatch(/Status: (complete|failed|running)/);
+      expect(statusOutput).toMatch(/Status: (complete|failed|running|paused)/);
 
       await main([
         "node",

@@ -99,7 +99,7 @@ describe("acceptance: validator mode=block prevents merge and flags human review
 
       const headAfter = await gitHead(repoDir, config.main_branch);
 
-      expect(runResult.state.status).toBe("failed");
+      expect(runResult.state.status).toBe("paused");
       expect(runResult.state.tasks["001"]?.status).toBe("needs_human_review");
       expect(headAfter).toBe(headBefore);
     },
@@ -165,7 +165,7 @@ describe("acceptance: validator mode=block prevents merge and flags human review
 
       const headAfter = await gitHead(repoDir, config.main_branch);
 
-      expect(runResult.state.status).toBe("failed");
+      expect(runResult.state.status).toBe("paused");
       expect(runResult.state.tasks["001"]?.status).toBe("needs_human_review");
       expect(headAfter).toBe(headBefore);
     },
@@ -312,7 +312,7 @@ async function runStyleValidatorScenario(args: {
   const headAfter = await gitHead(repoDir, config.main_branch);
 
   if (args.expectBlocked) {
-    expect(runResult.state.status).toBe("failed");
+    expect(runResult.state.status).toBe("paused");
     expect(runResult.state.tasks["001"]?.status).toBe("needs_human_review");
     expect(headAfter).toBe(headBefore);
   } else {

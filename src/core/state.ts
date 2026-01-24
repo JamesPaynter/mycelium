@@ -20,7 +20,7 @@ export type TaskStatus = z.infer<typeof TaskStatusSchema>;
 export const BatchStatusSchema = z.enum(["pending", "running", "complete", "failed"]);
 export type BatchStatus = z.infer<typeof BatchStatusSchema>;
 
-export const RunStatusSchema = z.enum(["running", "complete", "failed"]);
+export const RunStatusSchema = z.enum(["running", "paused", "complete", "failed"]);
 export type RunStatus = z.infer<typeof RunStatusSchema>;
 
 export const CheckpointCommitSchema = z.object({
