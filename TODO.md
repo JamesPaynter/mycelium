@@ -19,6 +19,13 @@
 - [ ] [206 - Add an Architecture Validator (LLM review of changes vs architecture docs)](.mycelium/tasks/206-architecture-validator/spec.md) (Effort <M>, Tier <standard>)
 - [ ] [207 - Cleanup on success: delete task workspaces (and stale containers)](.mycelium/tasks/207-cleanup-workspaces-on-success/spec.md) (Effort <M>, Tier <standard>)
 
+## Mycelium Fix Plan - Cross-Run State (Task Pack v3)
+
+- [ ] [210 - Cross-run task ledger v1 (schema + fingerprint + persistence)](.mycelium/tasks/210-cross-run-task-ledger-v1/spec.md) (Effort <M>, Tier <standard>)
+- [ ] [211 - Record task completions into ledger + backfill/import from run state](.mycelium/tasks/211-record-ledger-on-merge-and-backfill/spec.md) (Effort <M>, Tier <standard>)
+- [ ] [212 - Consult ledger for dependency satisfaction across runs (seed new runs safely)](.mycelium/tasks/212-consult-ledger-for-deps-and-seed-run/spec.md) (Effort <L>, Tier <standard>)
+- [ ] [213 - CLI: import prior run completions + manual task status overrides](.mycelium/tasks/213-cli-import-and-manual-overrides/spec.md) (Effort <M>, Tier <standard>)
+
 ## Control Plane — Phase A (agent navigation tools)
 
 - [ ] [055 - Control Plane navigation CLI skeleton](.mycelium/tasks/055-control-plane-navigation-cli-skeleton/spec.md) (Effort <M>, Tier <standard>)
