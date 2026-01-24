@@ -317,6 +317,7 @@ type TaskCounts = {
   total: number;
   pending: number;
   running: number;
+  validated: number;
   complete: number;
   failed: number;
   needs_human_review: number;
@@ -391,7 +392,7 @@ export async function logsTimeline(
   if (timeline.taskCounts) {
     const counts = timeline.taskCounts;
     stats.push(
-      `Tasks: ${counts.complete} complete, ${counts.failed} failed, ${counts.running} running, ${counts.pending} pending`,
+      `Tasks: ${counts.complete} complete, ${counts.validated} validated, ${counts.failed} failed, ${counts.running} running, ${counts.pending} pending`,
     );
   }
   if (stats.length > 0) {
@@ -669,6 +670,10 @@ function suggestNextAction(
 ): string {
   if (taskState?.status === "complete") {
     return "Task is complete; verify merged changes and proceed to the next task.";
+  }
+
+  if (taskState?.status === "validated") {
+    return "Task is validated; awaiting merge and integration doctor.";
   }
 
   if (taskState?.human_review) {
@@ -982,6 +987,7 @@ function buildTaskCounts(state: RunState): TaskCounts {
     total: Object.keys(state.tasks).length,
     pending: 0,
     running: 0,
+    validated: 0,
     complete: 0,
     failed: 0,
     needs_human_review: 0,

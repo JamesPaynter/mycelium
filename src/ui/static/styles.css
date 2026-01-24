@@ -1522,6 +1522,11 @@ body {
   color: var(--accent-strong);
 }
 
+.status-validated {
+  background: rgba(42, 124, 111, 0.12);
+  color: var(--accent-strong);
+}
+
 .status-failed {
   background: rgba(200, 75, 75, 0.2);
   color: var(--danger);

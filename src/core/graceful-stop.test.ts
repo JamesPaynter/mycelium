@@ -128,7 +128,7 @@ async function writeProjectConfig(configPath: string, repoDir: string): Promise<
     `repo_path: ${repoDir}`,
     "main_branch: main",
     "tasks_dir: .mycelium/tasks",
-    "doctor: npm test",
+    "doctor: 'node -e \"process.exit(0)\"'",
     "max_parallel: 1",
     "resources:",
     '  - name: docs',

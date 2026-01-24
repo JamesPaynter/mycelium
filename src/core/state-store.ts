@@ -29,6 +29,7 @@ export type TaskStatusCounts = {
   total: number;
   pending: number;
   running: number;
+  validated: number;
   complete: number;
   failed: number;
   needs_human_review: number;
@@ -221,6 +222,7 @@ function summarizeTaskStatuses(tasks: Record<string, TaskState>): TaskStatusCoun
     total: Object.keys(tasks).length,
     pending: 0,
     running: 0,
+    validated: 0,
     complete: 0,
     failed: 0,
     needs_human_review: 0,

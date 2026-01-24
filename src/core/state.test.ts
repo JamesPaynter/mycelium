@@ -9,6 +9,7 @@ import {
   createRunState,
   markTaskComplete,
   markTaskFailed,
+  markTaskValidated,
   resetRunningTasks,
   resetTaskToPending,
   RunStateSchema,
@@ -55,6 +56,7 @@ describe("state transitions", () => {
     expect(state.tasks["001"].attempts).toBe(1);
 
     vi.setSystemTime(new Date("2024-01-02T03:30:00Z"));
+    markTaskValidated(state, "001");
     markTaskComplete(state, "001");
     markTaskFailed(state, "002", "boom");
     completeBatch(state, 1, "failed");
@@ -117,6 +119,7 @@ describe("state transitions", () => {
     state.tasks["011"].workspace = "/tmp/workspace";
     state.tasks["011"].logs_dir = "/tmp/logs";
 
+    markTaskValidated(state, "010");
     markTaskComplete(state, "010");
 
     vi.setSystemTime(new Date("2024-02-02T02:30:00Z"));

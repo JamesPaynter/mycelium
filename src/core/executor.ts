@@ -81,6 +81,7 @@ import {
   createRunState,
   markTaskNeedsHumanReview,
   markTaskComplete,
+  markTaskValidated,
   markTaskFailed,
   markTaskRescopeRequired,
   resetTaskToPending,
@@ -1518,11 +1519,30 @@ export async function runProject(
     return stop;
   };
 
-  const buildSuccessfulTaskSummaries = (batchTasks: TaskSpec[]): TaskSuccessResult[] => {
+  const buildReadyForValidationSummaries = (batchTasks: TaskSpec[]): TaskSuccessResult[] => {
     const summaries: TaskSuccessResult[] = [];
     for (const task of batchTasks) {
       const taskState = state.tasks[task.manifest.id];
-      if (!taskState || taskState.status !== "complete") continue;
+      if (!taskState || taskState.status !== "running") continue;
+
+      const meta = resolveTaskMeta(task);
+      summaries.push({
+        success: true,
+        taskId: task.manifest.id,
+        taskSlug: task.slug,
+        branchName: meta.branchName,
+        workspace: meta.workspace,
+        logsDir: meta.logsDir,
+      });
+    }
+    return summaries;
+  };
+
+  const buildValidatedTaskSummaries = (batchTasks: TaskSpec[]): TaskSuccessResult[] => {
+    const summaries: TaskSuccessResult[] = [];
+    for (const task of batchTasks) {
+      const taskState = state.tasks[task.manifest.id];
+      if (!taskState || taskState.status !== "validated") continue;
 
       const meta = resolveTaskMeta(task);
       summaries.push({
@@ -1974,11 +1994,6 @@ export async function runProject(
         continue;
       }
 
-      markTaskComplete(state, r.taskId);
-      logOrchestratorEvent(orchLog, "task.complete", {
-        taskId: r.taskId,
-        attempts: state.tasks[r.taskId].attempts,
-      });
     }
 
     if (rescopeFailures.length > 0) {
@@ -1988,7 +2003,7 @@ export async function runProject(
     await stateStore.save(state);
     refreshStatusSets();
 
-    const readyForValidation = buildSuccessfulTaskSummaries(params.batchTasks);
+    const readyForValidation = buildReadyForValidationSummaries(params.batchTasks);
     const blockedTasks = new Set<string>();
 
     if (testValidatorEnabled && testValidatorConfig) {
@@ -2218,6 +2233,13 @@ export async function runProject(
       }
     }
 
+    const validatedTaskIds = readyForValidation
+      .map((task) => task.taskId)
+      .filter((taskId) => !blockedTasks.has(taskId));
+    for (const taskId of validatedTaskIds) {
+      markTaskValidated(state, taskId);
+    }
+
     await stateStore.save(state);
     refreshStatusSets();
 
@@ -2230,6 +2252,8 @@ export async function runProject(
       | "validator_blocked"
       | "budget_block"
       | undefined;
+    let mergeConflictDetail: { taskId: string; branchName: string; message: string } | null = null;
+    let integrationDoctorFailureDetail: { exitCode: number; output: string } | null = null;
 
     const budgetBreaches = detectBudgetBreaches({
       budgets: config.budgets,
@@ -2275,7 +2299,7 @@ export async function runProject(
 
       if (doctorOutcome) {
         const relativeReport = relativeReportPath(projectName, runId, doctorOutcome.reportPath);
-        const recipients = buildSuccessfulTaskSummaries(params.batchTasks);
+        const recipients = buildValidatedTaskSummaries(params.batchTasks);
 
         for (const r of recipients) {
           setValidatorResult(state, r.taskId, {
@@ -2319,7 +2343,7 @@ export async function runProject(
     await stateStore.save(state);
     refreshStatusSets();
 
-    const successfulTasks = buildSuccessfulTaskSummaries(params.batchTasks);
+    const successfulTasks = buildValidatedTaskSummaries(params.batchTasks);
 
     if (rescopeFailures.length > 0 && !stopReason) {
       stopReason = "manifest_enforcement_blocked";
@@ -2343,6 +2367,11 @@ export async function runProject(
 
       if (mergeResult.status === "conflict") {
         batchMergeCommit = mergeResult.mergeCommit;
+        mergeConflictDetail = {
+          taskId: mergeResult.conflict.taskId,
+          branchName: mergeResult.conflict.branchName,
+          message: mergeResult.message,
+        };
         logOrchestratorEvent(orchLog, "batch.merge_conflict", {
           batch_id: params.batchId,
           task_id: mergeResult.conflict.taskId,
@@ -2444,6 +2473,10 @@ export async function runProject(
         }
 
         if (!doctorOk) {
+          integrationDoctorFailureDetail = {
+            exitCode: doctorExitCode,
+            output: lastIntegrationDoctorOutput ?? "",
+          };
           state.status = "failed";
           stopReason = "integration_doctor_failed";
         }
@@ -2514,6 +2547,56 @@ export async function runProject(
         await stateStore.save(state);
         refreshStatusSets();
       }
+    }
+
+    const markTasksForHumanReview = (
+      tasks: TaskSuccessResult[],
+      reason: string,
+      summary?: string,
+    ): void => {
+      for (const task of tasks) {
+        markTaskNeedsHumanReview(state, task.taskId, {
+          validator: "doctor",
+          reason,
+          summary,
+        });
+      }
+    };
+
+    let finalizedTasks = false;
+    if (stopReason === "merge_conflict" && mergeConflictDetail && successfulTasks.length > 0) {
+      const reason = `Merge conflict while merging ${mergeConflictDetail.branchName} (task ${mergeConflictDetail.taskId}).`;
+      const summary = mergeConflictDetail.message;
+      markTasksForHumanReview(successfulTasks, reason, summary);
+      finalizedTasks = true;
+    }
+
+    if (
+      stopReason === "integration_doctor_failed" &&
+      integrationDoctorFailureDetail &&
+      successfulTasks.length > 0
+    ) {
+      const rawOutput = integrationDoctorFailureDetail.output.trim();
+      const summary = rawOutput.length > 0 ? rawOutput.slice(0, 500) : undefined;
+      const reason = `Integration doctor failed (exit ${integrationDoctorFailureDetail.exitCode}).`;
+      markTasksForHumanReview(successfulTasks, reason, summary);
+      finalizedTasks = true;
+    }
+
+    if (!stopReason && integrationDoctorPassed === true && successfulTasks.length > 0) {
+      for (const task of successfulTasks) {
+        markTaskComplete(state, task.taskId);
+        logOrchestratorEvent(orchLog, "task.complete", {
+          taskId: task.taskId,
+          attempts: state.tasks[task.taskId].attempts,
+        });
+      }
+      finalizedTasks = true;
+    }
+
+    if (finalizedTasks) {
+      await stateStore.save(state);
+      refreshStatusSets();
     }
 
     const failedTaskIds = params.batchTasks
@@ -3499,7 +3582,7 @@ function normalizeAbortReason(reason: unknown): string | undefined {
 function buildStatusSets(state: RunState): { completed: Set<string>; failed: Set<string> } {
   const completed = new Set<string>(
     Object.entries(state.tasks)
-      .filter(([, s]) => s.status === "complete" || s.status === "skipped")
+      .filter(([, s]) => s.status === "complete" || s.status === "validated" || s.status === "skipped")
       .map(([id]) => id),
   );
   const failed = new Set<string>(

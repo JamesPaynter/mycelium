@@ -97,6 +97,7 @@ function formatTaskCounts(summary: RunStatusSummary): string {
     `total=${counts.total}`,
     `pending=${counts.pending}`,
     `running=${counts.running}`,
+    `validated=${counts.validated}`,
     `complete=${counts.complete}`,
     `failed=${counts.failed}`,
     `needs_human_review=${counts.needs_human_review}`,

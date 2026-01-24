@@ -7,6 +7,7 @@ import { LocksSchema, type NormalizedLocks } from "./task-manifest.js";
 export const TaskStatusSchema = z.enum([
   "pending",
   "running",
+  "validated",
   "complete",
   "failed",
   "needs_human_review",
@@ -238,13 +239,22 @@ export function markTaskRunning(
   if (meta.logs_dir !== undefined) task.logs_dir = meta.logs_dir;
 }
 
+export function markTaskValidated(state: RunState, taskId: string): void {
+  const task = requireTask(state, taskId);
+  if (task.status !== "running") {
+    throw new Error(`Cannot mark task ${taskId} validated from status ${task.status}`);
+  }
+
+  task.status = "validated";
+}
+
 export function markTaskComplete(
   state: RunState,
   taskId: string,
   now: string = isoNow(),
 ): void {
   const task = requireTask(state, taskId);
-  if (task.status !== "running") {
+  if (task.status !== "validated") {
     throw new Error(`Cannot mark task ${taskId} complete from status ${task.status}`);
   }
 
@@ -374,6 +384,7 @@ export function resetTaskToPending(
   const task = requireTask(state, taskId);
   if (
     task.status !== "running" &&
+    task.status !== "validated" &&
     task.status !== "needs_human_review" &&
     task.status !== "needs_rescope" &&
     task.status !== "rescope_required"
@@ -410,7 +421,7 @@ export function markTaskNeedsHumanReview(
   now: string = isoNow(),
 ): void {
   const task = requireTask(state, taskId);
-  if (task.status !== "complete" && task.status !== "running") {
+  if (task.status !== "complete" && task.status !== "running" && task.status !== "validated") {
     throw new Error(`Cannot mark task ${taskId} needs_human_review from status ${task.status}`);
   }
 

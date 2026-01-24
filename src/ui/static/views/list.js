@@ -183,6 +183,7 @@ export function createListView({ appState, actions, fetchApi }) {
       { label: "Running", value: summary.taskCounts.running },
       { label: "Pending", value: summary.taskCounts.pending },
       { label: "Failed", value: summary.taskCounts.failed },
+      { label: "Validated", value: summary.taskCounts.validated },
       { label: "Complete", value: summary.taskCounts.complete },
       { label: "Needs review", value: summary.taskCounts.needs_human_review },
       { label: "Batches", value: summary.batchCounts.total },
