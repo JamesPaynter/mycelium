@@ -10,7 +10,12 @@ import { afterEach, describe, expect, it } from "vitest";
 import { planProject } from "../cli/plan.js";
 import { loadProjectConfig } from "../core/config-loader.js";
 import { runProject } from "../core/executor.js";
-import { resolveTasksArchiveDir } from "../core/task-layout.js";
+import { buildTaskDirName } from "../core/task-manifest.js";
+import {
+  resolveTasksActiveDir,
+  resolveTasksArchiveDir,
+  resolveTasksBacklogDir,
+} from "../core/task-layout.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const FIXTURE_REPO = path.resolve(__dirname, "../../test/fixtures/toy-repo");
@@ -20,7 +25,7 @@ const originalEnv: Record<(typeof ENV_VARS)[number], string | undefined> = Objec
   ENV_VARS.map((key) => [key, process.env[key]]),
 ) as Record<(typeof ENV_VARS)[number], string | undefined>;
 
-describe("acceptance: manifest enforcement auto-rescopes and retries", () => {
+describe("acceptance: archive tasks after successful run", () => {
   const tempRoots: string[] = [];
 
   afterEach(async () => {
@@ -40,25 +45,21 @@ describe("acceptance: manifest enforcement auto-rescopes and retries", () => {
   });
 
   it(
-    "detects undeclared writes, updates the manifest, resets the task, and completes",
+    "moves planned backlog task into archive after integration doctor passes",
     { timeout: 60_000 },
     async () => {
-      const tmpRoot = await fs.mkdtemp(path.join(os.tmpdir(), "mycelium-rescope-"));
+      const tmpRoot = await fs.mkdtemp(path.join(os.tmpdir(), "mycelium-archive-"));
       tempRoots.push(tmpRoot);
 
       const repoDir = path.join(tmpRoot, "repo");
       await fse.copy(FIXTURE_REPO, repoDir);
       await initGitRepo(repoDir);
 
-      // Mock planner output with an empty writes list so the mock worker writes
-      // its fallback file (mock-output.txt), triggering compliance violations.
       const plannerOutputPath = path.join(tmpRoot, "mock-planner-output.json");
-      await fs.writeFile(plannerOutputPath, JSON.stringify(mockPlannerOutputWithEmptyWrites(), null, 2));
+      await fs.writeFile(plannerOutputPath, JSON.stringify(mockPlannerOutput(), null, 2));
 
       const configPath = path.join(tmpRoot, "project.yaml");
-      await writeProjectConfig(configPath, repoDir, {
-        manifestEnforcement: "warn",
-      });
+      await writeProjectConfig(configPath, repoDir);
 
       process.env.MYCELIUM_HOME = path.join(tmpRoot, "mycelium-home");
       process.env.MOCK_LLM = "1";
@@ -81,21 +82,22 @@ describe("acceptance: manifest enforcement auto-rescopes and retries", () => {
 
       expect(runResult.state.status).toBe("complete");
 
-      // The first attempt violates the manifest; Mycelium auto-rescopes and retries.
-      expect(runResult.state.tasks["001"]?.attempts).toBeGreaterThanOrEqual(2);
-
-      // Manifest should have been updated to include the fallback file.
       const tasksRoot = path.join(repoDir, config.tasks_dir);
-      const updatedManifest = await readPlannedManifest(
-        tasksRoot,
-        planResult.outputDir,
+      const taskDirName = buildTaskDirName(planResult.tasks[0]);
+      const archivedManifestPath = path.join(
+        resolveTasksArchiveDir(tasksRoot),
         runResult.runId,
+        taskDirName,
+        "manifest.json",
       );
-      expect(updatedManifest.files.writes).toContain("mock-output.txt");
 
-      // The file should exist on the integration branch because the second attempt succeeded.
-      const produced = await fs.readFile(path.join(repoDir, "mock-output.txt"), "utf8");
-      expect(produced).toContain("Mock update");
+      expect(await fse.pathExists(archivedManifestPath)).toBe(true);
+      expect(
+        await fse.pathExists(path.join(resolveTasksBacklogDir(tasksRoot), taskDirName)),
+      ).toBe(false);
+      expect(
+        await fse.pathExists(path.join(resolveTasksActiveDir(tasksRoot), taskDirName)),
+      ).toBe(false);
     },
   );
 });
@@ -109,11 +111,7 @@ async function initGitRepo(repoDir: string): Promise<void> {
   await execa("git", ["checkout", "-B", "main"], { cwd: repoDir });
 }
 
-async function writeProjectConfig(
-  configPath: string,
-  repoDir: string,
-  opts: { manifestEnforcement: "off" | "warn" | "block" },
-): Promise<void> {
+async function writeProjectConfig(configPath: string, repoDir: string): Promise<void> {
   const dockerfile = path.join(process.cwd(), "templates/Dockerfile");
   const buildContext = process.cwd();
   const configContents = [
@@ -121,7 +119,7 @@ async function writeProjectConfig(
     "main_branch: main",
     "tasks_dir: .mycelium/tasks",
     "planning_dir: .mycelium/planning",
-    `manifest_enforcement: ${opts.manifestEnforcement}`,
+    "manifest_enforcement: off",
     "doctor: 'node -e \"process.exit(0)\"'",
     "max_parallel: 1",
     "resources:",
@@ -142,13 +140,13 @@ async function writeProjectConfig(
   await fs.writeFile(configPath, configContents, "utf8");
 }
 
-function mockPlannerOutputWithEmptyWrites(): unknown {
+function mockPlannerOutput(): unknown {
   return {
     tasks: [
       {
         id: "001",
-        name: "rescope-demo",
-        description: "Intentionally triggers manifest rescope by writing an undeclared file.",
+        name: "archive-demo",
+        description: "Ensures task is archived after a successful run.",
         estimated_minutes: 5,
         dependencies: [],
         locks: { reads: [], writes: ["repo"] },
@@ -157,30 +155,8 @@ function mockPlannerOutputWithEmptyWrites(): unknown {
         test_paths: [],
         tdd_mode: "off",
         verify: { doctor: "node -e \"process.exit(0)\"" },
-        spec: "Write a small marker file used for testing Mycelium manifest rescope.",
+        spec: "Touch a file so the worker produces a change and the task completes.",
       },
     ],
   };
-}
-
-async function readPlannedManifest(
-  tasksRoot: string,
-  outputDir: string,
-  runId: string,
-): Promise<any> {
-  const planIndex = JSON.parse(
-    await fs.readFile(path.join(outputDir, "_plan.json"), "utf8"),
-  ) as { tasks: Array<{ dir: string }> };
-  const relDir = planIndex.tasks[0]?.dir;
-  if (!relDir) {
-    throw new Error("Plan index missing planned task directory");
-  }
-  const taskDirName = path.basename(relDir);
-  const manifestPath = path.join(
-    resolveTasksArchiveDir(tasksRoot),
-    runId,
-    taskDirName,
-    "manifest.json",
-  );
-  return JSON.parse(await fs.readFile(manifestPath, "utf8"));
 }

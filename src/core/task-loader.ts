@@ -10,7 +10,7 @@ import {
   validateResourceLocks,
   type TaskSpec,
 } from "./task-manifest.js";
-import { detectTasksLayout } from "./task-layout.js";
+import { detectTasksLayout, resolveTaskStageFromManifestPath } from "./task-layout.js";
 import { slugify } from "./utils.js";
 
 export type TaskValidationError = {
@@ -54,7 +54,12 @@ export async function loadTaskSpecs(
 
   for (const manifestPath of manifestPaths) {
     const taskDir = path.dirname(manifestPath);
-    const specPath = path.join(taskDir, "spec.md");
+    const taskDirName = path.basename(taskDir);
+    const stage = resolveTaskStageFromManifestPath({
+      tasksRoot: tasksDirAbs,
+      manifestPath,
+      layout,
+    });
 
     const parsedManifest = await parseManifest(manifestPath);
     if (!parsedManifest.success) {
@@ -76,9 +81,8 @@ export async function loadTaskSpecs(
     const slug = slugify(manifest.name);
     tasks.push({
       manifest,
-      taskDir,
-      manifestPath,
-      specPath,
+      taskDirName,
+      stage,
       slug,
     });
   }

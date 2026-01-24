@@ -6,6 +6,7 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import { TaskError } from "../core/errors.js";
 import { loadTaskSpecs } from "../core/task-loader.js";
+import { resolveTaskDir } from "../core/task-layout.js";
 
 const tempRoots: string[] = [];
 
@@ -115,10 +116,16 @@ describe("loadTaskSpecs", () => {
     });
 
     const { tasks, errors } = await loadTaskSpecs(root, ".tasks");
-    const relativeDirs = tasks.map((task) => path.relative(tasksDir, task.taskDir));
+    const relativeDirs = tasks.map((task) =>
+      path.relative(
+        tasksDir,
+        resolveTaskDir({ tasksRoot: tasksDir, stage: task.stage, taskDirName: task.taskDirName }),
+      ),
+    );
 
     expect(errors).toHaveLength(0);
     expect(tasks.map((task) => task.manifest.id)).toEqual(["001", "002"]);
+    expect(tasks.map((task) => task.stage)).toEqual(["active", "backlog"]);
     expect(relativeDirs).toEqual([
       path.join("active", "001-task"),
       path.join("backlog", "002-task"),

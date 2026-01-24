@@ -79,7 +79,8 @@ describe("runTestValidator", () => {
     await execa("git", ["add", "."], { cwd: repoPath });
     await execa("git", ["commit", "-m", "Add tests"], { cwd: repoPath });
 
-    const taskDir = path.join(repoPath, ".tasks", "001-add-tests");
+    const tasksRoot = path.join(repoPath, ".tasks");
+    const taskDir = path.join(tasksRoot, "001-add-tests");
     const manifestPath = path.join(taskDir, "manifest.json");
     const specPath = path.join(taskDir, "spec.md");
     await fse.ensureDir(taskDir);
@@ -98,9 +99,8 @@ describe("runTestValidator", () => {
 
     const task: TaskSpec = {
       manifest: await fse.readJson(manifestPath),
-      taskDir,
-      manifestPath,
-      specPath,
+      taskDirName: path.basename(taskDir),
+      stage: "legacy",
       slug: "add-tests",
     };
 
@@ -127,6 +127,7 @@ describe("runTestValidator", () => {
       projectName: "demo",
       repoPath,
       runId: "run-1",
+      tasksRoot,
       task,
       taskSlug: task.slug,
       workspacePath: repoPath,

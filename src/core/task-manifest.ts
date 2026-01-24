@@ -1,6 +1,7 @@
 import { z, type RefinementCtx, type ZodIssue } from "zod";
 
 import { normalizeTestPaths } from "./test-paths.js";
+import type { TaskStage } from "./task-layout.js";
 import { slugify } from "./utils.js";
 
 export const LocksSchema = z
@@ -64,9 +65,8 @@ export type TaskManifest = z.infer<typeof TaskManifestSchema>;
 
 export type TaskSpec = {
   manifest: TaskManifest;
-  taskDir: string; // absolute path to the task directory containing manifest/spec
-  manifestPath: string;
-  specPath: string;
+  taskDirName: string;
+  stage: TaskStage;
   slug: string;
 };
 

@@ -52,6 +52,11 @@ import {
 import { loadTaskSpecs } from "./task-loader.js";
 import { normalizeLocks, type TaskSpec } from "./task-manifest.js";
 import {
+  moveTaskDir,
+  resolveTaskDir,
+  resolveTaskManifestPath,
+} from "./task-layout.js";
+import {
   orchestratorHome,
   orchestratorLogPath,
   taskEventsLogPath,
@@ -1374,6 +1379,31 @@ export async function runProject(
     return { branchName, workspace, logsDir };
   };
 
+  const ensureTaskActiveStage = async (task: TaskSpec): Promise<void> => {
+    if (task.stage !== "backlog") {
+      return;
+    }
+
+    const moveResult = await moveTaskDir({
+      tasksRoot: tasksRootAbs,
+      fromStage: "backlog",
+      toStage: "active",
+      taskDirName: task.taskDirName,
+    });
+
+    task.stage = "active";
+
+    if (moveResult.moved) {
+      logOrchestratorEvent(orchLog, "task.stage.move", {
+        taskId: task.manifest.id,
+        from: "backlog",
+        to: "active",
+        path_from: moveResult.fromPath,
+        path_to: moveResult.toPath,
+      });
+    }
+  };
+
   const syncWorkerStateIntoTask = async (
     taskId: string,
     workspace: string,
@@ -1517,6 +1547,7 @@ export async function runProject(
     const taskState = state.tasks[taskId];
     const meta = resolveTaskMeta(task);
 
+    await ensureTaskActiveStage(task);
     await syncWorkerStateIntoTask(taskId, meta.workspace);
 
     if (!useDocker || !docker) {
@@ -1830,7 +1861,12 @@ export async function runProject(
 
         const rescope = computeRescopeFromCompliance(taskSpec.manifest, compliance);
         if (rescope.status === "updated") {
-          await writeJsonFile(taskSpec.manifestPath, rescope.manifest);
+          const manifestPath = resolveTaskManifestPath({
+            tasksRoot: tasksRootAbs,
+            stage: taskSpec.stage,
+            taskDirName: taskSpec.taskDirName,
+          });
+          await writeJsonFile(manifestPath, rescope.manifest);
           taskSpec.manifest = rescope.manifest;
 
           const resetReason = `Rescoped manifest: +${rescope.addedLocks.length} locks, +${rescope.addedFiles.length} files`;
@@ -1839,7 +1875,7 @@ export async function runProject(
             taskId: r.taskId,
             added_locks: rescope.addedLocks,
             added_files: rescope.addedFiles,
-            manifest_path: taskSpec.manifestPath,
+            manifest_path: manifestPath,
             report_path: complianceReportPath,
           });
           continue;
@@ -1895,6 +1931,7 @@ export async function runProject(
             projectName,
             repoPath,
             runId,
+            tasksRoot: tasksRootAbs,
             task: taskSpec,
             taskSlug: r.taskSlug,
             workspacePath: r.workspace,
@@ -2303,6 +2340,41 @@ export async function runProject(
       }
     }
 
+    if (integrationDoctorPassed === true && !stopReason && successfulTasks.length > 0) {
+      const archiveIds = new Set(successfulTasks.map((task) => task.taskId));
+
+      for (const task of params.batchTasks) {
+        if (!archiveIds.has(task.manifest.id)) continue;
+        if (task.stage === "legacy") continue;
+
+        try {
+          await ensureTaskActiveStage(task);
+          const moveResult = await moveTaskDir({
+            tasksRoot: tasksRootAbs,
+            fromStage: "active",
+            toStage: "archive",
+            taskDirName: task.taskDirName,
+            runId,
+          });
+
+          if (moveResult.moved) {
+            logOrchestratorEvent(orchLog, "task.stage.move", {
+              taskId: task.manifest.id,
+              from: "active",
+              to: "archive",
+              path_from: moveResult.fromPath,
+              path_to: moveResult.toPath,
+            });
+          }
+        } catch (error) {
+          logOrchestratorEvent(orchLog, "task.stage.move_error", {
+            taskId: task.manifest.id,
+            message: formatErrorMessage(error),
+          });
+        }
+      }
+    }
+
     logOrchestratorEvent(orchLog, "batch.complete", { batch_id: params.batchId });
     return stopReason;
   }
@@ -2387,6 +2459,7 @@ export async function runProject(
       batch.tasks.map(async (task) => {
         const taskId = task.manifest.id;
         const taskSlug = task.slug;
+        await ensureTaskActiveStage(task);
         const branchName = buildTaskBranchName(
           config.task_branch_prefix,
           taskId,
@@ -2443,7 +2516,12 @@ export async function runProject(
           config.worker.model,
           config.worker.reasoning_effort,
         );
-        const taskRelativeDir = path.relative(tasksRootAbs, task.taskDir);
+        const taskAbsoluteDir = resolveTaskDir({
+          tasksRoot: tasksRootAbs,
+          stage: task.stage,
+          taskDirName: task.taskDirName,
+        });
+        const taskRelativeDir = path.relative(tasksRootAbs, taskAbsoluteDir);
         const taskRelativeDirPosix = taskRelativeDir.split(path.sep).join(path.posix.sep);
 
         await ensureDir(tLogsDir);

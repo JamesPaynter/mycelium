@@ -8,6 +8,7 @@ import type { ValidatorConfig } from "../core/config.js";
 import { JsonlLogger, logOrchestratorEvent } from "../core/logger.js";
 import { validatorLogPath, validatorReportPath } from "../core/paths.js";
 import { renderPromptTemplate } from "../core/prompts.js";
+import { resolveTaskSpecPath } from "../core/task-layout.js";
 import type { TaskSpec } from "../core/task-manifest.js";
 import { writeJsonFile } from "../core/utils.js";
 import type { LlmClient, LlmCompletionResult } from "../llm/client.js";
@@ -41,6 +42,7 @@ export type TestValidatorArgs = {
   projectName: string;
   repoPath: string;
   runId: string;
+  tasksRoot: string;
   task: TaskSpec;
   taskSlug: string;
   workspacePath: string;
@@ -244,8 +246,13 @@ async function buildValidationContext(args: TestValidatorArgs): Promise<Validati
     ...(args.task.manifest.files.reads ?? []),
   ]);
 
+  const taskSpecPath = resolveTaskSpecPath({
+    tasksRoot: args.tasksRoot,
+    stage: args.task.stage,
+    taskDirName: args.task.taskDirName,
+  });
   const [taskSpec, diffSummary, testOutput] = await Promise.all([
-    readTaskSpec(args.task.specPath),
+    readTaskSpec(taskSpecPath),
     readDiffSummary(args.workspacePath, args.mainBranch),
     readLatestDoctorOutput(args.taskLogsDir),
   ]);

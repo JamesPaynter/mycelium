@@ -103,9 +103,8 @@ function createTask(
       tdd_mode: "off",
       verify: { doctor: "echo ok" },
     },
-    taskDir: `/tasks/${id}`,
-    manifestPath: `/tasks/${id}/manifest.json`,
-    specPath: `/tasks/${id}/spec.md`,
+    taskDirName: `${id}-task`,
+    stage: "legacy",
     slug: `task-${id}`,
   };
 }
