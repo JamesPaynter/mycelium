@@ -100,14 +100,46 @@ export function loadProjectConfig(configPath: string): ProjectConfig {
   const normalizedTestPaths = normalizeTestPaths(cfg.test_paths);
 
   // Normalize relative paths against the config directory for portability.
+  const resolvedDockerfile = path.resolve(configDir, cfg.docker.dockerfile);
+  const resolvedBuildContext = path.resolve(configDir, cfg.docker.build_context);
+  const dockerPaths = coalesceDockerContext(resolvedDockerfile, resolvedBuildContext);
+
   return {
     ...cfg,
     test_paths: normalizedTestPaths.length > 0 ? normalizedTestPaths : DEFAULT_TEST_PATHS,
     repo_path: path.resolve(configDir, cfg.repo_path),
     docker: {
       ...cfg.docker,
-      dockerfile: path.resolve(configDir, cfg.docker.dockerfile),
-      build_context: path.resolve(configDir, cfg.docker.build_context),
+      dockerfile: dockerPaths.dockerfile,
+      build_context: dockerPaths.build_context,
     },
   };
+}
+
+// Some configs mistakenly point the Docker build context at <package>/dist while using
+// the Dockerfile under dist/templates. That context is missing bin/, package.json, etc.
+// Detect that pattern and fall back to the package root so COPY steps succeed.
+function coalesceDockerContext(dockerfile: string, buildContext: string): {
+  dockerfile: string;
+  build_context: string;
+} {
+  const normalizedDockerfile = path.normalize(dockerfile);
+  const normalizedContext = path.normalize(buildContext);
+
+  const templatesDir = path.dirname(normalizedDockerfile);
+  const distDir = path.dirname(templatesDir);
+  const repoDir = path.dirname(distDir);
+
+  const isDistDockerfile =
+    path.basename(templatesDir) === "templates" && path.basename(distDir) === "dist";
+  const contextIsDist = normalizedContext === distDir;
+
+  if (isDistDockerfile && contextIsDist) {
+    return {
+      dockerfile: normalizedDockerfile,
+      build_context: repoDir,
+    };
+  }
+
+  return { dockerfile: normalizedDockerfile, build_context: normalizedContext };
 }

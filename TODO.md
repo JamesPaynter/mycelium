@@ -55,7 +55,6 @@
 ### Phase UI-3: Build + Tests
 - [ ] [084 - Build/packaging (dist/ui) + unit/smoke tests (cursor tail + endpoints)](.mycelium/tasks/084-build-packaging-tests-ui/spec.md)
 
-
 ## UI Visualizer — Garden + Map Views
 
 - [ ] 085 — UI multi-view shell + routing (List / Garden / Map)
@@ -71,6 +70,9 @@
 - [ ] 094 — Map: component inspector + subgraph highlighting
 
 - [ ] 095 — Packaging + smoke tests for Garden + Map views
-
+- [ ] [096 - Garden: workstations diorama scaffolding (static scene layer)](.mycelium/tasks/096-garden-workstations-diorama-frame/spec.md) (Effort <M>, Tier <standard>)
+- [ ] [097 - Garden: workstations mapping + stable slotting + overflow + agent rendering](.mycelium/tasks/097-garden-workstations-slotting-overflow/spec.md) (Effort <L>, Tier <standard>)
+- [ ] [098 - Garden: snapshot diff + 2 FPS stepped transitions (handoffs + terminal poses)](.mycelium/tasks/098-garden-workstations-diff-stepped-transitions/spec.md) (Effort <L>, Tier <standard>)
+- [ ] [099 - Garden: interactions (workstation + agent selection hooks)](.mycelium/tasks/099-garden-workstations-interactions-selection/spec.md) (Effort <M>, Tier <standard>)
 
 - [ ] ALL_TASKS_COMPLETE
