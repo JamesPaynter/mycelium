@@ -34,7 +34,6 @@ budgets:
 
 # Doctor command runs on the integration branch after each batch.
 doctor: ./.mycelium/doctor.sh
-doctor_cmd: "pnpm -r lint --fix --max-warnings=9999"
 # doctor_timeout: 900
 
 # Optional bootstrap commands executed inside each worker container before Codex runs.
