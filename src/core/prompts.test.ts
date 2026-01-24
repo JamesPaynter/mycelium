@@ -49,6 +49,19 @@ describe("renderPromptTemplate", () => {
     expect(testValidator).toContain("test validation agent");
     expect(testValidator).toContain("001");
 
+    const styleValidator = await renderPromptTemplate("style-validator", {
+      project_name: "Sample Project",
+      repo_path: "/workspace/sample",
+      task_id: "002",
+      task_name: "cleanup-styles",
+      task_spec: "Refactor naming and remove unused code",
+      changed_files: "src/sample.ts",
+      diff_summary: "Updated variable naming",
+    });
+
+    expect(styleValidator).toContain("style validation agent");
+    expect(styleValidator).toContain("cleanup-styles");
+
     const doctorValidator = await renderPromptTemplate("doctor-validator", {
       project_name: "Sample Project",
       repo_path: "/workspace/sample",

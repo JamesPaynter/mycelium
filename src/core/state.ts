@@ -29,7 +29,7 @@ export const CheckpointCommitSchema = z.object({
 });
 export type CheckpointCommit = z.infer<typeof CheckpointCommitSchema>;
 
-export const ValidatorIdSchema = z.enum(["test", "doctor"]);
+export const ValidatorIdSchema = z.enum(["test", "style", "doctor"]);
 export type ValidatorId = z.infer<typeof ValidatorIdSchema>;
 
 export const ValidatorStatusSchema = z.enum(["pass", "fail", "error", "skip"]);

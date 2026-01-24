@@ -59,7 +59,12 @@ describe("acceptance: validator mode=block prevents merge and flags human review
       await fs.writeFile(plannerOutputPath, JSON.stringify(mockPlannerOutput(), null, 2));
 
       const configPath = path.join(tmpRoot, "project.yaml");
-      await writeProjectConfig(configPath, repoDir);
+      await writeProjectConfig(configPath, repoDir, [
+        "test_validator:",
+        "  mode: block",
+        "  provider: mock",
+        "  model: mock",
+      ]);
 
       process.env.MYCELIUM_HOME = path.join(tmpRoot, "mycelium-home");
       process.env.MOCK_LLM = "1";
@@ -99,6 +104,24 @@ describe("acceptance: validator mode=block prevents merge and flags human review
       expect(headAfter).toBe(headBefore);
     },
   );
+
+  it(
+    "respects style validator warn vs block modes",
+    { timeout: 90_000 },
+    async () => {
+      await runStyleValidatorScenario({
+        mode: "warn",
+        expectBlocked: false,
+        tempRoots,
+      });
+
+      await runStyleValidatorScenario({
+        mode: "block",
+        expectBlocked: true,
+        tempRoots,
+      });
+    },
+  );
 });
 
 async function initGitRepo(repoDir: string): Promise<void> {
@@ -110,7 +133,11 @@ async function initGitRepo(repoDir: string): Promise<void> {
   await execa("git", ["checkout", "-B", "main"], { cwd: repoDir });
 }
 
-async function writeProjectConfig(configPath: string, repoDir: string): Promise<void> {
+async function writeProjectConfig(
+  configPath: string,
+  repoDir: string,
+  validatorLines: string[],
+): Promise<void> {
   const dockerfile = path.join(process.cwd(), "templates/Dockerfile");
   const buildContext = process.cwd();
   const configContents = [
@@ -129,10 +156,7 @@ async function writeProjectConfig(configPath: string, repoDir: string): Promise<
     "worker:",
     "  model: mock",
     "  checkpoint_commits: true",
-    "test_validator:",
-    "  mode: block",
-    "  provider: mock",
-    "  model: mock",
+    ...validatorLines,
     "docker:",
     `  dockerfile: ${dockerfile}`,
     `  build_context: ${buildContext}`,
@@ -166,4 +190,68 @@ function mockPlannerOutput(): unknown {
 async function gitHead(repoDir: string, branch: string): Promise<string> {
   const res = await execa("git", ["rev-parse", branch], { cwd: repoDir });
   return res.stdout.trim();
+}
+
+async function runStyleValidatorScenario(args: {
+  mode: "warn" | "block";
+  expectBlocked: boolean;
+  tempRoots: string[];
+}): Promise<void> {
+  const tmpRoot = await fs.mkdtemp(path.join(os.tmpdir(), "mycelium-style-validator-"));
+  args.tempRoots.push(tmpRoot);
+
+  const repoDir = path.join(tmpRoot, "repo");
+  await fse.copy(FIXTURE_REPO, repoDir);
+  await initGitRepo(repoDir);
+
+  const plannerOutputPath = path.join(tmpRoot, "mock-planner-output.json");
+  await fs.writeFile(plannerOutputPath, JSON.stringify(mockPlannerOutput(), null, 2));
+
+  const configPath = path.join(tmpRoot, "project.yaml");
+  await writeProjectConfig(configPath, repoDir, [
+    "style_validator:",
+    `  mode: ${args.mode}`,
+    "  provider: mock",
+    "  model: mock",
+  ]);
+
+  process.env.MYCELIUM_HOME = path.join(tmpRoot, "mycelium-home");
+  process.env.MOCK_LLM = "1";
+  process.env.MOCK_LLM_OUTPUT_PATH = plannerOutputPath;
+  delete process.env.MOCK_LLM_OUTPUT;
+  delete process.env.MOCK_CODEX_USAGE;
+
+  const config = loadProjectConfig(configPath);
+  const headBefore = await gitHead(repoDir, config.main_branch);
+
+  const planResult = await planProject("toy-project", config, {
+    input: "docs/planning/implementation-plan.md",
+  });
+  expect(planResult.tasks).toHaveLength(1);
+
+  delete process.env.MOCK_LLM_OUTPUT_PATH;
+  process.env.MOCK_LLM_OUTPUT = JSON.stringify({
+    pass: false,
+    summary: "Intentionally failing style validator for acceptance test",
+    concerns: [],
+    confidence: "high",
+  });
+
+  const runResult = await runProject("toy-project", config, {
+    maxParallel: 1,
+    useDocker: false,
+    buildImage: false,
+  });
+
+  const headAfter = await gitHead(repoDir, config.main_branch);
+
+  if (args.expectBlocked) {
+    expect(runResult.state.status).toBe("failed");
+    expect(runResult.state.tasks["001"]?.status).toBe("needs_human_review");
+    expect(headAfter).toBe(headBefore);
+  } else {
+    expect(runResult.state.status).toBe("complete");
+    expect(runResult.state.tasks["001"]?.status).toBe("complete");
+    expect(headAfter).not.toBe(headBefore);
+  }
 }

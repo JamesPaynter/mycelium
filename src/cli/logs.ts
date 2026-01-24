@@ -26,6 +26,7 @@ import {
 } from "../core/run-logs.js";
 import type { DoctorValidationReport } from "../validators/doctor-validator.js";
 import type { TestValidationReport } from "../validators/test-validator.js";
+import type { StyleValidationReport } from "../validators/style-validator.js";
 import { AnthropicClient } from "../llm/anthropic.js";
 import type { LlmClient } from "../llm/client.js";
 import { MockLlmClient, isMockLlmEnabled } from "../llm/mock.js";
@@ -598,6 +599,11 @@ async function collectValidatorSummaries(
 
   if (!summaries.some((s) => s.validator === "test")) {
     const report = await findTestValidatorReport(runLogsDir, taskId);
+    if (report) summaries.push(report);
+  }
+
+  if (!summaries.some((s) => s.validator === "style")) {
+    const report = await findStyleValidatorReport(runLogsDir, taskId);
     if (report) summaries.push(report);
   }
 
@@ -1269,6 +1275,26 @@ async function findTestValidatorReport(
   };
 }
 
+async function findStyleValidatorReport(
+  runLogsDir: string,
+  taskId: string,
+): Promise<ValidatorSummaryRow | null> {
+  const dir = path.join(runLogsDir, "validators", "style-validator");
+  const reportPath = await pickLatestJson(dir, (name) => name.startsWith(`${taskId}-`));
+  if (!reportPath) return null;
+
+  const report = readValidatorResultFromFile<StyleValidationReport>(reportPath);
+  if (!report) return null;
+
+  const status = report.pass ? "pass" : "fail";
+  return {
+    validator: "style",
+    status,
+    summary: summarizeStyleReport(report),
+    reportPath: relativeToRun(runLogsDir, reportPath),
+  };
+}
+
 async function findDoctorValidatorReport(runLogsDir: string): Promise<ValidatorSummaryRow | null> {
   const dir = path.join(runLogsDir, "validators", "doctor-validator");
   const reportPath = await pickLatestJson(dir);
@@ -1331,6 +1357,14 @@ function summarizeTestReport(report: TestValidationReport): string {
   }
   if (report.coverage_gaps.length > 0) {
     parts.push(`Coverage gaps: ${report.coverage_gaps.length}`);
+  }
+  return parts.filter(Boolean).join(" | ");
+}
+
+function summarizeStyleReport(report: StyleValidationReport): string {
+  const parts = [report.summary];
+  if (report.concerns.length > 0) {
+    parts.push(`Concerns: ${report.concerns.length}`);
   }
   return parts.filter(Boolean).join(" | ");
 }
