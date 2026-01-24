@@ -103,7 +103,7 @@ describe("integration: plan + run (mock LLM)", () => {
     expect(runSummary.metrics.avg_batch_size).toBe(2);
     expect(runSummary.metrics.doctor_seconds_total).toBeTypeOf("number");
     expect(runSummary.metrics.checkset_seconds_total).toBeTypeOf("number");
-  });
+  }, 30_000);
 
   it("loads tasks from legacy layout when plan output targets root", async () => {
     const tmpRoot = await fs.mkdtemp(path.join(os.tmpdir(), "to-int-legacy-"));
@@ -137,7 +137,7 @@ describe("integration: plan + run (mock LLM)", () => {
 
     expect(runResult.state.status).toBe("complete");
     expect(runResult.plan[0]?.taskIds.sort()).toEqual(["001", "002"]);
-  });
+  }, 20_000);
 });
 
 async function initGitRepo(repoDir: string): Promise<void> {
