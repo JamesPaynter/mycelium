@@ -842,6 +842,196 @@ body {
   place-items: center;
 }
 
+.garden-diorama {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+}
+
+.garden-ground-layer {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+}
+
+.garden-ground-prop {
+  position: absolute;
+  left: var(--prop-x, 50%);
+  top: var(--prop-y, 50%);
+  width: 150px;
+  height: 52px;
+  transform: translate(-50%, -50%) translateY(16px);
+  border-radius: 999px;
+  background: radial-gradient(ellipse at center, rgba(255, 255, 255, 0.6), rgba(201, 178, 150, 0.18));
+  border: 1px dashed rgba(155, 124, 98, 0.35);
+  opacity: 0.75;
+}
+
+.garden-workstations-layer {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+}
+
+.garden-agents-layer {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+}
+
+.garden-workstation {
+  position: absolute;
+  inset: 0;
+}
+
+.workstation-node {
+  position: absolute;
+  left: var(--station-x, 50%);
+  top: var(--station-y, 50%);
+  transform: translate(-50%, -50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  text-align: center;
+}
+
+.workstation-prop {
+  position: relative;
+  width: 92px;
+  height: 46px;
+}
+
+.workstation-prop::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  bottom: -6px;
+  width: 78px;
+  height: 18px;
+  transform: translateX(-50%);
+  background: radial-gradient(ellipse at center, rgba(60, 45, 32, 0.25), rgba(60, 45, 32, 0));
+}
+
+.workstation-prop-top {
+  position: absolute;
+  left: 50%;
+  top: 0;
+  width: 82px;
+  height: 18px;
+  transform: translateX(-50%);
+  border-radius: 12px;
+  background: linear-gradient(160deg, rgba(255, 255, 255, 0.85), rgba(217, 193, 166, 0.85));
+  border: 1px solid rgba(155, 123, 98, 0.35);
+}
+
+.workstation-prop-base {
+  position: absolute;
+  left: 50%;
+  bottom: 0;
+  width: 62px;
+  height: 18px;
+  transform: translateX(-50%);
+  border-radius: 12px;
+  background: linear-gradient(180deg, rgba(190, 150, 115, 0.9), rgba(147, 108, 78, 0.95));
+}
+
+.workstation-prop-accent {
+  position: absolute;
+  right: 18px;
+  top: 4px;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.75);
+  border: 1px solid rgba(155, 123, 98, 0.4);
+}
+
+.workstation-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.8);
+  border: 1px solid rgba(255, 255, 255, 0.75);
+  font-size: 0.62rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink);
+}
+
+.workstation-role {
+  white-space: nowrap;
+}
+
+.workstation-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 22px;
+  height: 20px;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: var(--accent-soft);
+  border: 1px solid rgba(42, 124, 111, 0.25);
+  color: var(--accent-strong);
+  font-size: 0.6rem;
+  font-weight: 700;
+}
+
+.workstation-indicator {
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 0.55rem;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: var(--muted);
+  background: rgba(255, 255, 255, 0.65);
+  border: 1px solid rgba(255, 255, 255, 0.75);
+}
+
+.workstation-overflow {
+  position: absolute;
+  left: var(--overflow-x, 50%);
+  top: var(--overflow-y, 50%);
+  transform: translate(-50%, -50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+
+.workstation-overflow-pile {
+  position: relative;
+  width: 52px;
+  height: 18px;
+  border-radius: 10px;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.7), rgba(212, 186, 156, 0.35));
+  border: 1px dashed rgba(155, 124, 98, 0.45);
+}
+
+.workstation-overflow-pile::after {
+  content: "";
+  position: absolute;
+  left: 6px;
+  top: -6px;
+  width: 36px;
+  height: 12px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.6);
+  border: 1px dashed rgba(155, 124, 98, 0.35);
+}
+
+.workstation-overflow-label {
+  font-size: 0.6rem;
+  color: var(--muted);
+  font-family: var(--font-mono);
+  letter-spacing: 0.08em;
+}
+
 .mycelium-overlay {
   position: absolute;
   inset: 0;

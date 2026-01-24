@@ -33,6 +33,39 @@ export function createGardenView({ appState, actions, fetchApi }) {
     },
   ];
 
+  const WORKSTATION_DEFINITIONS = [
+    {
+      id: "worker",
+      label: "Worker",
+      anchor: { xPct: 50, yPct: 18 },
+      overflow: { xPct: 68, yPct: 24 },
+    },
+    {
+      id: "researcher",
+      label: "Researcher",
+      anchor: { xPct: 25, yPct: 38 },
+      overflow: { xPct: 9, yPct: 44 },
+    },
+    {
+      id: "coder",
+      label: "Coder",
+      anchor: { xPct: 75, yPct: 38 },
+      overflow: { xPct: 89, yPct: 44 },
+    },
+    {
+      id: "reviewer",
+      label: "Reviewer",
+      anchor: { xPct: 30, yPct: 78 },
+      overflow: { xPct: 14, yPct: 72 },
+    },
+    {
+      id: "artist",
+      label: "Artist",
+      anchor: { xPct: 70, yPct: 78 },
+      overflow: { xPct: 86, yPct: 72 },
+    },
+  ];
+
   const SLOT_LAYOUT = {
     columnCount: 5,
     xMin: 22,
@@ -66,6 +99,10 @@ export function createGardenView({ appState, actions, fetchApi }) {
     garden: null,
     landmarks: null,
     bed: null,
+    diorama: null,
+    groundLayer: null,
+    workstationsLayer: null,
+    agentsLayer: null,
     myceliumOverlay: null,
     myceliumThreads: null,
     myceliumKnotGlow: null,
@@ -272,6 +309,9 @@ export function createGardenView({ appState, actions, fetchApi }) {
     const { emptyState, emptyTitleEl, emptyCopyEl } = createEmptyStateElements();
     bed.appendChild(emptyState);
 
+    const { diorama, groundLayer, workstationsLayer, agentsLayer } = createDioramaElements();
+    bed.appendChild(diorama);
+
     garden.append(overlay, landmarks, bed);
     stage.appendChild(garden);
 
@@ -286,6 +326,10 @@ export function createGardenView({ appState, actions, fetchApi }) {
     viewState.garden = garden;
     viewState.landmarks = landmarks;
     viewState.bed = bed;
+    viewState.diorama = diorama;
+    viewState.groundLayer = groundLayer;
+    viewState.workstationsLayer = workstationsLayer;
+    viewState.agentsLayer = agentsLayer;
     viewState.myceliumOverlay = overlay;
     viewState.myceliumThreads = threads;
     viewState.myceliumKnotGlow = knotGlow;
@@ -320,6 +364,109 @@ export function createGardenView({ appState, actions, fetchApi }) {
     emptyState.append(emptyTitleEl, emptyCopyEl);
 
     return { emptyState, emptyTitleEl, emptyCopyEl };
+  }
+
+  function createDioramaElements() {
+    const diorama = document.createElement("div");
+    diorama.className = "garden-diorama";
+
+    const groundLayer = document.createElement("div");
+    groundLayer.className = "garden-ground-layer";
+
+    for (const definition of WORKSTATION_DEFINITIONS) {
+      groundLayer.appendChild(createGroundProp(definition));
+    }
+
+    const workstationsLayer = document.createElement("div");
+    workstationsLayer.className = "garden-workstations-layer";
+
+    for (const definition of WORKSTATION_DEFINITIONS) {
+      workstationsLayer.appendChild(createWorkstation(definition));
+    }
+
+    const agentsLayer = document.createElement("div");
+    agentsLayer.className = "garden-agents-layer";
+
+    diorama.append(groundLayer, workstationsLayer, agentsLayer);
+
+    return {
+      diorama,
+      groundLayer,
+      workstationsLayer,
+      agentsLayer,
+    };
+  }
+
+  function createGroundProp({ id, anchor }) {
+    const prop = document.createElement("div");
+    prop.className = "garden-ground-prop";
+    prop.dataset.stationId = id;
+    prop.style.setProperty("--prop-x", `${anchor.xPct}%`);
+    prop.style.setProperty("--prop-y", `${anchor.yPct}%`);
+    return prop;
+  }
+
+  function createWorkstation({ id, label, anchor, overflow }) {
+    const station = document.createElement("div");
+    station.className = "garden-workstation";
+    station.dataset.stationId = id;
+    station.style.setProperty("--station-x", `${anchor.xPct}%`);
+    station.style.setProperty("--station-y", `${anchor.yPct}%`);
+    station.style.setProperty("--overflow-x", `${overflow.xPct}%`);
+    station.style.setProperty("--overflow-y", `${overflow.yPct}%`);
+
+    const node = document.createElement("div");
+    node.className = "workstation-node";
+
+    const prop = document.createElement("div");
+    prop.className = "workstation-prop";
+
+    const propTop = document.createElement("div");
+    propTop.className = "workstation-prop-top";
+
+    const propBase = document.createElement("div");
+    propBase.className = "workstation-prop-base";
+
+    const propAccent = document.createElement("div");
+    propAccent.className = "workstation-prop-accent";
+
+    prop.append(propTop, propBase, propAccent);
+
+    const labelRow = document.createElement("div");
+    labelRow.className = "workstation-label";
+
+    const role = document.createElement("span");
+    role.className = "workstation-role";
+    role.textContent = label;
+
+    const badge = document.createElement("span");
+    badge.className = "workstation-badge";
+    badge.textContent = "0";
+
+    labelRow.append(role, badge);
+
+    const indicator = document.createElement("div");
+    indicator.className = "workstation-indicator";
+    indicator.textContent = "working...";
+    indicator.hidden = true;
+
+    node.append(prop, labelRow, indicator);
+
+    const overflowWrap = document.createElement("div");
+    overflowWrap.className = "workstation-overflow";
+    overflowWrap.hidden = true;
+
+    const overflowPile = document.createElement("div");
+    overflowPile.className = "workstation-overflow-pile";
+
+    const overflowLabel = document.createElement("div");
+    overflowLabel.className = "workstation-overflow-label";
+    overflowLabel.textContent = "+N";
+
+    overflowWrap.append(overflowPile, overflowLabel);
+
+    station.append(node, overflowWrap);
+    return station;
   }
 
   function updateLandmarkCounts(taskCounts) {
