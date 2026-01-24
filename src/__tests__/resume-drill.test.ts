@@ -11,6 +11,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { planProject } from "../cli/plan.js";
 import { loadProjectConfig } from "../core/config-loader.js";
 import { orchestratorLogPath } from "../core/paths.js";
+import { detectTasksLayout, resolveTasksActiveDir, resolveTasksBacklogDir } from "../core/task-layout.js";
 import { StateStore } from "../core/state-store.js";
 import type { RunState } from "../core/state.js";
 import { dockerClient } from "../docker/docker.js";
@@ -273,15 +274,12 @@ async function overrideTaskDoctor(
   doctorCommand: string,
 ): Promise<void> {
   const tasksRoot = path.join(repoDir, ".mycelium", "tasks");
-  const entries = await fs.readdir(tasksRoot, { withFileTypes: true });
-  const taskDir = entries.find(
-    (entry) => entry.isDirectory() && entry.name.startsWith(`${taskId}-`),
-  );
+  const taskDir = await findTaskDir(tasksRoot, taskId);
   if (!taskDir) {
     throw new Error(`Task directory not found for ${taskId} in ${tasksRoot}`);
   }
 
-  const manifestPath = path.join(tasksRoot, taskDir.name, "manifest.json");
+  const manifestPath = path.join(taskDir, "manifest.json");
   const raw = await fs.readFile(manifestPath, "utf8");
   const manifest = JSON.parse(raw) as { verify?: { doctor?: string } };
   const next = {
@@ -289,6 +287,26 @@ async function overrideTaskDoctor(
     verify: { ...manifest.verify, doctor: doctorCommand },
   };
   await fs.writeFile(manifestPath, JSON.stringify(next, null, 2) + "\n", "utf8");
+}
+
+async function findTaskDir(tasksRoot: string, taskId: string): Promise<string | null> {
+  const layout = detectTasksLayout(tasksRoot);
+  const searchRoots =
+    layout === "legacy"
+      ? [tasksRoot]
+      : [resolveTasksBacklogDir(tasksRoot), resolveTasksActiveDir(tasksRoot)];
+
+  for (const root of searchRoots) {
+    const entries = await fs.readdir(root, { withFileTypes: true }).catch(() => []);
+    const match = entries.find(
+      (entry) => entry.isDirectory() && entry.name.startsWith(`${taskId}-`),
+    );
+    if (match) {
+      return path.join(root, match.name);
+    }
+  }
+
+  return null;
 }
 
 async function writeBootstrapDelayScript(repoDir: string): Promise<void> {
