@@ -70,6 +70,10 @@ export async function startUiServer(options: StartUiServerOptions): Promise<UiSe
 // =============================================================================
 
 async function ensureMyceliumHome(projectName: string): Promise<void> {
+  if (process.env.MYCELIUM_HOME) {
+    return;
+  }
+
   await loadConfigForCli({
     projectName,
     initIfMissing: true,

@@ -28,6 +28,18 @@ export function logsBaseDir(projectName: string): string {
   return path.join(orchestratorHome(), "logs", projectName);
 }
 
+export function historyBaseDir(): string {
+  return path.join(orchestratorHome(), "history");
+}
+
+export function runHistoryDir(projectName: string): string {
+  return path.join(historyBaseDir(), projectName);
+}
+
+export function runHistoryIndexPath(projectName: string): string {
+  return path.join(runHistoryDir(projectName), "runs.json");
+}
+
 export function runStateDir(projectName: string): string {
   return stateBaseDir(projectName);
 }

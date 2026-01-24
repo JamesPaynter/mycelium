@@ -14,7 +14,7 @@
     <header class="app-header" style="--delay: 0s;">
       <div class="brand">
         <div class="brand-title">Mycelium Visualizer</div>
-        <div class="brand-sub">Live run telemetry for in-flight work</div>
+        <div class="brand-sub">Run telemetry for live and historical work</div>
       </div>
 
       <div class="header-controls">
@@ -25,6 +25,12 @@
         <div class="field">
           <label for="run-input">Run ID</label>
           <input id="run-input" type="text" placeholder="run-123" autocomplete="off" />
+        </div>
+        <div class="field">
+          <label for="run-select">History</label>
+          <select id="run-select">
+            <option value="">Recent runs</option>
+          </select>
         </div>
         <button id="apply-target" class="btn primary">Load</button>
         <button id="refresh-summary" class="btn ghost">Refresh</button>

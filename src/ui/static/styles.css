@@ -121,6 +121,16 @@ body {
   color: var(--ink);
 }
 
+.field select {
+  width: 160px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  border: 1px solid var(--line);
+  background: var(--panel);
+  font-family: var(--font-sans);
+  color: var(--ink);
+}
+
 .field.wide input {
   width: 220px;
 }
@@ -1944,6 +1954,10 @@ body {
   }
 
   .field input {
+    width: 100%;
+  }
+
+  .field select {
     width: 100%;
   }
 

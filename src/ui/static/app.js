@@ -11,6 +11,8 @@ const SUMMARY_POLL_INTERVAL_MS = 2000;
 const appState = {
   projectName: "",
   runId: "",
+  runs: [],
+  runsProject: "",
   summary: null,
   selectedTaskId: null,
   preferredTaskId: "",
@@ -19,11 +21,13 @@ const appState = {
   activeView: "list",
   summaryTimerId: null,
   isSummaryLoading: false,
+  isRunsLoading: false,
 };
 
 const elements = {
   projectInput: document.getElementById("project-input"),
   runInput: document.getElementById("run-input"),
+  runSelect: document.getElementById("run-select"),
   applyTargetButton: document.getElementById("apply-target"),
   refreshSummaryButton: document.getElementById("refresh-summary"),
   pauseTailToggle: document.getElementById("pause-tail"),
@@ -59,6 +63,7 @@ function init() {
   wireControls();
   initViews();
   loadTargetFromQuery();
+  void maybeLoadRunsFromInputs();
   setActiveView(appState.activeView, { skipUrlUpdate: true });
 }
 
@@ -66,8 +71,13 @@ function wireControls() {
   elements.applyTargetButton.addEventListener("click", () => {
     const projectName = elements.projectInput.value.trim();
     const runId = elements.runInput.value.trim();
-    if (!projectName || !runId) {
-      setGlobalError("Project and run id are required.");
+    if (!projectName) {
+      setGlobalError("Project is required.");
+      return;
+    }
+    if (!runId) {
+      setGlobalError("Run id is required.");
+      void fetchRuns(projectName);
       return;
     }
     setGlobalError("");
@@ -76,6 +86,25 @@ function wireControls() {
 
   elements.refreshSummaryButton.addEventListener("click", () => {
     void requestRefresh();
+  });
+
+  elements.projectInput.addEventListener("change", () => {
+    const projectName = elements.projectInput.value.trim();
+    if (!projectName) {
+      appState.runs = [];
+      appState.runsProject = "";
+      renderRunOptions();
+      return;
+    }
+
+    void fetchRuns(projectName);
+  });
+
+  elements.runSelect?.addEventListener("change", () => {
+    const runId = elements.runSelect.value;
+    if (runId) {
+      elements.runInput.value = runId;
+    }
   });
 
   elements.pauseTailToggle.addEventListener("change", () => {
@@ -117,6 +146,12 @@ function loadTargetFromQuery() {
   if (projectName && runId) {
     setTarget(projectName, runId, { preserveQueryTaskId: true });
   }
+}
+
+function maybeLoadRunsFromInputs() {
+  const projectName = elements.projectInput.value.trim();
+  if (!projectName) return;
+  void fetchRuns(projectName);
 }
 
 
@@ -204,6 +239,7 @@ function setTarget(projectName, runId, options = {}) {
   views.garden.reset?.();
   views.map.reset?.();
   updateQueryParams();
+  void fetchRuns(projectName);
   startSummaryPolling();
 
   if (appState.activeView === "map") {
@@ -227,6 +263,10 @@ function stopSummaryPolling() {
 }
 
 async function requestRefresh() {
+  const projectName = elements.projectInput.value.trim();
+  if (projectName) {
+    await fetchRuns(projectName);
+  }
   await fetchSummary();
   await views.list.refresh();
   await views.map.refresh?.();
@@ -262,6 +302,70 @@ async function fetchSummary() {
   } finally {
     appState.isSummaryLoading = false;
   }
+}
+
+
+// =============================================================================
+// RUN LIST API
+// =============================================================================
+
+async function fetchRuns(projectName) {
+  if (!projectName) return;
+  if (appState.isRunsLoading && appState.runsProject === projectName) return;
+
+  const isNewProject = appState.runsProject !== projectName;
+  appState.isRunsLoading = true;
+  appState.runsProject = projectName;
+  if (isNewProject) {
+    appState.runs = [];
+    renderRunOptions();
+  }
+  try {
+    const result = await fetchApi(buildRunsUrl(projectName));
+    const runs = Array.isArray(result.runs) ? result.runs : [];
+    appState.runs = runs;
+    renderRunOptions();
+  } catch (error) {
+    setGlobalError(toErrorMessage(error));
+  } finally {
+    appState.isRunsLoading = false;
+  }
+}
+
+function renderRunOptions() {
+  if (!elements.runSelect) return;
+
+  elements.runSelect.innerHTML = "";
+  elements.runSelect.disabled = appState.runs.length === 0;
+  const placeholder = document.createElement("option");
+  placeholder.value = "";
+  placeholder.textContent = appState.runs.length > 0 ? "Recent runs" : "No runs found";
+  elements.runSelect.appendChild(placeholder);
+
+  const fragment = document.createDocumentFragment();
+  for (const run of appState.runs) {
+    const option = document.createElement("option");
+    option.value = run.runId;
+    option.textContent = formatRunOption(run);
+    fragment.appendChild(option);
+  }
+
+  elements.runSelect.appendChild(fragment);
+
+  const selected = elements.runInput.value.trim();
+  if (selected) {
+    elements.runSelect.value = selected;
+  }
+}
+
+function buildRunsUrl(projectName) {
+  return `/api/projects/${encodeURIComponent(projectName)}/runs`;
+}
+
+function formatRunOption(run) {
+  const updatedAt = run.updatedAt ? formatTimestamp(run.updatedAt) : "n/a";
+  const tasks = Number.isInteger(run.taskCount) ? `${run.taskCount} tasks` : "tasks n/a";
+  return `${run.runId} | ${run.status} | ${tasks} | ${updatedAt}`;
 }
 
 
@@ -318,4 +422,10 @@ function setErrorMessage(target, message) {
 function toErrorMessage(error) {
   if (error instanceof Error) return error.message;
   return String(error);
+}
+
+function formatTimestamp(ts) {
+  const parsed = new Date(ts);
+  if (Number.isNaN(parsed.getTime())) return ts;
+  return parsed.toISOString().replace("T", " ").replace(/\.\d+Z$/, "Z");
 }

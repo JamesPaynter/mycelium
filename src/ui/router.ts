@@ -5,6 +5,7 @@ import path from "node:path";
 import { findTaskLogDir, readJsonlFromCursor, taskEventsLogPathForId } from "../core/log-query.js";
 import { resolveRunLogsDir } from "../core/paths.js";
 import { readDoctorLogSnippet } from "../core/run-logs.js";
+import { listRunHistoryEntries } from "../core/run-history.js";
 import { loadRunStateForProject, summarizeRunState } from "../core/state-store.js";
 import { loadCodeGraphSnapshot, type CodeGraphError } from "./code-graph.js";
 
@@ -24,6 +25,7 @@ type ResolvedUiRouterOptions = UiRouterOptions & {
 };
 
 type ApiRouteMatch =
+  | { type: "runs_list"; projectName: string }
   | { type: "summary"; projectName: string; runId: string }
   | { type: "code_graph"; projectName: string; runId: string }
   | { type: "orchestrator_events"; projectName: string; runId: string }
@@ -133,8 +135,13 @@ async function handleApiRequest(
     return;
   }
 
-  if (route.projectName !== options.projectName || route.runId !== options.runId) {
+  if (route.projectName !== options.projectName) {
     sendApiError(res, 404, "not_found", "Run not found.", method === "HEAD");
+    return;
+  }
+
+  if (route.type === "runs_list") {
+    await handleRunsListRequest(res, method, url, route);
     return;
   }
 
@@ -220,6 +227,25 @@ async function handleStaticRequest(
 // =============================================================================
 // API ROUTES
 // =============================================================================
+
+async function handleRunsListRequest(
+  res: ServerResponse,
+  method: string,
+  url: URL,
+  route: { projectName: string },
+): Promise<void> {
+  const limitResult = parseOptionalPositiveInteger(url.searchParams.get("limit"));
+  if (!limitResult.ok) {
+    sendApiError(res, 400, "bad_request", "Invalid limit value.", method === "HEAD");
+    return;
+  }
+
+  const runs = await listRunHistoryEntries(route.projectName, {
+    limit: limitResult.value ?? undefined,
+  });
+
+  sendApiOk(res, { runs }, method === "HEAD");
+}
 
 async function handleSummaryRequest(
   res: ServerResponse,
@@ -524,6 +550,20 @@ async function handleValidatorReportRequest(
 
 function matchApiRoute(pathname: string): ApiRouteMatch {
   const segments = pathname.split("/").filter(Boolean);
+  if (segments.length === 4) {
+    const [api, projects, projectSegment, runs] = segments;
+    if (api !== "api" || projects !== "projects" || runs !== "runs") {
+      return { type: "not_found" };
+    }
+
+    const projectName = safeDecodeSegment(projectSegment);
+    if (!projectName) {
+      return { type: "bad_request" };
+    }
+
+    return { type: "runs_list", projectName };
+  }
+
   if (segments.length === 6) {
     const [api, projects, projectSegment, runs, runSegment, tail] = segments;
     if (api !== "api" || projects !== "projects" || runs !== "runs") {

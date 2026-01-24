@@ -106,6 +106,13 @@ function buildSummaryUrl(baseUrl: string, projectName: string, runId: string): U
   );
 }
 
+function buildRunsUrl(baseUrl: string, projectName: string): URL {
+  return new URL(
+    `/api/projects/${encodeURIComponent(projectName)}/runs`,
+    baseUrl,
+  );
+}
+
 function buildOrchestratorEventsUrl(baseUrl: string, projectName: string, runId: string): URL {
   return new URL(
     `/api/projects/${encodeURIComponent(projectName)}/runs/${encodeURIComponent(
@@ -173,6 +180,15 @@ describe("UI server", () => {
     expect(summaryPayload.result.runId).toBe(runId);
     expect(summaryPayload.result.status).toBe("running");
     expect(summaryPayload.result.tasks[0].id).toBe(taskId);
+
+    const runsResponse = await fetch(buildRunsUrl(baseUrl, projectName));
+    const runsPayload = await runsResponse.json();
+
+    expect(runsResponse.status).toBe(200);
+    expect(runsPayload.ok).toBe(true);
+    expect(runsPayload.result.runs).toEqual(
+      expect.arrayContaining([expect.objectContaining({ runId })]),
+    );
 
     const eventsUrl = buildOrchestratorEventsUrl(baseUrl, projectName, runId);
     eventsUrl.searchParams.set("cursor", "0");

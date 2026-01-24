@@ -15,6 +15,7 @@ import {
   type TaskStatus,
 } from "./state.js";
 import { isoNow } from "./utils.js";
+import { recordRunHistory } from "./run-history.js";
 
 export type BatchStatusCounts = {
   total: number;
@@ -93,6 +94,10 @@ export class StateStore {
 
   async save(state: RunState): Promise<void> {
     await saveRunState(this.statePathValue, state, this.tempPath());
+    await recordRunHistory(state, this.statePathValue).catch((err) => {
+      const detail = err instanceof Error ? err.message : String(err);
+      console.warn(`Warning: failed to update run history for ${this.runId}. ${detail}`);
+    });
   }
 
   async loadAndRecover(reason?: string): Promise<RunState> {

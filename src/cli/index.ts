@@ -11,6 +11,7 @@ import { registerLogsCommand } from "./logs.js";
 import { planProject } from "./plan.js";
 import { resumeCommand } from "./resume.js";
 import { runCommand } from "./run.js";
+import { registerRunsCommand } from "./runs.js";
 import { statusCommand } from "./status.js";
 import { uiCommand } from "./ui.js";
 
@@ -47,6 +48,7 @@ export function buildCli(): Command {
 
   registerLogsCommand(program);
   registerControlPlaneCommand(program);
+  registerRunsCommand(program);
 
   program
     .command("init")

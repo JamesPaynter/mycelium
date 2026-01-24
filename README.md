@@ -45,6 +45,7 @@ npm run dev -- autopilot --project <project-name> --local-worker --max-parallel 
 | `run [--tasks 001,002]` | Execute tasks (Docker by default, `--local-worker` for host mode), enforce manifest policy, merge batches, run integration doctor; Ctrl+C logs `run.stop`, flushes state, and leaves containers running for `resume` (add `--stop-containers-on-exit` to stop them). |
 | `resume [--run-id <id>]` | Reload run state, reattach to running containers when present, reset missing ones to pending, and continue with the same Ctrl+C stop semantics as `run`. |
 | `status` | Summarize run state (task counts, human-review queue, budgets). |
+| `runs list` | List recorded runs (ids, status, timestamps) for a project. |
 | `logs [query|search|timeline|failures|doctor|summarize]` | Inspect JSONL logs directly or via SQLite index (`--use-index`). |
 | `clean` | Remove workspaces/containers/logs for a run (`--dry-run` and `--force` available). |
 
