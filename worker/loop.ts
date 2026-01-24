@@ -22,7 +22,7 @@ import { WorkerStateStore } from "./state.js";
 export type TaskManifest = {
   id: string;
   name: string;
-  verify?: { doctor?: string; fast?: string };
+  verify?: { doctor?: string; fast?: string; lint?: string };
   tdd_mode?: "off" | "strict";
   test_paths?: string[];
   affected_tests?: string[];
@@ -35,6 +35,8 @@ export type WorkerConfig = {
   taskBranch?: string;
   specPath: string;
   manifestPath: string;
+  lintCmd?: string;
+  lintTimeoutSeconds?: number;
   doctorCmd: string;
   doctorTimeoutSeconds?: number;
   maxRetries: number;
@@ -123,9 +125,10 @@ export async function runWorker(config: WorkerConfig, logger?: WorkerLogger): Pr
 
   const strictTddEnabled = manifest.tdd_mode === "strict";
   const testPaths = resolveTestPaths(manifest.test_paths, config.defaultTestPaths);
+  const lintCommand = resolveLintCommand(manifest, config.lintCmd);
 
   let fastFailureOutput: string | null = null;
-  let lastDoctorOutput = "";
+  let lastFailure: { type: "lint" | "doctor"; output: string } | null = null;
   let loggedResumeEvent = false;
 
   if (strictTddEnabled) {
@@ -176,7 +179,11 @@ export async function runWorker(config: WorkerConfig, logger?: WorkerLogger): Pr
             ? { stage: "implementation", testPaths, fastFailureOutput: fastFailureOutput ?? undefined }
             : undefined,
         })
-      : buildRetryPrompt({ spec, lastDoctorOutput, failedAttempt: attempt - 1 });
+      : buildRetryPrompt({
+          spec,
+          lastFailure: lastFailure ?? { type: "doctor", output: "" },
+          failedAttempt: attempt - 1,
+        });
 
     loggedResumeEvent = await runCodexTurn({
       attempt,
@@ -203,6 +210,49 @@ export async function runWorker(config: WorkerConfig, logger?: WorkerLogger): Pr
         attempt,
         payload: { reason: "disabled" },
       });
+    }
+
+    if (lintCommand) {
+      const lintPayload: JsonObject = { command: lintCommand };
+      if (config.lintTimeoutSeconds !== undefined) {
+        lintPayload.timeout_seconds = config.lintTimeoutSeconds;
+      }
+
+      log.log({ type: "lint.start", attempt, payload: lintPayload });
+
+      const lint = await runVerificationCommand({
+        command: lintCommand,
+        cwd: config.workingDirectory,
+        timeoutSeconds: config.lintTimeoutSeconds,
+        env: commandEnv,
+      });
+
+      const lintOutput = lint.output.trim();
+      writeRunLog(
+        config.runLogsDir,
+        `lint-attempt-${safeAttemptName(attempt)}.log`,
+        lintOutput + "\n",
+      );
+
+      if (lint.exitCode === 0) {
+        log.log({ type: "lint.pass", attempt });
+      } else {
+        const lintPromptOutput = lintOutput.slice(0, DOCTOR_PROMPT_LIMIT);
+        lastFailure = { type: "lint", output: lintPromptOutput };
+        log.log({
+          type: "lint.fail",
+          attempt,
+          payload: {
+            exit_code: lint.exitCode,
+            summary: lintPromptOutput.slice(0, 500),
+          },
+        });
+
+        if (attempt < config.maxRetries) {
+          log.log({ type: "task.retry", attempt: attempt + 1 });
+        }
+        continue;
+      }
     }
 
     const doctorPayload: JsonObject = { command: config.doctorCmd };
@@ -239,13 +289,13 @@ export async function runWorker(config: WorkerConfig, logger?: WorkerLogger): Pr
       return;
     }
 
-    lastDoctorOutput = doctorOutput.slice(0, DOCTOR_PROMPT_LIMIT);
+    lastFailure = { type: "doctor", output: doctorOutput.slice(0, DOCTOR_PROMPT_LIMIT) };
     log.log({
       type: "doctor.fail",
       attempt,
       payload: {
         exit_code: doctor.exitCode,
-        summary: lastDoctorOutput.slice(0, 500),
+        summary: lastFailure.output.slice(0, 500),
       },
     });
 
@@ -340,17 +390,28 @@ function buildInitialPrompt(args: {
 
 function buildRetryPrompt(args: {
   spec: string;
-  lastDoctorOutput: string;
+  lastFailure: { type: "lint" | "doctor"; output: string };
   failedAttempt: number;
 }): string {
-  const doctorText = args.lastDoctorOutput.trim() || "<no doctor output captured>";
+  const failureOutput = args.lastFailure.output.trim();
+  const outputLabel = args.lastFailure.type === "lint" ? "Lint output:" : "Doctor output:";
+  const failureLabel = args.lastFailure.type === "lint" ? "lint command" : "doctor command";
+  const outputText =
+    failureOutput.length > 0
+      ? failureOutput
+      : `<no ${args.lastFailure.type} output captured>`;
+  const guidance =
+    args.lastFailure.type === "lint"
+      ? "Fix the lint issues. Then re-run lint and doctor until they pass."
+      : "Re-read the task spec and fix the issues. Then re-run doctor until it passes.";
+
   return [
-    `The doctor command failed on attempt ${args.failedAttempt}.`,
+    `The ${failureLabel} failed on attempt ${args.failedAttempt}.`,
     "",
-    "Doctor output:",
-    doctorText,
+    outputLabel,
+    outputText,
     "",
-    "Re-read the task spec and fix the issues. Then re-run doctor until it passes.",
+    guidance,
     "",
     "Task spec:",
     args.spec.trim(),
@@ -652,6 +713,14 @@ async function runVerificationCommand(args: {
   const exitCode = res.exitCode ?? -1;
   const output = `${res.stdout}\n${res.stderr}`.trim();
   return { exitCode, output };
+}
+
+function resolveLintCommand(manifest: TaskManifest, fallback?: string): string | undefined {
+  const manifestLint = manifest.verify?.lint?.trim() ?? "";
+  if (manifestLint.length > 0) return manifestLint;
+
+  const fallbackLint = fallback?.trim() ?? "";
+  return fallbackLint.length > 0 ? fallbackLint : undefined;
 }
 
 async function ensureGitIdentity(cwd: string, log: WorkerLogger): Promise<void> {

@@ -16,6 +16,8 @@ type CliOptions = {
   taskDir?: string;
   manifest?: string;
   spec?: string;
+  lint?: string;
+  lintTimeout?: number;
   doctor?: string;
   maxRetries?: number;
   doctorTimeout?: number;
@@ -43,6 +45,12 @@ export async function main(argv: string[]): Promise<void> {
     )
     .option("--manifest <path>", "Path to manifest.json (env: TASK_MANIFEST_PATH)")
     .option("--spec <path>", "Path to spec.md (env: TASK_SPEC_PATH)")
+    .option("--lint <cmd>", "Lint command to run before doctor (env: LINT_CMD)")
+    .option(
+      "--lint-timeout <seconds>",
+      "Lint timeout in seconds (env: LINT_TIMEOUT)",
+      (v) => parseInt(v, 10),
+    )
     .option("--doctor <cmd>", "Doctor command to run (env: DOCTOR_CMD)")
     .option(
       "--max-retries <n>",
@@ -134,11 +142,19 @@ function buildConfig(opts: CliOptions): WorkerConfig {
     throw new Error("DOCTOR_CMD is required (set DOCTOR_CMD or pass --doctor).");
   }
 
+  const lintCmd = (opts.lint ?? envOrUndefined("LINT_CMD"))?.trim() || undefined;
+
   const maxRetries =
     getIntOption(opts.maxRetries, envOrUndefined("MAX_RETRIES"), "MAX_RETRIES") ?? 20;
   if (maxRetries <= 0) {
     throw new Error("MAX_RETRIES must be a positive integer.");
   }
+
+  const lintTimeoutSeconds = getIntOption(
+    opts.lintTimeout,
+    envOrUndefined("LINT_TIMEOUT"),
+    "LINT_TIMEOUT",
+  );
 
   const doctorTimeoutSeconds = getIntOption(
     opts.doctorTimeout,
@@ -173,6 +189,8 @@ function buildConfig(opts: CliOptions): WorkerConfig {
     taskBranch,
     specPath,
     manifestPath,
+    lintCmd,
+    lintTimeoutSeconds,
     doctorCmd,
     doctorTimeoutSeconds,
     maxRetries,

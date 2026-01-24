@@ -172,6 +172,8 @@ export const ProjectConfigSchema = z
     max_retries: z.number().int().positive().default(20),
     timeout_minutes: z.number().int().positive().optional(),
 
+    lint: z.string().min(1).optional(),
+    lint_timeout: z.number().int().positive().optional(),
     doctor: z.string().min(1),
     doctor_timeout: z.number().int().positive().optional(),
     doctor_canary: DoctorCanarySchema.default({}),

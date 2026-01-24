@@ -2504,6 +2504,8 @@ export async function runProject(
           task.manifest.name,
         );
         const defaultDoctorCommand = task.manifest.verify?.doctor ?? config.doctor;
+        const defaultLintCommand = task.manifest.verify?.lint ?? config.lint;
+        const lintCommand = defaultLintCommand?.trim() || undefined;
         const policyResult = controlPlaneConfig.enabled
           ? computeTaskPolicyDecision({
               task,
@@ -2662,6 +2664,8 @@ export async function runProject(
                 "spec.md",
               ),
               TASK_BRANCH: branchName,
+              LINT_CMD: lintCommand,
+              LINT_TIMEOUT: config.lint_timeout ? String(config.lint_timeout) : undefined,
               DOCTOR_CMD: doctorCommand,
               DOCTOR_TIMEOUT: config.doctor_timeout ? String(config.doctor_timeout) : undefined,
               MAX_RETRIES: String(config.max_retries),
@@ -2779,6 +2783,8 @@ export async function runProject(
               taskBranch: branchName,
               manifestPath,
               specPath,
+              lintCmd: lintCommand,
+              lintTimeoutSeconds: config.lint_timeout,
               doctorCmd: doctorCommand,
               doctorTimeoutSeconds: config.doctor_timeout,
               maxRetries: config.max_retries,

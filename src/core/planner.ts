@@ -77,8 +77,9 @@ const PlannerOutputJsonSchema = {
             properties: {
               doctor: { type: "string" },
               fast: { type: "string" },
+              lint: { type: "string" },
             },
-            required: ["doctor", "fast"],
+            required: ["doctor"],
             additionalProperties: false,
           },
           spec: { type: "string" },
@@ -137,6 +138,7 @@ export async function planFromImplementationPlan(args: {
       repo_path: repoPath,
       resources: resourcesBlock,
       doctor_command: config.doctor,
+      lint_command: config.lint ?? "",
       implementation_plan: implementationPlan,
       codebase_tree: codebaseTree,
     });

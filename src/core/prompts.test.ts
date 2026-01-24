@@ -6,6 +6,7 @@ const plannerContext = {
   project_name: "Sample Project",
   repo_path: "/workspace/sample",
   resources: "- **app**: main application\n  - Paths: src/app.ts",
+  lint_command: "npm run lint",
   doctor_command: "npm test",
   implementation_plan: "1. Do a thing\n2. Do another thing",
   codebase_tree: "src/app.ts\nsrc/index.ts",
@@ -18,6 +19,7 @@ describe("renderPromptTemplate", () => {
     expect(prompt).toContain("Sample Project");
     expect(prompt).toContain("/workspace/sample");
     expect(prompt).toContain("main application");
+    expect(prompt).toContain("npm run lint");
     expect(prompt).toContain("npm test");
     expect(prompt).toContain("implementation plan");
     expect(prompt).not.toMatch(/\{\{.+\}\}/);

@@ -7,6 +7,11 @@ You are a planning agent. Convert the implementation plan into structured, execu
 ## Project Resources
 {{resources}}
 
+## Lint
+{{#if lint_command}}
+- Lint command: {{lint_command}}
+{{/if}}
+
 ## Output Schema
 Return JSON only with this shape:
 {
@@ -29,6 +34,9 @@ Return JSON only with this shape:
       "tdd_mode": "off",
       "affected_tests": ["path/to/test"],
       "verify": {
+{{#if lint_command}}
+        "lint": "{{lint_command}}",
+{{/if}}
         "doctor": "{{doctor_command}}",
         "fast": "pytest path/to/specific_test.py -x"
       },
@@ -46,7 +54,8 @@ Return JSON only with this shape:
 6. Specs must include file paths, symbol names, patterns to follow, edge cases, and verification commands.
 7. Identify affected tests; if new tests are needed, name them and include them in files.writes.
 8. When `tdd_mode` is `strict`, include test_paths, populate affected_tests, and describe the tests-first plan before implementation steps.
-9. Do not add commentary; output valid JSON that matches the schema exactly.
+9. If a lint command is provided, include it under verify.lint in each task.
+10. Do not add commentary; output valid JSON that matches the schema exactly.
 
 ## Inputs
 ### Implementation Plan

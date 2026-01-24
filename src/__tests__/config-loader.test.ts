@@ -73,6 +73,32 @@ docker:
     }
   });
 
+  it("parses lint command and timeout when provided", () => {
+    const configPath = writeConfig(
+      "lint.yaml",
+      `
+repo_path: /tmp/repo
+main_branch: development-codex
+lint: "npm run lint"
+lint_timeout: 600
+doctor: "npm test"
+resources:
+  - name: backend
+    paths: ["server/*"]
+planner:
+  provider: openai
+  model: o3
+worker:
+  model: gpt-5.1-codex-max
+`,
+    );
+
+    const config = loadProjectConfig(configPath);
+
+    expect(config.lint).toBe("npm run lint");
+    expect(config.lint_timeout).toBe(600);
+  });
+
   it("throws a helpful error when an environment variable is missing", () => {
     const configPath = writeConfig(
       "missing-env.yaml",

@@ -22,6 +22,7 @@ export const VerifySchema = z
   .object({
     doctor: z.string().min(1),
     fast: z.string().optional(),
+    lint: z.string().min(1).optional(),
   })
   .strict();
 
@@ -179,6 +180,7 @@ export function normalizeTaskManifest(manifest: TaskManifest): TaskManifest {
 
   const doctor = manifest.verify.doctor.trim();
   const fast = manifest.verify.fast?.trim();
+  const lint = manifest.verify.lint?.trim();
 
   return {
     ...manifest,
@@ -190,7 +192,11 @@ export function normalizeTaskManifest(manifest: TaskManifest): TaskManifest {
     affected_tests: affectedTests,
     test_paths: testPaths,
     tdd_mode: tddMode,
-    verify: fast ? { doctor, fast } : { doctor },
+    verify: {
+      doctor,
+      ...(fast ? { fast } : {}),
+      ...(lint ? { lint } : {}),
+    },
   };
 }
 

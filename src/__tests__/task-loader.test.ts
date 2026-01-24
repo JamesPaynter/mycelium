@@ -96,6 +96,21 @@ describe("loadTaskSpecs", () => {
     await expect(loadTaskSpecs(root, ".tasks")).rejects.toBeInstanceOf(TaskError);
   });
 
+  it("accepts optional verify.lint entries", async () => {
+    const { root, tasksDir } = createLegacyTasksDir();
+
+    writeTask(tasksDir, "005", {
+      ...baseManifest,
+      id: "005",
+      verify: { doctor: "npm test", lint: "npm run lint" },
+    });
+
+    const { tasks, errors } = await loadTaskSpecs(root, ".tasks");
+
+    expect(errors).toHaveLength(0);
+    expect(tasks[0]?.manifest.verify).toEqual({ doctor: "npm test", lint: "npm run lint" });
+  });
+
   it("loads tasks from backlog and active when backlog exists", async () => {
     const { root, tasksDir, backlogDir, activeDir, archiveDir } = createKanbanTasksDir();
 
