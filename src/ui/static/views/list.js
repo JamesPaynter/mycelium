@@ -317,6 +317,7 @@ export function renderTaskInspector(container, appState, options = {}) {
   const { fetchApi, showCloseButton = false, onClose } = options;
   const EVENTS_POLL_INTERVAL_MS = 2000;
   const MAX_EVENTS_PER_VIEW = 240;
+  const SUMMARY_MAX_LENGTH = 140;
 
   if (!container) {
     return buildNoopInspector();
@@ -327,6 +328,8 @@ export function renderTaskInspector(container, appState, options = {}) {
     eventsByKey: new Map(),
     cursorByKey: new Map(),
     truncatedByKey: new Map(),
+    renderSignatureByKey: new Map(),
+    lastRenderedKey: "",
     lastEventByTask: new Map(),
     eventsTimerId: null,
     isEventsLoading: false,
@@ -406,6 +409,8 @@ export function renderTaskInspector(container, appState, options = {}) {
     viewState.eventsByKey.clear();
     viewState.cursorByKey.clear();
     viewState.truncatedByKey.clear();
+    viewState.renderSignatureByKey.clear();
+    viewState.lastRenderedKey = "";
     viewState.lastEventByTask.clear();
 
     stopEventsPolling();
@@ -668,6 +673,7 @@ export function renderTaskInspector(container, appState, options = {}) {
       elements.eventsList.innerHTML = "";
       elements.eventsMeta.textContent = "Awaiting events.";
       elements.cursorInfo.textContent = "Cursor: —";
+      viewState.lastRenderedKey = "";
       return;
     }
 
@@ -675,6 +681,15 @@ export function renderTaskInspector(container, appState, options = {}) {
     const events = viewState.eventsByKey.get(key) ?? [];
     const cursor = viewState.cursorByKey.get(key) ?? 0;
     const truncated = viewState.truncatedByKey.get(key);
+    const renderSignature = buildRenderSignature(cursor, events, truncated);
+    const previousSignature = viewState.renderSignatureByKey.get(key);
+    const isNewKey = key !== viewState.lastRenderedKey;
+
+    if (!isNewKey && renderSignature === previousSignature) {
+      return;
+    }
+
+    const openEventIds = captureOpenEventIds();
 
     elements.eventsList.innerHTML = "";
     if (events.length === 0) {
@@ -687,6 +702,8 @@ export function renderTaskInspector(container, appState, options = {}) {
       elements.eventsList.appendChild(fragment);
     }
 
+    restoreOpenEventIds(openEventIds);
+
     const lastEvent = events[events.length - 1];
     const lastEventTime = lastEvent ? formatTimestamp(lastEvent.ts) : "—";
     const tailStatus = isTailPaused() ? "paused" : "polling";
@@ -694,6 +711,8 @@ export function renderTaskInspector(container, appState, options = {}) {
 
     elements.eventsMeta.textContent = `Last event: ${lastEventTime} • Tail ${tailStatus}${truncatedNote}`;
     elements.cursorInfo.textContent = `Cursor: ${cursor}`;
+    viewState.renderSignatureByKey.set(key, renderSignature);
+    viewState.lastRenderedKey = key;
   }
 
   function updateEventsStatus() {
@@ -1079,12 +1098,144 @@ export function renderTaskInspector(container, appState, options = {}) {
     }
   }
 
-  function extractEventMessage(event) {
+  function getEventStableId(event) {
+    const raw = typeof event.raw === "string" ? event.raw : "";
+    if (raw) {
+      return hashString(raw);
+    }
+
+    try {
+      return hashString(JSON.stringify(event));
+    } catch (error) {
+      return "event-unknown";
+    }
+  }
+
+  function buildRenderSignature(cursor, events, truncated) {
+    const lastEvent = events[events.length - 1];
+    const lastEventId = lastEvent ? getEventStableId(lastEvent) : "";
+    const truncatedFlag = truncated ? "1" : "0";
+    return `${cursor}|${events.length}|${lastEventId}|${truncatedFlag}`;
+  }
+
+  function captureOpenEventIds() {
+    const openCards = elements.eventsList.querySelectorAll("details.event-card[open]");
+    const openEventIds = new Set();
+    for (const card of openCards) {
+      const eventId = card.dataset.eventId;
+      if (eventId) {
+        openEventIds.add(eventId);
+      }
+    }
+    return openEventIds;
+  }
+
+  function restoreOpenEventIds(openEventIds) {
+    if (!openEventIds || openEventIds.size === 0) {
+      return;
+    }
+
+    const cards = elements.eventsList.querySelectorAll("details.event-card");
+    for (const card of cards) {
+      if (openEventIds.has(card.dataset.eventId)) {
+        card.open = true;
+      }
+    }
+  }
+
+  function getCodexInnerEvent(event) {
+    if (event.type !== "codex.event") {
+      return null;
+    }
+
+    const payload = getEventPayload(event);
+    if (!payload || typeof payload.event !== "object" || payload.event === null) {
+      return null;
+    }
+
+    return payload.event;
+  }
+
+  function getEventDisplayType(event) {
+    const innerEvent = getCodexInnerEvent(event);
+    if (innerEvent && typeof innerEvent.type === "string" && innerEvent.type.trim()) {
+      return innerEvent.type.trim();
+    }
+
+    return event.type;
+  }
+
+  function getEventPayload(event) {
     if (!event.payload || typeof event.payload !== "object") {
+      return null;
+    }
+
+    return event.payload;
+  }
+
+  function extractEventMessage(event) {
+    const payload = getEventPayload(event);
+    if (!payload) {
       return "";
     }
 
-    const payload = event.payload;
+    if (event.type === "codex.prompt") {
+      const preview = extractFirstStringField(payload, ["preview"]);
+      if (preview) {
+        return formatSummaryText(preview);
+      }
+    }
+
+    const innerEvent = getCodexInnerEvent(event);
+    if (innerEvent) {
+      const summary = summarizeCodexInnerEvent(innerEvent);
+      if (summary) {
+        return summary;
+      }
+    }
+
+    return extractMessageFromPayload(payload);
+  }
+
+  function summarizeCodexInnerEvent(innerEvent) {
+    const innerType = typeof innerEvent.type === "string" ? innerEvent.type.toLowerCase() : "";
+    const toolName = extractFirstStringField(innerEvent, [
+      "tool_name",
+      "name",
+      "command",
+      "toolName",
+    ]);
+
+    const isToolEvent =
+      Boolean(toolName) ||
+      innerType.includes("tool") ||
+      innerType.includes("function") ||
+      innerType.includes("command");
+
+    if (isToolEvent) {
+      const argsValue = extractFirstFieldValue(innerEvent, ["args", "arguments", "input", "params"]);
+      const argsPreview = formatArgsPreview(argsValue);
+      const namePreview = toolName || "unknown";
+      const summary = `tool: ${namePreview}${argsPreview ? " " + argsPreview : ""}`;
+      return formatSummaryText(summary);
+    }
+
+    const isThinkingEvent = innerType.includes("thought") || innerType.includes("thinking");
+    const textPreview = extractFirstStringField(innerEvent, ["text", "content", "delta", "message"]);
+
+    if (isThinkingEvent) {
+      const summary = textPreview ? `*thinking* ${textPreview}` : "*thinking*";
+      return formatSummaryText(summary);
+    }
+
+    if (textPreview) {
+      return formatSummaryText(textPreview);
+    }
+
+    return "";
+  }
+
+  function extractMessageFromPayload(payload) {
     const candidates = [
       payload.message,
       payload.summary,
@@ -1104,9 +1255,89 @@ export function renderTaskInspector(container, appState, options = {}) {
     return "";
   }
 
+  function extractFirstStringField(source, fields) {
+    if (!source || typeof source !== "object") {
+      return "";
+    }
+
+    for (const field of fields) {
+      const value = source[field];
+      if (typeof value === "string" && value.trim()) {
+        return value.trim();
+      }
+    }
+
+    return "";
+  }
+
+  function extractFirstFieldValue(source, fields) {
+    if (!source || typeof source !== "object") {
+      return null;
+    }
+
+    for (const field of fields) {
+      const value = source[field];
+      if (value === null || value === undefined) {
+        continue;
+      }
+      if (typeof value === "string" && !value.trim()) {
+        continue;
+      }
+      return value;
+    }
+
+    return null;
+  }
+
+  function formatArgsPreview(value) {
+    if (value === null || value === undefined) {
+      return "";
+    }
+
+    if (typeof value === "string") {
+      return value.trim();
+    }
+
+    if (typeof value === "number" || typeof value === "boolean") {
+      return String(value);
+    }
+
+    try {
+      return JSON.stringify(value);
+    } catch (error) {
+      return String(value);
+    }
+  }
+
+  function hashString(value) {
+    let hash = 5381;
+    for (let index = 0; index < value.length; index += 1) {
+      hash = (hash << 5) + hash + value.charCodeAt(index);
+    }
+    return `event-${(hash >>> 0).toString(36)}`;
+  }
+
+  function formatSummaryText(text) {
+    if (!text) {
+      return "";
+    }
+
+    const normalized = String(text).replace(/\s+/g, " ").trim();
+    if (!normalized) {
+      return "";
+    }
+
+    if (normalized.length <= SUMMARY_MAX_LENGTH) {
+      return normalized;
+    }
+
+    return `${normalized.slice(0, SUMMARY_MAX_LENGTH - 3).trimEnd()}...`;
+  }
+
   function buildEventCard(event) {
     const card = document.createElement("details");
     card.className = "event-card";
+    card.dataset.eventId = getEventStableId(event);
 
     const summary = document.createElement("summary");
     const meta = document.createElement("div");
@@ -1118,7 +1349,7 @@ export function renderTaskInspector(container, appState, options = {}) {
 
     const type = document.createElement("span");
     type.className = "event-type";
-    type.textContent = event.type;
+    type.textContent = getEventDisplayType(event);
 
     const message = document.createElement("span");
     message.className = "event-message";
