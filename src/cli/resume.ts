@@ -12,7 +12,13 @@ import {
 
 type ResumeOptions = Pick<
   RunOptions,
-  "maxParallel" | "dryRun" | "buildImage" | "useDocker" | "stopContainersOnExit"
+  | "maxParallel"
+  | "dryRun"
+  | "buildImage"
+  | "useDocker"
+  | "stopContainersOnExit"
+  | "reuseCompleted"
+  | "importRun"
 > & {
   runId?: string;
   ui?: boolean;
@@ -71,6 +77,8 @@ export async function resumeCommand(
       buildImage: opts.buildImage,
       useDocker: opts.useDocker,
       stopContainersOnExit: opts.stopContainersOnExit,
+      reuseCompleted: opts.reuseCompleted,
+      importRun: opts.importRun,
       stopSignal: stopHandler.signal,
       resume: true,
     });

@@ -1,6 +1,7 @@
 import path from "node:path";
 
 import { execa, execaCommand } from "execa";
+import fg from "fast-glob";
 import fse from "fs-extra";
 
 import {
@@ -15,7 +16,7 @@ import {
 } from "../docker/docker.js";
 import { buildWorkerImage } from "../docker/image.js";
 import { streamContainerLogs, type LogStreamHandle } from "../docker/streams.js";
-import { ensureCleanWorkingTree, checkout, resolveRunBaseSha } from "../git/git.js";
+import { ensureCleanWorkingTree, checkout, resolveRunBaseSha, headSha, isAncestor } from "../git/git.js";
 import { mergeTaskBranches } from "../git/merge.js";
 import { buildTaskBranchName } from "../git/branches.js";
 import { listChangedFiles } from "../git/changes.js";
@@ -56,8 +57,16 @@ import {
   resolveTaskDir,
   resolveTaskManifestPath,
   resolveTaskSpecPath,
+  resolveTasksArchiveDir,
 } from "./task-layout.js";
-import { computeTaskFingerprint, upsertLedgerEntry } from "./task-ledger.js";
+import {
+  computeTaskFingerprint,
+  importLedgerFromRunState,
+  loadTaskLedger,
+  upsertLedgerEntry,
+  type TaskLedger,
+  type TaskLedgerEntry,
+} from "./task-ledger.js";
 import {
   orchestratorHome,
   orchestratorLogPath,
@@ -174,6 +183,8 @@ function buildContainerLabels(values: {
 export type RunOptions = {
   runId?: string;
   resume?: boolean;
+  reuseCompleted?: boolean;
+  importRun?: string;
   tasks?: string[]; // limit to IDs
   maxParallel?: number;
   dryRun?: boolean;
@@ -930,6 +941,8 @@ export async function runProject(
 
   try {
     const isResume = opts.resume ?? false;
+    const reuseCompleted = opts.reuseCompleted ?? !isResume;
+    const importRunId = opts.importRun;
     let runId: string;
 
     if (isResume) {
@@ -1116,11 +1129,13 @@ export async function runProject(
 
   // Load tasks.
   let tasks: TaskSpec[];
+  let taskCatalog: TaskSpec[];
   try {
     const res = await loadTaskSpecs(repoPath, config.tasks_dir, {
       knownResources: resourceContext.knownResources,
     });
     tasks = res.tasks;
+    taskCatalog = res.tasks;
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     logOrchestratorEvent(orchLog, "run.tasks_invalid", { message });
@@ -1271,6 +1286,90 @@ export async function runProject(
       reason: runResumeReason,
       runningTasks,
     });
+  }
+
+  const ledgerEligibilityCache = new Map<string, LedgerEligibilityResult>();
+  const ledgerReachabilityCache = new Map<string, boolean>();
+  const ledgerFingerprintCache = new Map<string, string>();
+  let ledgerLoaded = false;
+  let ledgerSnapshot: TaskLedger | null = null;
+  let ledgerHeadSha: string | null = null;
+  let taskFileIndex: Map<string, TaskFileLocation> | null = null;
+
+  const ensureLedgerContext = async (): Promise<LedgerContext> => {
+    if (!ledgerLoaded) {
+      ledgerSnapshot = await loadTaskLedger(projectName);
+      ledgerLoaded = true;
+    }
+    if (!ledgerHeadSha) {
+      ledgerHeadSha = await headSha(repoPath);
+    }
+    if (!taskFileIndex) {
+      taskFileIndex = await buildTaskFileIndex({
+        tasksRoot: tasksRootAbs,
+        tasks: taskCatalog,
+      });
+    }
+
+    return {
+      ledger: ledgerSnapshot,
+      headSha: ledgerHeadSha,
+      taskFileIndex,
+    };
+  };
+
+  if (importRunId) {
+    logOrchestratorEvent(orchLog, "ledger.import.start", { run_id: importRunId });
+    const importStore = new StateStore(projectName, importRunId);
+    if (!(await importStore.exists())) {
+      logOrchestratorEvent(orchLog, "ledger.import.error", {
+        run_id: importRunId,
+        message: "Run state not found for import.",
+      });
+      throw new Error(`Cannot import run ${importRunId}: state file not found.`);
+    }
+
+    const importState = await importStore.load();
+    const importResult = await importLedgerFromRunState({
+      projectName,
+      repoPath,
+      runId: importRunId,
+      tasks: taskCatalog,
+      state: importState,
+    });
+    logOrchestratorEvent(orchLog, "ledger.import.complete", {
+      run_id: importRunId,
+      imported: importResult.imported,
+      skipped: importResult.skipped,
+    });
+  }
+
+  const shouldSeedFromLedger = reuseCompleted && (!hadExistingState || isResume);
+  if (shouldSeedFromLedger) {
+    const ledgerContext = await ensureLedgerContext();
+    const seedResult = await seedRunFromLedger({
+      tasks,
+      state,
+      ledger: ledgerContext.ledger,
+      repoPath,
+      headSha: ledgerContext.headSha,
+      taskFileIndex: ledgerContext.taskFileIndex,
+      eligibilityCache: ledgerEligibilityCache,
+      reachabilityCache: ledgerReachabilityCache,
+      fingerprintCache: ledgerFingerprintCache,
+    });
+
+    for (const seeded of seedResult.seeded) {
+      logOrchestratorEvent(orchLog, "task.seeded_complete", {
+        task_id: seeded.taskId,
+        merge_commit: seeded.entry.mergeCommit,
+        ledger_run_id: seeded.entry.runId,
+      });
+    }
+
+    if (seedResult.seeded.length > 0) {
+      await stateStore.save(state);
+    }
   }
 
   const resolveStopReason = (): StopRequest | null => {
@@ -2782,6 +2881,7 @@ export async function runProject(
     return stopReason;
   }
 
+  const externalDepsLogged = new Set<string>();
   let batchId = Math.max(0, ...state.batches.map((b) => b.batch_id));
   while (true) {
     const stopResult = await stopIfRequested();
@@ -2817,11 +2917,47 @@ export async function runProject(
     const pendingTasks = tasks.filter((t) => state.tasks[t.manifest.id]?.status === "pending");
     if (pendingTasks.length === 0) break;
 
-    const ready = topologicalReady(pendingTasks, completed);
+    let externalCompletedDeps = new Set<string>();
+    if (reuseCompleted) {
+      const ledgerContext = await ensureLedgerContext();
+      const externalDeps = await resolveExternalCompletedDeps({
+        pendingTasks,
+        state,
+        ledger: ledgerContext.ledger,
+        repoPath,
+        headSha: ledgerContext.headSha,
+        taskFileIndex: ledgerContext.taskFileIndex,
+        eligibilityCache: ledgerEligibilityCache,
+        reachabilityCache: ledgerReachabilityCache,
+        fingerprintCache: ledgerFingerprintCache,
+      });
+
+      externalCompletedDeps = externalDeps.externalCompleted;
+      for (const [taskId, deps] of externalDeps.satisfiedByTask.entries()) {
+        if (externalDepsLogged.has(taskId)) continue;
+        externalDepsLogged.add(taskId);
+        logOrchestratorEvent(orchLog, "deps.external_satisfied", {
+          task_id: taskId,
+          deps: deps.map((dep) => ({
+            dep_id: dep.depId,
+            merge_commit: dep.mergeCommit,
+            ledger_run_id: dep.runId,
+            completed_at: dep.completedAt,
+          })),
+        });
+      }
+    }
+
+    const effectiveCompleted = new Set([...completed, ...externalCompletedDeps]);
+    const ready = topologicalReady(pendingTasks, effectiveCompleted);
     if (ready.length === 0) {
-      const blockedInfo = collectBlockedDependencies(pendingTasks, state, completed);
-      if (blockedInfo.blocked.length > 0 && !blockedInfo.hasNonBlockedDeps) {
-        const blockedTasksPayload = blockedInfo.blocked.map((entry) => ({
+      const dependencyIssues = collectDependencyIssues(pendingTasks, state, effectiveCompleted);
+      if (
+        dependencyIssues.blocked.length > 0 &&
+        dependencyIssues.missing.length === 0 &&
+        dependencyIssues.pending.length === 0
+      ) {
+        const blockedTasksPayload = dependencyIssues.blocked.map((entry) => ({
           task_id: entry.taskId,
           unmet_deps: entry.unmetDeps.map((dep) => ({
             dep_id: dep.depId,
@@ -2844,8 +2980,35 @@ export async function runProject(
         break;
       }
 
-      logOrchestratorEvent(orchLog, "run.deadlock", {
-        message: "No dependency-satisfied tasks remaining. Check dependencies field.",
+      if (dependencyIssues.missing.length > 0) {
+        const missingPayload = dependencyIssues.missing.map((entry) => ({
+          task_id: entry.taskId,
+          missing_deps: entry.missingDeps,
+        }));
+        logOrchestratorEvent(orchLog, "run.blocked", {
+          reason: "missing_dependencies",
+          message:
+            "No dependency-satisfied tasks remain; some dependencies are missing from this run.",
+          pending_task_count: pendingTasks.length,
+          blocked_task_count: missingPayload.length,
+          blocked_tasks: missingPayload,
+        });
+        state.status = "failed";
+        await stateStore.save(state);
+        break;
+      }
+
+      const pendingPayload = dependencyIssues.pending.map((entry) => ({
+        task_id: entry.taskId,
+        pending_deps: entry.pendingDeps,
+      }));
+      logOrchestratorEvent(orchLog, "run.blocked", {
+        reason: "true_deadlock",
+        message:
+          "No dependency-satisfied tasks remain; pending tasks depend on each other or unresolved tasks.",
+        pending_task_count: pendingTasks.length,
+        blocked_task_count: pendingPayload.length,
+        blocked_tasks: pendingPayload,
       });
       state.status = "failed";
       await stateStore.save(state);
@@ -3669,6 +3832,325 @@ function normalizeAbortReason(reason: unknown): string | undefined {
 
 
 // =============================================================================
+// LEDGER REUSE HELPERS
+// =============================================================================
+
+type TaskFileLocation = {
+  manifestPath: string;
+  specPath: string;
+};
+
+type LedgerContext = {
+  ledger: TaskLedger | null;
+  headSha: string;
+  taskFileIndex: Map<string, TaskFileLocation>;
+};
+
+type LedgerEligibilityResult = {
+  eligible: boolean;
+  entry?: TaskLedgerEntry;
+};
+
+type ExternalDependency = {
+  depId: string;
+  mergeCommit?: string;
+  runId?: string;
+  completedAt?: string;
+};
+
+type ExternalDependencySummary = {
+  externalCompleted: Set<string>;
+  satisfiedByTask: Map<string, ExternalDependency[]>;
+};
+
+async function buildTaskFileIndex(args: {
+  tasksRoot: string;
+  tasks: TaskSpec[];
+}): Promise<Map<string, TaskFileLocation>> {
+  const index = new Map<string, TaskFileLocation>();
+
+  for (const task of args.tasks) {
+    const manifestPath = resolveTaskManifestPath({
+      tasksRoot: args.tasksRoot,
+      stage: task.stage,
+      taskDirName: task.taskDirName,
+    });
+    const specPath = resolveTaskSpecPath({
+      tasksRoot: args.tasksRoot,
+      stage: task.stage,
+      taskDirName: task.taskDirName,
+    });
+
+    const [manifestExists, specExists] = await Promise.all([
+      fse.pathExists(manifestPath),
+      fse.pathExists(specPath),
+    ]);
+    if (!manifestExists || !specExists) {
+      continue;
+    }
+
+    index.set(task.manifest.id, { manifestPath, specPath });
+  }
+
+  const archiveDir = resolveTasksArchiveDir(args.tasksRoot);
+  if (!(await fse.pathExists(archiveDir))) {
+    return index;
+  }
+
+  const archiveManifestPaths = await fg("archive/*/*/manifest.json", {
+    cwd: args.tasksRoot,
+    absolute: true,
+  });
+
+  for (const manifestPath of archiveManifestPaths) {
+    const taskId = await readTaskIdFromManifest(manifestPath);
+    if (!taskId || index.has(taskId)) {
+      continue;
+    }
+
+    const specPath = path.join(path.dirname(manifestPath), "spec.md");
+    if (!(await fse.pathExists(specPath))) {
+      continue;
+    }
+
+    index.set(taskId, { manifestPath, specPath });
+  }
+
+  return index;
+}
+
+async function readTaskIdFromManifest(manifestPath: string): Promise<string | null> {
+  try {
+    const raw = await fse.readFile(manifestPath, "utf8");
+    const parsed = JSON.parse(raw) as { id?: unknown };
+    return typeof parsed?.id === "string" ? parsed.id : null;
+  } catch {
+    return null;
+  }
+}
+
+async function resolveTaskFingerprint(args: {
+  taskId: string;
+  taskFileIndex: Map<string, TaskFileLocation>;
+  fingerprintCache: Map<string, string>;
+}): Promise<string | null> {
+  const cached = args.fingerprintCache.get(args.taskId);
+  if (cached) return cached;
+
+  const taskFiles = args.taskFileIndex.get(args.taskId);
+  if (!taskFiles) return null;
+
+  try {
+    const fingerprint = await computeTaskFingerprint({
+      manifestPath: taskFiles.manifestPath,
+      specPath: taskFiles.specPath,
+    });
+    args.fingerprintCache.set(args.taskId, fingerprint);
+    return fingerprint;
+  } catch {
+    return null;
+  }
+}
+
+async function isMergeCommitReachable(args: {
+  repoPath: string;
+  mergeCommit: string;
+  headSha: string;
+  reachabilityCache: Map<string, boolean>;
+}): Promise<boolean> {
+  const cached = args.reachabilityCache.get(args.mergeCommit);
+  if (cached !== undefined) return cached;
+
+  const reachable = await isAncestor(args.repoPath, args.mergeCommit, args.headSha);
+  args.reachabilityCache.set(args.mergeCommit, reachable);
+  return reachable;
+}
+
+async function resolveLedgerEligibility(args: {
+  taskId: string;
+  ledger: TaskLedger | null;
+  repoPath: string;
+  headSha: string;
+  taskFileIndex: Map<string, TaskFileLocation>;
+  eligibilityCache: Map<string, LedgerEligibilityResult>;
+  reachabilityCache: Map<string, boolean>;
+  fingerprintCache: Map<string, string>;
+}): Promise<LedgerEligibilityResult> {
+  const cached = args.eligibilityCache.get(args.taskId);
+  if (cached) return cached;
+
+  if (!args.ledger) {
+    const result = { eligible: false };
+    args.eligibilityCache.set(args.taskId, result);
+    return result;
+  }
+
+  const entry = args.ledger.tasks[args.taskId];
+  if (!entry) {
+    const result = { eligible: false };
+    args.eligibilityCache.set(args.taskId, result);
+    return result;
+  }
+
+  if (entry.status !== "complete" && entry.status !== "skipped") {
+    const result = { eligible: false };
+    args.eligibilityCache.set(args.taskId, result);
+    return result;
+  }
+
+  if (!entry.mergeCommit) {
+    const result = { eligible: false };
+    args.eligibilityCache.set(args.taskId, result);
+    return result;
+  }
+
+  const isReachable = await isMergeCommitReachable({
+    repoPath: args.repoPath,
+    mergeCommit: entry.mergeCommit,
+    headSha: args.headSha,
+    reachabilityCache: args.reachabilityCache,
+  });
+  if (!isReachable) {
+    const result = { eligible: false };
+    args.eligibilityCache.set(args.taskId, result);
+    return result;
+  }
+
+  if (args.taskFileIndex.has(args.taskId)) {
+    if (!entry.fingerprint) {
+      const result = { eligible: false };
+      args.eligibilityCache.set(args.taskId, result);
+      return result;
+    }
+
+    const fingerprint = await resolveTaskFingerprint({
+      taskId: args.taskId,
+      taskFileIndex: args.taskFileIndex,
+      fingerprintCache: args.fingerprintCache,
+    });
+    if (!fingerprint || fingerprint !== entry.fingerprint) {
+      const result = { eligible: false };
+      args.eligibilityCache.set(args.taskId, result);
+      return result;
+    }
+  }
+
+  const result = { eligible: true, entry };
+  args.eligibilityCache.set(args.taskId, result);
+  return result;
+}
+
+async function seedRunFromLedger(args: {
+  tasks: TaskSpec[];
+  state: RunState;
+  ledger: TaskLedger | null;
+  repoPath: string;
+  headSha: string;
+  taskFileIndex: Map<string, TaskFileLocation>;
+  eligibilityCache: Map<string, LedgerEligibilityResult>;
+  reachabilityCache: Map<string, boolean>;
+  fingerprintCache: Map<string, string>;
+}): Promise<{ seeded: Array<{ taskId: string; entry: TaskLedgerEntry }> }> {
+  const seeded: Array<{ taskId: string; entry: TaskLedgerEntry }> = [];
+
+  if (!args.ledger) {
+    return { seeded };
+  }
+
+  for (const task of args.tasks) {
+    const taskId = task.manifest.id;
+    const taskState = args.state.tasks[taskId];
+    if (!taskState || taskState.status !== "pending") {
+      continue;
+    }
+
+    const eligibility = await resolveLedgerEligibility({
+      taskId,
+      ledger: args.ledger,
+      repoPath: args.repoPath,
+      headSha: args.headSha,
+      taskFileIndex: args.taskFileIndex,
+      eligibilityCache: args.eligibilityCache,
+      reachabilityCache: args.reachabilityCache,
+      fingerprintCache: args.fingerprintCache,
+    });
+
+    if (!eligibility.eligible || !eligibility.entry) {
+      continue;
+    }
+
+    taskState.status = "complete";
+    taskState.completed_at = eligibility.entry.completedAt ?? isoNow();
+    seeded.push({ taskId, entry: eligibility.entry });
+  }
+
+  return { seeded };
+}
+
+async function resolveExternalCompletedDeps(args: {
+  pendingTasks: TaskSpec[];
+  state: RunState;
+  ledger: TaskLedger | null;
+  repoPath: string;
+  headSha: string;
+  taskFileIndex: Map<string, TaskFileLocation>;
+  eligibilityCache: Map<string, LedgerEligibilityResult>;
+  reachabilityCache: Map<string, boolean>;
+  fingerprintCache: Map<string, string>;
+}): Promise<ExternalDependencySummary> {
+  const externalCompleted = new Set<string>();
+  const satisfiedByTask = new Map<string, ExternalDependency[]>();
+
+  if (!args.ledger) {
+    return { externalCompleted, satisfiedByTask };
+  }
+
+  for (const task of args.pendingTasks) {
+    const deps = task.manifest.dependencies ?? [];
+    const externalDeps: ExternalDependency[] = [];
+
+    for (const depId of deps) {
+      if (args.state.tasks[depId]) {
+        continue;
+      }
+
+      const eligibility = await resolveLedgerEligibility({
+        taskId: depId,
+        ledger: args.ledger,
+        repoPath: args.repoPath,
+        headSha: args.headSha,
+        taskFileIndex: args.taskFileIndex,
+        eligibilityCache: args.eligibilityCache,
+        reachabilityCache: args.reachabilityCache,
+        fingerprintCache: args.fingerprintCache,
+      });
+
+      if (!eligibility.eligible || !eligibility.entry) {
+        continue;
+      }
+
+      externalCompleted.add(depId);
+      externalDeps.push({
+        depId,
+        mergeCommit: eligibility.entry.mergeCommit,
+        runId: eligibility.entry.runId,
+        completedAt: eligibility.entry.completedAt,
+      });
+    }
+
+    if (externalDeps.length > 0) {
+      satisfiedByTask.set(task.manifest.id, externalDeps);
+    }
+  }
+
+  return { externalCompleted, satisfiedByTask };
+}
+
+
+// =============================================================================
+// STATUS HELPERS
+// =============================================================================
+// =============================================================================
 // STATUS HELPERS
 // =============================================================================
 
@@ -3690,6 +4172,16 @@ type BlockedDependencySummary = {
   unmetDeps: BlockedDependencyDetail[];
 };
 
+type MissingDependencySummary = {
+  taskId: string;
+  missingDeps: string[];
+};
+
+type PendingDependencySummary = {
+  taskId: string;
+  pendingDeps: string[];
+};
+
 type BlockedTaskSummary = {
   taskId: string;
   status: TaskStatus;
@@ -3700,27 +4192,34 @@ function isBlockedTaskStatus(status: TaskStatus): boolean {
   return BLOCKED_TASK_STATUSES.includes(status);
 }
 
-function collectBlockedDependencies(
+function collectDependencyIssues(
   pendingTasks: TaskSpec[],
   state: RunState,
   completed: Set<string>,
-): { blocked: BlockedDependencySummary[]; hasNonBlockedDeps: boolean } {
+): {
+  blocked: BlockedDependencySummary[];
+  missing: MissingDependencySummary[];
+  pending: PendingDependencySummary[];
+} {
   const blocked: BlockedDependencySummary[] = [];
-  let hasNonBlockedDeps = false;
+  const missing: MissingDependencySummary[] = [];
+  const pending: PendingDependencySummary[] = [];
 
   for (const task of pendingTasks) {
     const deps = task.manifest.dependencies ?? [];
     const unmetDeps = deps.filter((dep) => !completed.has(dep));
     if (unmetDeps.length === 0) {
-      hasNonBlockedDeps = true;
       continue;
     }
 
     const blockedDeps: BlockedDependencyDetail[] = [];
+    const missingDeps: string[] = [];
+    const pendingDeps: string[] = [];
+
     for (const depId of unmetDeps) {
       const depState = state.tasks[depId];
       if (!depState) {
-        hasNonBlockedDeps = true;
+        missingDeps.push(depId);
         continue;
       }
 
@@ -3731,16 +4230,22 @@ function collectBlockedDependencies(
           ...(depState.last_error ? { depLastError: depState.last_error } : {}),
         });
       } else {
-        hasNonBlockedDeps = true;
+        pendingDeps.push(depId);
       }
     }
 
     if (blockedDeps.length > 0) {
       blocked.push({ taskId: task.manifest.id, unmetDeps: blockedDeps });
     }
+    if (missingDeps.length > 0) {
+      missing.push({ taskId: task.manifest.id, missingDeps });
+    }
+    if (pendingDeps.length > 0) {
+      pending.push({ taskId: task.manifest.id, pendingDeps });
+    }
   }
 
-  return { blocked, hasNonBlockedDeps };
+  return { blocked, missing, pending };
 }
 
 function summarizeBlockedTasks(tasks: RunState["tasks"]): BlockedTaskSummary[] {

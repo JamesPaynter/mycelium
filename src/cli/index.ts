@@ -128,6 +128,9 @@ export function buildCli(): Command {
         .filter(Boolean),
     )
     .option("--run-id <id>", "Run ID (default: timestamp)")
+    .option("--reuse-completed", "Reuse completed tasks from the ledger")
+    .option("--no-reuse-completed", "Disable reusing completed tasks from the ledger")
+    .option("--import-run <id>", "Import completed tasks from a prior run into the ledger")
     .option("--max-parallel <n>", "Max parallel containers", (v) => parseInt(v, 10))
     .option("--dry-run", "Plan batches but do not start containers", false)
     .option("--no-build-image", "Do not auto-build the worker image if missing")
@@ -157,6 +160,8 @@ export function buildCli(): Command {
         buildImage: opts.buildImage,
         useDocker: !opts.localWorker,
         stopContainersOnExit: opts.stopContainersOnExit,
+        reuseCompleted: opts.reuseCompleted,
+        importRun: opts.importRun,
         ui: opts.ui,
         uiPort: opts.uiPort,
         uiOpen: opts.uiOpen,
@@ -167,6 +172,9 @@ export function buildCli(): Command {
     .command("resume")
     .option("--project <name>", "Project name (default: repo folder name)")
     .option("--run-id <id>", "Run ID (default: latest)")
+    .option("--reuse-completed", "Reuse completed tasks from the ledger")
+    .option("--no-reuse-completed", "Disable reusing completed tasks from the ledger")
+    .option("--import-run <id>", "Import completed tasks from a prior run into the ledger")
     .option("--max-parallel <n>", "Max parallel containers", (v) => parseInt(v, 10))
     .option("--dry-run", "Plan batches but do not start containers", false)
     .option("--no-build-image", "Do not auto-build the worker image if missing")
@@ -195,6 +203,8 @@ export function buildCli(): Command {
         buildImage: opts.buildImage,
         useDocker: !opts.localWorker,
         stopContainersOnExit: opts.stopContainersOnExit,
+        reuseCompleted: opts.reuseCompleted,
+        importRun: opts.importRun,
         ui: opts.ui,
         uiPort: opts.uiPort,
         uiOpen: opts.uiOpen,
