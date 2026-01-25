@@ -7,10 +7,11 @@ import { execa } from "execa";
 import fse from "fs-extra";
 import { afterEach, describe, expect, it } from "vitest";
 
-import { planProject } from "../cli/plan.js";
 import { loadProjectConfig } from "./config-loader.js";
-import { orchestratorLogPath } from "./paths.js";
 import { runProject } from "./executor.js";
+import { orchestratorLogPath } from "./paths.js";
+import { planFromImplementationPlan } from "./planner.js";
+import { resolveTasksBacklogDir } from "./task-layout.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const FIXTURE_REPO = path.resolve(__dirname, "../../test/fixtures/toy-repo");
@@ -59,11 +60,16 @@ describe("graceful stop signals", () => {
       process.env.MOCK_LLM_OUTPUT_PATH = path.join(repoDir, "mock-planner-output.json");
 
       const config = loadProjectConfig(configPath);
-      await planProject("graceful-stop", config, {
-        input: ".mycelium/planning/implementation-plan.md",
-      });
-
       const projectName = "graceful-stop";
+      const tasksRoot = path.join(config.repo_path, config.tasks_dir);
+      const outputDir = resolveTasksBacklogDir(tasksRoot);
+
+      await planFromImplementationPlan({
+        projectName,
+        config,
+        inputPath: ".mycelium/planning/implementation-plan.md",
+        outputDir,
+      });
       const runId = `${projectName}-${Date.now()}`;
 
       const controller = new AbortController();

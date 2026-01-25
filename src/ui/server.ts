@@ -3,7 +3,9 @@ import http from "node:http";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { loadConfigForCli } from "../cli/config.js";
+import { resolveProjectConfigPath } from "../core/config-discovery.js";
+import { loadProjectConfig } from "../core/config-loader.js";
+
 import { createUiRouter } from "./router.js";
 
 
@@ -74,10 +76,13 @@ async function ensureMyceliumHome(projectName: string): Promise<void> {
     return;
   }
 
-  await loadConfigForCli({
+  const resolved = resolveProjectConfigPath({
     projectName,
     initIfMissing: true,
   });
+
+  const config = loadProjectConfig(resolved.configPath);
+  process.env.MYCELIUM_HOME = path.join(config.repo_path, ".mycelium");
 }
 
 function resolveUiStaticRoot(): string {

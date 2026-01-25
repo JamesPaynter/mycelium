@@ -56,6 +56,28 @@ module.exports = {
     ],
     "import/no-named-as-default-member": "off",
     "no-constant-condition": ["error", { checkLoops: false }],
+    "import/no-restricted-paths": [
+      "error",
+      {
+        zones: [
+          {
+            target: "./src/core/**",
+            from: "./src/cli/**",
+            message: "Core must not import CLI. Keep core UI/CLI-agnostic.",
+          },
+          {
+            target: "./src/core/**",
+            from: "./src/ui/**",
+            message: "Core must not import UI. Keep core UI/CLI-agnostic.",
+          },
+          {
+            target: "./src/ui/**",
+            from: "./src/cli/**",
+            message: "UI must not import CLI. Route UI through core APIs instead.",
+          },
+        ],
+      },
+    ],
     "import/order": [
       "warn",
       {

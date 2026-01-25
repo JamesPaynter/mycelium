@@ -14,6 +14,12 @@ LLM-driven planner and Docker-isolated Codex workers that plan tasks, run them i
 - Spec traceability matrix: `docs/spec-traceability.md` maps each spec principle to code, tests, and drills.
 - Control plane navigation tools: `docs/control-plane/repo-navigation-tools.md`.
 
+## Architecture boundaries
+- `src/core` is framework-agnostic logic; it must not import from `src/cli` or `src/ui`.
+- `src/ui` renders surfaces; it must not import from `src/cli`.
+- `src/cli` is the adapter layer; it can import from `src/core` and should stay thin.
+- Boundaries are enforced via ESLint restricted import rules.
+
 ## Run an autopilot pass
 1) Install deps: `npm install` (Node 20+).  
 2) Build (optional for dev mode): `npm run build`.  
