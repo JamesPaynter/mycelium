@@ -32,6 +32,21 @@ module.exports = {
         ResizeObserver: "readonly",
       },
     },
+    {
+      files: [
+        "src/core/executor.ts",
+        "src/cli/logs.ts",
+        "src/cli/control-plane.ts",
+        "src/ui/router.ts",
+      ],
+      rules: {
+        "max-lines": "off",
+        complexity: "off",
+        "max-depth": "off",
+        "max-params": "off",
+        "max-statements": "off",
+      },
+    },
   ],
   rules: {
     "@typescript-eslint/no-explicit-any": "off",
@@ -48,5 +63,18 @@ module.exports = {
         "newlines-between": "always",
       },
     ],
+    // Ratchet plan: keep warnings until refactors land, then upgrade to errors and delete overrides.
+    "max-lines": [
+      "warn",
+      {
+        max: 300,
+        skipBlankLines: true,
+        skipComments: true,
+      },
+    ],
+    complexity: ["warn", 15],
+    "max-depth": ["warn", 4],
+    "max-params": ["warn", 5],
+    "max-statements": ["warn", 50],
   },
 };
