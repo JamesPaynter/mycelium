@@ -23,7 +23,16 @@ module.exports = {
       typescript: true,
     },
   },
-  ignorePatterns: ["dist/", "node_modules/"],
+  ignorePatterns: ["dist/", "node_modules/", "test/fixtures/"],
+  overrides: [
+    {
+      files: ["src/ui/static/**/*.js"],
+      env: { browser: true },
+      globals: {
+        ResizeObserver: "readonly",
+      },
+    },
+  ],
   rules: {
     "@typescript-eslint/no-explicit-any": "off",
     "@typescript-eslint/no-unused-vars": [

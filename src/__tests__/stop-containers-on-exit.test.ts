@@ -132,7 +132,7 @@ describe("executor: --stop-containers-on-exit", () => {
     expect(events).toContain("run.stop");
 
     const lines = await fs.readFile(logFile, "utf8");
-    expect(lines).toMatch(/\"containers_stopped\":2/);
+    expect(lines).toMatch(/"containers_stopped":2/);
   });
 
   async function makeRepoWithSingleTask(): Promise<{ repoDir: string }> {

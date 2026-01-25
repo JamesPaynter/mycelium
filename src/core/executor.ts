@@ -974,10 +974,6 @@ export async function runProject(
     const networkMode = config.docker.network_mode;
     const containerUser = config.docker.user;
     let controlPlaneConfig = resolveControlPlaneConfig(config);
-    let lockMode: ControlPlaneLockMode;
-    let scopeComplianceMode: ControlPlaneScopeMode;
-    let shouldEnforceCompliance: boolean;
-    let compliancePolicy: ManifestEnforcementPolicy;
     const docker = useDocker ? dockerClient() : null;
     const manifestPolicy: ManifestEnforcementPolicy = config.manifest_enforcement ?? "warn";
     const costPer1kTokens = DEFAULT_COST_PER_1K_TOKENS;
@@ -1115,10 +1111,10 @@ export async function runProject(
     };
   }
 
-  lockMode = resolveEffectiveLockMode(controlPlaneConfig);
-  scopeComplianceMode = resolveScopeComplianceMode(controlPlaneConfig);
-  shouldEnforceCompliance = scopeComplianceMode === "enforce";
-  compliancePolicy = scopeComplianceMode === "off" ? "off" : manifestPolicy;
+  const lockMode = resolveEffectiveLockMode(controlPlaneConfig);
+  const scopeComplianceMode = resolveScopeComplianceMode(controlPlaneConfig);
+  const shouldEnforceCompliance = scopeComplianceMode === "enforce";
+  const compliancePolicy = scopeComplianceMode === "off" ? "off" : manifestPolicy;
 
   const resourceContext = await buildResourceResolutionContext({
     repoPath,
@@ -1230,6 +1226,22 @@ export async function runProject(
       }
     }
   }
+
+  const refreshTaskUsage = (taskId: string, taskSlug: string): TaskUsageUpdate | null => {
+    const taskState = state.tasks[taskId];
+    if (!taskState) return null;
+
+    const previousTokens = taskState.tokens_used ?? 0;
+    const previousCost = taskState.estimated_cost ?? 0;
+    const eventsPath = taskEventsLogPath(projectName, runId, taskId, taskSlug);
+    const usage = parseTaskTokenUsage(eventsPath, costPer1kTokens);
+
+    taskState.usage_by_attempt = usage.attempts;
+    taskState.tokens_used = usage.tokensUsed;
+    taskState.estimated_cost = usage.estimatedCost;
+
+    return { taskId, previousTokens, previousCost, usage };
+  };
 
   // Create or resume run state
   const backfillUsageFromLogs = (): boolean => {
@@ -1388,7 +1400,7 @@ export async function runProject(
     return await stopRun(reason);
   };
 
-  async function stopRun(reason: StopRequest): Promise<RunResult> {
+  const stopRun = async (reason: StopRequest): Promise<RunResult> => {
     const containerAction: RunStopInfo["containers"] =
       stopContainersOnExit && useDocker && docker ? "stopped" : "left_running";
     const stopSummary =
@@ -1426,9 +1438,9 @@ export async function runProject(
         stopErrors: stopSummary?.errors ? stopSummary.errors : undefined,
       },
     };
-  }
+  };
 
-  async function stopRunContainers(): Promise<{ stopped: number; errors: number }> {
+  const stopRunContainers = async (): Promise<{ stopped: number; errors: number }> => {
     if (!docker) return { stopped: 0, errors: 0 };
 
     const containers = await docker.listContainers({ all: true });
@@ -1473,7 +1485,7 @@ export async function runProject(
     }
 
     return { stopped, errors };
-  }
+  };
 
   const earlyStop = await stopIfRequested();
   if (earlyStop) return earlyStop;
@@ -1587,22 +1599,6 @@ export async function runProject(
     }
   };
 
-  function refreshTaskUsage(taskId: string, taskSlug: string): TaskUsageUpdate | null {
-    const taskState = state.tasks[taskId];
-    if (!taskState) return null;
-
-    const previousTokens = taskState.tokens_used ?? 0;
-    const previousCost = taskState.estimated_cost ?? 0;
-    const eventsPath = taskEventsLogPath(projectName, runId, taskId, taskSlug);
-    const usage = parseTaskTokenUsage(eventsPath, costPer1kTokens);
-
-    taskState.usage_by_attempt = usage.attempts;
-    taskState.tokens_used = usage.tokensUsed;
-    taskState.estimated_cost = usage.estimatedCost;
-
-    return { taskId, previousTokens, previousCost, usage };
-  }
-
   const logBudgetBreaches = (
     breaches: ReturnType<typeof detectBudgetBreaches>,
   ): "budget_block" | undefined => {
@@ -1709,11 +1705,11 @@ export async function runProject(
     return null;
   };
 
-  async function cleanupSuccessfulBatchArtifacts(args: {
+  const cleanupSuccessfulBatchArtifacts = async (args: {
     batchStatus: "complete" | "failed";
     integrationDoctorPassed?: boolean;
     successfulTasks: TaskSuccessResult[];
-  }): Promise<void> {
+  }): Promise<void> => {
     if (!cleanupWorkspacesOnSuccess && !cleanupContainersOnSuccess) return;
     if (args.batchStatus !== "complete") return;
     if (args.integrationDoctorPassed !== true) return;
@@ -1757,9 +1753,9 @@ export async function runProject(
         }
       }
     }
-  }
+  };
 
-  async function resumeRunningTask(task: TaskSpec): Promise<TaskRunResult> {
+  const resumeRunningTask = async (task: TaskSpec): Promise<TaskRunResult> => {
     const taskId = task.manifest.id;
     const taskState = state.tasks[taskId];
     const meta = resolveTaskMeta(task);
@@ -1883,16 +1879,16 @@ export async function runProject(
       }
       taskEvents.close();
     }
-  }
+  };
 
-  function logComplianceEvents(args: {
+  const logComplianceEvents = (args: {
     taskId: string;
     taskSlug: string;
     policy: ManifestEnforcementPolicy;
     scopeMode: ControlPlaneScopeMode;
     reportPath: string;
     result: ManifestComplianceResult;
-  }): void {
+  }): void => {
     recordScopeViolations(runMetrics, args.result);
     const basePayload = {
       task_slug: args.taskSlug,
@@ -1933,16 +1929,16 @@ export async function runProject(
         report_path: args.reportPath,
       });
     }
-  }
+  };
 
-  function describeManifestViolations(result: ManifestComplianceResult): string {
+  const describeManifestViolations = (result: ManifestComplianceResult): string => {
     const count = result.violations.length;
     const example = result.violations[0]?.path;
     const detail = example ? ` (example: ${example})` : "";
     return `${count} undeclared access request(s)${detail}`;
-  }
+  };
 
-  async function finalizeBatch(params: {
+  const finalizeBatch = async (params: {
     batchId: number;
     batchTasks: TaskSpec[];
     results: TaskRunResult[];
@@ -1951,7 +1947,7 @@ export async function runProject(
     | "integration_doctor_failed"
     | "budget_block"
     | undefined
-  > {
+  > => {
     const runUsageBefore = {
       tokensUsed: state.tokens_used ?? 0,
       estimatedCost: state.estimated_cost ?? 0,
@@ -2880,7 +2876,7 @@ export async function runProject(
 
     logOrchestratorEvent(orchLog, "batch.complete", { batch_id: params.batchId });
     return stopReason;
-  }
+  };
 
   const externalDepsLogged = new Set<string>();
   let batchId = Math.max(0, ...state.batches.map((b) => b.batch_id));

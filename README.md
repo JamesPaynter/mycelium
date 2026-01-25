@@ -37,6 +37,10 @@ npm run dev -- autopilot --project <project-name> --local-worker --max-parallel 
 - `npm run pack:smoke` builds, runs `npm pack`, installs the tarball into a temp project, asserts required templates/binaries exist, and runs `mycelium --help` + `mycelium plan --help`.
 - Script output includes the temp tarball path if you want to inspect the package contents manually.
 
+## CI quality gates
+- CI runs `npm run typecheck`, `npm run lint`, and `npm run format:check` before build/tests.
+- Run locally with: `npm run typecheck && npm run lint && npm run format:check`.
+
 ## CLI essentials
 | Command | Purpose |
 | --- | --- |
