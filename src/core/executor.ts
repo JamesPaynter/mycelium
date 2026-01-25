@@ -6,6 +6,17 @@ import fse from "fs-extra";
 
 import { buildRunContext } from "../app/orchestrator/run-context.js";
 import { runEngine } from "../app/orchestrator/run-engine.js";
+import { formatErrorMessage, normalizeAbortReason } from "../app/orchestrator/helpers/errors.js";
+import {
+  buildDoctorCanarySummary,
+  formatDoctorCanaryEnvVar,
+  limitText,
+  summarizeArchitectureReport,
+  summarizeDoctorReport,
+  summarizeStyleReport,
+  summarizeTestReport,
+} from "../app/orchestrator/helpers/format.js";
+import { averageRounded, secondsFromMs } from "../app/orchestrator/helpers/time.js";
 import {
   dockerClient,
   createContainer,
@@ -101,7 +112,6 @@ import {
   startBatch,
   type CheckpointCommit,
   type ControlPlaneSnapshot,
-  type DoctorCanarySummary,
   type RunState,
   type TaskStatus,
   type ValidatorResult,
@@ -918,20 +928,6 @@ function buildRunSummary(input: {
       avg_batch_size: avgBatchSize,
     },
   };
-}
-
-function averageRounded(total: number, count: number, decimals: number): number {
-  if (count === 0) return 0;
-  return roundToDecimals(total / count, decimals);
-}
-
-function secondsFromMs(durationMs: number): number {
-  return roundToDecimals(durationMs / 1000, 3);
-}
-
-function roundToDecimals(value: number, decimals: number): number {
-  if (!Number.isFinite(value)) return 0;
-  return Number(value.toFixed(decimals));
 }
 
 export async function runProject(
@@ -3706,102 +3702,6 @@ async function runDoctorCanary(args: {
   return { status: "expected_fail", exitCode, output, envVar: args.envVar };
 }
 
-function summarizeTestReport(report: TestValidationReport): string {
-  const parts = [report.summary];
-  if (report.concerns.length > 0) {
-    parts.push(`Concerns: ${report.concerns.length}`);
-  }
-  if (report.coverage_gaps.length > 0) {
-    parts.push(`Coverage gaps: ${report.coverage_gaps.length}`);
-  }
-  return parts.filter(Boolean).join(" | ");
-}
-
-function summarizeStyleReport(report: StyleValidationReport): string {
-  const parts = [report.summary];
-  if (report.concerns.length > 0) {
-    parts.push(`Concerns: ${report.concerns.length}`);
-  }
-  return parts.filter(Boolean).join(" | ");
-}
-
-function summarizeArchitectureReport(report: ArchitectureValidationReport): string {
-  const parts = [report.summary];
-  if (report.concerns.length > 0) {
-    parts.push(`Concerns: ${report.concerns.length}`);
-  }
-  if (report.recommendations.length > 0) {
-    parts.push(`Recs: ${report.recommendations.length}`);
-  }
-  return parts.filter(Boolean).join(" | ");
-}
-
-function summarizeDoctorReport(
-  report: DoctorValidationReport,
-  canary?: DoctorCanaryResult,
-): string {
-  const parts = [
-    `Effective: ${report.effective ? "yes" : "no"}`,
-    `Coverage: ${report.coverage_assessment}`,
-  ];
-  if (report.concerns.length > 0) {
-    parts.push(`Concerns: ${report.concerns.length}`);
-  }
-  if (report.recommendations.length > 0) {
-    parts.push(`Recs: ${report.recommendations.length}`);
-  }
-  if (canary) {
-    parts.push(formatDoctorCanarySummary(canary));
-  }
-  return parts.join(" | ");
-}
-
-function formatErrorMessage(err: unknown): string {
-  if (err instanceof Error) return err.message;
-  return String(err);
-}
-
-function formatDoctorCanaryEnvVar(envVar?: string): string {
-  const trimmed = envVar?.trim();
-  return `${trimmed && trimmed.length > 0 ? trimmed : "ORCH_CANARY"}=1`;
-}
-
-function formatDoctorCanarySummary(canary: DoctorCanaryResult): string {
-  if (canary.status === "skipped") {
-    return `Canary: skipped (${canary.reason})`;
-  }
-
-  const envLabel = formatDoctorCanaryEnvVar(canary.envVar);
-  return canary.status === "unexpected_pass"
-    ? `Canary: unexpected pass with ${envLabel}`
-    : `Canary: failed as expected with ${envLabel}`;
-}
-
-function buildDoctorCanarySummary(
-  canary?: DoctorCanaryResult,
-): DoctorCanarySummary | undefined {
-  if (!canary) return undefined;
-
-  if (canary.status === "skipped") {
-    return {
-      status: "skipped",
-      env_var: canary.envVar,
-      reason: canary.reason,
-    };
-  }
-
-  return {
-    status: canary.status,
-    env_var: canary.envVar,
-    exit_code: canary.exitCode,
-  };
-}
-
-function limitText(text: string, limit: number): string {
-  if (text.length <= limit) return text;
-  return `${text.slice(0, limit)}\n... [truncated]`;
-}
-
 function buildStopController(signal?: AbortSignal): StopController {
   let reason: StopRequest | null = null;
 
@@ -3828,20 +3728,6 @@ function buildStopController(signal?: AbortSignal): StopController {
       }
     },
   };
-}
-
-function normalizeAbortReason(reason: unknown): string | undefined {
-  if (reason === undefined || reason === null) return undefined;
-  if (typeof reason === "string") return reason;
-  if (reason instanceof Error) return reason.message;
-
-  if (typeof reason === "object") {
-    const value = reason as Record<string, unknown>;
-    if (typeof value.signal === "string") return value.signal;
-    if (typeof value.type === "string") return value.type;
-  }
-
-  return String(reason);
 }
 
 
