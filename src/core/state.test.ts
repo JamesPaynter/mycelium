@@ -5,6 +5,7 @@ import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
+  applyTaskStatusOverride,
   completeBatch,
   createRunState,
   markTaskComplete,
@@ -135,6 +136,50 @@ describe("state transitions", () => {
     });
     expect(state.tasks["010"].status).toBe("complete");
     expect(state.batches[0].status).toBe("running");
+  });
+
+  it("overrides task status to complete and clears review metadata", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2024-03-03T00:00:00Z"));
+
+    const state = createRunState({
+      runId: "run-override-1",
+      project: "demo",
+      repoPath: "/repo",
+      mainBranch: "main",
+      taskIds: ["900"],
+    });
+
+    state.tasks["900"].status = "failed";
+    state.tasks["900"].last_error = "boom";
+    state.tasks["900"].human_review = {
+      validator: "test",
+      reason: "needs review",
+      summary: "summary",
+    };
+
+    applyTaskStatusOverride(state, "900", { status: "complete" });
+
+    expect(state.tasks["900"].status).toBe("complete");
+    expect(state.tasks["900"].completed_at).toBe("2024-03-03T00:00:00.000Z");
+    expect(state.tasks["900"].last_error).toBeUndefined();
+    expect(state.tasks["900"].human_review).toBeUndefined();
+  });
+
+  it("blocks overriding a running task without force", () => {
+    const state = createRunState({
+      runId: "run-override-2",
+      project: "demo",
+      repoPath: "/repo",
+      mainBranch: "main",
+      taskIds: ["901"],
+    });
+
+    state.tasks["901"].status = "running";
+
+    expect(() => {
+      applyTaskStatusOverride(state, "901", { status: "pending" });
+    }).toThrow("Cannot override running task 901 without --force");
   });
 });
 

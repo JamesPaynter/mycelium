@@ -17,6 +17,9 @@ export const TaskStatusSchema = z.enum([
 ]);
 export type TaskStatus = z.infer<typeof TaskStatusSchema>;
 
+export const TaskOverrideStatusSchema = z.enum(["pending", "complete", "skipped"]);
+export type TaskOverrideStatus = z.infer<typeof TaskOverrideStatusSchema>;
+
 export const BatchStatusSchema = z.enum(["pending", "running", "complete", "failed"]);
 export type BatchStatus = z.infer<typeof BatchStatusSchema>;
 
@@ -393,6 +396,33 @@ export function resetTaskToPending(
   }
 
   applyResetToPending(state, task, reason, now);
+}
+
+export function applyTaskStatusOverride(
+  state: RunState,
+  taskId: string,
+  opts: { status: TaskOverrideStatus; force?: boolean; now?: string },
+): void {
+  const task = requireTask(state, taskId);
+  if (task.status === "running" && !opts.force) {
+    throw new Error(`Cannot override running task ${taskId} without --force`);
+  }
+
+  const now = opts.now ?? isoNow();
+  const nextStatus = opts.status;
+
+  task.status = nextStatus;
+
+  if (nextStatus === "pending") {
+    task.completed_at = undefined;
+    task.last_error = undefined;
+    task.human_review = undefined;
+    return;
+  }
+
+  task.completed_at = now;
+  task.last_error = undefined;
+  task.human_review = undefined;
 }
 
 function applyResetToPending(

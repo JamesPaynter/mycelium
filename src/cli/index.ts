@@ -13,6 +13,7 @@ import { resumeCommand } from "./resume.js";
 import { runCommand } from "./run.js";
 import { registerRunsCommand } from "./runs.js";
 import { statusCommand } from "./status.js";
+import { registerTasksCommand } from "./tasks.js";
 import { uiCommand } from "./ui.js";
 
 export function buildCli(): Command {
@@ -49,6 +50,7 @@ export function buildCli(): Command {
   registerLogsCommand(program);
   registerControlPlaneCommand(program);
   registerRunsCommand(program);
+  registerTasksCommand(program);
 
   program
     .command("init")

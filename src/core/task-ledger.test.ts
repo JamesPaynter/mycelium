@@ -276,6 +276,7 @@ describe("task ledger import", () => {
 
     expect(result.imported.sort()).toEqual(["101", "102"]);
     expect(result.skipped).toEqual([]);
+    expect(result.skippedDetails).toEqual([]);
 
     const ledger = await loadTaskLedger(projectName);
     expect(ledger).not.toBeNull();
@@ -385,6 +386,9 @@ describe("task ledger import", () => {
 
     expect(result.imported).toEqual([]);
     expect(result.skipped).toEqual(["201"]);
+    expect(result.skippedDetails).toEqual([
+      { taskId: "201", reason: "integration doctor did not pass" },
+    ]);
     expect(await loadTaskLedger(projectName)).toBeNull();
   });
 });

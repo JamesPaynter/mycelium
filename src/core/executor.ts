@@ -1333,6 +1333,7 @@ export async function runProject(
     const importResult = await importLedgerFromRunState({
       projectName,
       repoPath,
+      tasksRoot: path.resolve(repoPath, config.tasks_dir),
       runId: importRunId,
       tasks: taskCatalog,
       state: importState,

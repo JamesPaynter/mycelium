@@ -33,6 +33,17 @@ export type TaskLedger = {
   tasks: Record<string, TaskLedgerEntry>;
 };
 
+export type TaskLedgerImportSkip = {
+  taskId: string;
+  reason: string;
+};
+
+export type TaskLedgerImportResult = {
+  imported: string[];
+  skipped: string[];
+  skippedDetails: TaskLedgerImportSkip[];
+};
+
 
 // =============================================================================
 // SCHEMA
@@ -122,14 +133,21 @@ export async function upsertLedgerEntry(
 export async function importLedgerFromRunState(opts: {
   projectName: string;
   repoPath: string;
+  tasksRoot?: string;
   runId: string;
   tasks: TaskSpec[];
   state: RunState;
-}): Promise<{ imported: string[]; skipped: string[] }> {
+}): Promise<TaskLedgerImportResult> {
   const tasksById = new Map(opts.tasks.map((task) => [task.manifest.id, task]));
-  const tasksRoot = path.join(opts.repoPath, ".mycelium", "tasks");
+  const tasksRoot = opts.tasksRoot ?? path.join(opts.repoPath, ".mycelium", "tasks");
   const imported: string[] = [];
   const skipped: string[] = [];
+  const skippedDetails: TaskLedgerImportSkip[] = [];
+
+  const recordSkip = (taskId: string, reason: string): void => {
+    skipped.push(taskId);
+    skippedDetails.push({ taskId, reason });
+  };
 
   for (const [taskId, taskState] of Object.entries(opts.state.tasks)) {
     if (taskState.status !== "complete" && taskState.status !== "skipped") {
@@ -141,14 +159,19 @@ export async function importLedgerFromRunState(opts: {
       console.warn(
         `Warning: task ${taskId} missing from current tasks directory; skipping ledger import.`,
       );
-      skipped.push(taskId);
+      recordSkip(taskId, "task missing from current tasks directory");
       continue;
     }
 
     const batchId = taskState.batch_id;
     const batch = opts.state.batches.find((entry) => entry.batch_id === batchId);
     if (!batch?.merge_commit || batch.integration_doctor_passed !== true) {
-      skipped.push(taskId);
+      const reason = !batch
+        ? "batch missing for task"
+        : !batch.merge_commit
+          ? "missing merge commit"
+          : "integration doctor did not pass";
+      recordSkip(taskId, reason);
       continue;
     }
 
@@ -171,7 +194,7 @@ export async function importLedgerFromRunState(opts: {
       console.warn(
         `Warning: task ${taskId} missing manifest/spec in ${tasksRoot}; skipping ledger import.`,
       );
-      skipped.push(taskId);
+      recordSkip(taskId, "task manifest/spec missing");
       continue;
     }
 
@@ -181,7 +204,7 @@ export async function importLedgerFromRunState(opts: {
     } catch (error) {
       const detail = error instanceof Error ? error.message : String(error);
       console.warn(`Warning: task ${taskId} fingerprint failed: ${detail}`);
-      skipped.push(taskId);
+      recordSkip(taskId, `fingerprint failed: ${detail}`);
       continue;
     }
 
@@ -200,11 +223,11 @@ export async function importLedgerFromRunState(opts: {
     } catch (error) {
       const detail = error instanceof Error ? error.message : String(error);
       console.warn(`Warning: task ${taskId} ledger upsert failed: ${detail}`);
-      skipped.push(taskId);
+      recordSkip(taskId, `ledger upsert failed: ${detail}`);
     }
   }
 
-  return { imported, skipped };
+  return { imported, skipped, skippedDetails };
 }
 
 export async function computeTaskFingerprint(options: {
