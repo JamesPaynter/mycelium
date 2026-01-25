@@ -20,7 +20,12 @@ tasks_dir: .mycelium/tasks
 planning_dir: .mycelium/planning
 
 # Manifest enforcement policy: off | warn | block
-manifest_enforcement: warn
+manifest_enforcement: off
+
+# control_plane:
+#   enabled: true
+#   scope_mode: off  # or off or shadow 
+#   lock_mode: declared
 
 # Limits
 max_parallel: 4
