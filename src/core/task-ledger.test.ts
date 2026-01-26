@@ -406,11 +406,23 @@ describe("task ledger import", () => {
     expect(ledger).not.toBeNull();
 
     const alphaFingerprint = await computeTaskFingerprint({
-      manifestPath: path.join(tasksRoot, "archive", runId, taskSpecs[0].taskDirName, "manifest.json"),
+      manifestPath: path.join(
+        tasksRoot,
+        "archive",
+        runId,
+        taskSpecs[0].taskDirName,
+        "manifest.json",
+      ),
       specPath: path.join(tasksRoot, "archive", runId, taskSpecs[0].taskDirName, "spec.md"),
     });
     const betaFingerprint = await computeTaskFingerprint({
-      manifestPath: path.join(tasksRoot, "archive", runId, taskSpecs[1].taskDirName, "manifest.json"),
+      manifestPath: path.join(
+        tasksRoot,
+        "archive",
+        runId,
+        taskSpecs[1].taskDirName,
+        "manifest.json",
+      ),
       specPath: path.join(tasksRoot, "archive", runId, taskSpecs[1].taskDirName, "spec.md"),
     });
 
