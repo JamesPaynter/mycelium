@@ -11,6 +11,9 @@ import {
 import type { ControlPlaneRunConfig } from "../app/orchestrator/run-context.js";
 import { runEngine } from "../app/orchestrator/run-engine.js";
 import { formatErrorMessage, normalizeAbortReason } from "../app/orchestrator/helpers/errors.js";
+import { DockerWorkerRunner } from "../app/orchestrator/workers/docker-worker-runner.js";
+import { LocalWorkerRunner } from "../app/orchestrator/workers/local-worker-runner.js";
+import type { WorkerRunner, WorkerRunnerResult } from "../app/orchestrator/workers/worker-runner.js";
 import {
   buildDoctorCanarySummary,
   formatDoctorCanaryEnvVar,
@@ -21,17 +24,7 @@ import {
   summarizeTestReport,
 } from "../app/orchestrator/helpers/format.js";
 import { averageRounded, secondsFromMs } from "../app/orchestrator/helpers/time.js";
-import {
-  dockerClient,
-  createContainer,
-  startContainer,
-  waitContainer,
-  removeContainer,
-  imageExists,
-  findContainerByName,
-} from "../docker/docker.js";
-import { buildWorkerImage } from "../docker/image.js";
-import { streamContainerLogs, type LogStreamHandle } from "../docker/streams.js";
+import type { ContainerSpec } from "../docker/docker.js";
 import { ensureCleanWorkingTree, checkout, resolveRunBaseSha, headSha, isAncestor } from "../git/git.js";
 import { mergeTaskBranches } from "../git/merge.js";
 import { buildTaskBranchName } from "../git/branches.js";
@@ -52,7 +45,6 @@ import type {
 import { detectBudgetBreaches, parseTaskTokenUsage, recomputeRunUsage, type TaskUsageUpdate } from "./budgets.js";
 import {
   JsonlLogger,
-  logJsonLineOrRaw,
   logOrchestratorEvent,
   logRunResume,
   logTaskReset,
@@ -126,8 +118,6 @@ import {
   runArchitectureValidator,
   type ArchitectureValidationReport,
 } from "../validators/architecture-validator.js";
-import { runWorker } from "../../worker/loop.js";
-import type { WorkerLogger, WorkerLogEventInput } from "../../worker/logging.js";
 import { loadWorkerState, type WorkerCheckpoint } from "../../worker/state.js";
 import {
   runManifestCompliance,
@@ -158,32 +148,6 @@ import {
   evaluateTaskPolicyDecision,
   type ChecksetReport,
 } from "../control-plane/policy/eval.js";
-
-const LABEL_PREFIX = "mycelium";
-
-function containerLabel(
-  labels: Record<string, string> | undefined,
-  key: string,
-): string | undefined {
-  if (!labels) return undefined;
-  return labels[`${LABEL_PREFIX}.${key}`];
-}
-
-function buildContainerLabels(values: {
-  projectName: string;
-  runId: string;
-  taskId: string;
-  branchName: string;
-  workspace: string;
-}): Record<string, string> {
-  return {
-    [`${LABEL_PREFIX}.project`]: values.projectName,
-    [`${LABEL_PREFIX}.run_id`]: values.runId,
-    [`${LABEL_PREFIX}.task_id`]: values.taskId,
-    [`${LABEL_PREFIX}.branch`]: values.branchName,
-    [`${LABEL_PREFIX}.workspace_path`]: values.workspace,
-  };
-}
 
 export type RunOptions = {
   runId?: string;
@@ -896,7 +860,18 @@ async function runProjectLegacy(
     } = runContext.resolved;
     let controlPlaneConfig = runContext.resolved.controlPlane.config;
     const plannedBatches: BatchPlanEntry[] = [];
-    const docker = useDocker ? dockerClient() : null;
+    const workerRunner = createWorkerRunner({
+      useDocker,
+      projectName,
+      runId,
+      config,
+      tasksDirPosix,
+      workerImage,
+      containerResources,
+      containerSecurityPayload,
+      networkMode,
+      containerUser,
+    });
     let stopRequested: StopRequest | null = null;
     let state!: RunState;
 
@@ -1112,26 +1087,12 @@ async function runProjectLegacy(
     requested_tasks: opts.tasks?.length ?? null,
   });
 
-  // Ensure worker image exists.
-  if (useDocker) {
-    const shouldBuildImage = opts.buildImage ?? true;
-    if (shouldBuildImage) {
-      logOrchestratorEvent(orchLog, "docker.image.build.start", { image: workerImage });
-      await buildWorkerImage({
-        tag: workerImage,
-        dockerfile: config.docker.dockerfile,
-        context: config.docker.build_context,
-      });
-      logOrchestratorEvent(orchLog, "docker.image.build.complete", { image: workerImage });
-    } else {
-      const haveImage = docker ? await imageExists(docker, workerImage) : false;
-      if (!haveImage) {
-        throw new Error(
-          `Docker image not found: ${workerImage}. Build it or run with --build-image.`,
-        );
-      }
-    }
-  }
+  // Ensure worker runtime is ready (no-op for local runs).
+  const shouldBuildImage = opts.buildImage ?? true;
+  await workerRunner.prepare({
+    buildImage: shouldBuildImage,
+    orchestratorLogger: orchLog,
+  });
 
   const refreshTaskUsage = (taskId: string, taskSlug: string): TaskUsageUpdate | null => {
     const taskState = state.tasks[taskId];
@@ -1307,10 +1268,11 @@ async function runProjectLegacy(
   };
 
   const stopRun = async (reason: StopRequest): Promise<RunResult> => {
-    const containerAction: RunStopInfo["containers"] =
-      stopContainersOnExit && useDocker && docker ? "stopped" : "left_running";
-    const stopSummary =
-      stopContainersOnExit && useDocker && docker ? await stopRunContainers() : null;
+    const stopSummary = await workerRunner.stop({
+      stopContainersOnExit,
+      orchestratorLogger: orchLog,
+    });
+    const containerAction: RunStopInfo["containers"] = stopSummary ? "stopped" : "left_running";
     state.status = "running";
 
     const payload: JsonObject = {
@@ -1344,53 +1306,6 @@ async function runProjectLegacy(
         stopErrors: stopSummary?.errors ? stopSummary.errors : undefined,
       },
     };
-  };
-
-  const stopRunContainers = async (): Promise<{ stopped: number; errors: number }> => {
-    if (!docker) return { stopped: 0, errors: 0 };
-
-    const containers = await docker.listContainers({ all: true });
-    const matches = containers.filter(
-      (c) =>
-        containerLabel(c.Labels, "project") === projectName &&
-        containerLabel(c.Labels, "run_id") === runId,
-    );
-
-    let stopped = 0;
-    let errors = 0;
-
-    for (const c of matches) {
-      const containerName = firstContainerName(c.Names);
-      const taskId = containerLabel(c.Labels, "task_id");
-
-      try {
-        const container = docker.getContainer(c.Id);
-        try {
-          await container.stop({ t: 5 });
-        } catch {
-          // best-effort stop; continue to removal
-        }
-        await removeContainer(container);
-        stopped += 1;
-        const payload: JsonObject & { taskId?: string } = {
-          container_id: c.Id,
-          ...(containerName ? { name: containerName } : {}),
-        };
-        if (taskId) payload.taskId = taskId;
-        logOrchestratorEvent(orchLog, "container.stop", payload);
-      } catch (err) {
-        errors += 1;
-        const payload: JsonObject & { taskId?: string } = {
-          container_id: c.Id,
-          ...(containerName ? { name: containerName } : {}),
-          message: formatErrorMessage(err),
-        };
-        if (taskId) payload.taskId = taskId;
-        logOrchestratorEvent(orchLog, "container.stop_failed", payload);
-      }
-    }
-
-    return { stopped, errors };
   };
 
   const earlyStop = await stopIfRequested();
@@ -1571,46 +1486,6 @@ async function runProjectLegacy(
     return summaries;
   };
 
-  const findTaskContainer = async (
-    taskId: string,
-    containerIdHint?: string,
-  ): Promise<{ id: string; name?: string } | null> => {
-    if (!docker) return null;
-
-    const containers = await docker.listContainers({ all: true });
-    const matches = containers.filter(
-      (c) =>
-        containerLabel(c.Labels, "project") === projectName &&
-        containerLabel(c.Labels, "run_id") === runId,
-    );
-
-    const byTask = matches.find((c) => containerLabel(c.Labels, "task_id") === taskId);
-    if (byTask) {
-      return { id: byTask.Id, name: firstContainerName(byTask.Names) };
-    }
-
-    if (containerIdHint) {
-      const byId = matches.find(
-        (c) => c.Id === containerIdHint || c.Id.startsWith(containerIdHint),
-      );
-      if (byId) {
-        return { id: byId.Id, name: firstContainerName(byId.Names) };
-      }
-
-      try {
-        const inspected = await docker.getContainer(containerIdHint).inspect();
-        return {
-          id: inspected.Id ?? containerIdHint,
-          name: firstContainerName([inspected.Name]),
-        };
-      } catch {
-        // ignore
-      }
-    }
-
-    return null;
-  };
-
   const cleanupSuccessfulBatchArtifacts = async (args: {
     batchStatus: "complete" | "failed";
     integrationDoctorPassed?: boolean;
@@ -1624,20 +1499,12 @@ async function runProjectLegacy(
     // Skip cleanup when a stop signal is pending so resuming keeps the workspace state.
     if (stopRequested !== null || stopController.reason !== null) return;
 
-    if (cleanupContainersOnSuccess && docker) {
+    if (cleanupContainersOnSuccess) {
       for (const task of args.successfulTasks) {
-        const containerInfo = await findTaskContainer(
-          task.taskId,
-          state.tasks[task.taskId]?.container_id,
-        );
-        if (!containerInfo) continue;
-
-        const container = docker.getContainer(containerInfo.id);
-        await removeContainer(container);
-        logOrchestratorEvent(orchLog, "container.cleanup", {
+        await workerRunner.cleanupTask({
           taskId: task.taskId,
-          container_id: containerInfo.id,
-          ...(containerInfo.name ? { name: containerInfo.name } : {}),
+          containerIdHint: state.tasks[task.taskId]?.container_id,
+          orchestratorLogger: orchLog,
         });
       }
     }
@@ -1668,123 +1535,65 @@ async function runProjectLegacy(
 
     await ensureTaskActiveStage(task);
     await syncWorkerStateIntoTask(taskId, meta.workspace);
-
-    if (!useDocker || !docker) {
-      const reason = "Docker unavailable on resume; resetting running task to pending";
-      logTaskReset(orchLog, taskId, reason);
-      return {
-        success: false,
-        taskId,
-        taskSlug: task.slug,
-        branchName: meta.branchName,
-        workspace: meta.workspace,
-        logsDir: meta.logsDir,
-        errorMessage: reason,
-        resetToPending: true,
-      };
-    }
-
-    const containerInfo = await findTaskContainer(taskId, taskState?.container_id);
-    if (!containerInfo) {
-      const reason = "Task container missing on resume";
-      const payload: Record<string, string> = { taskId };
-      if (taskState?.container_id) {
-        payload.container_id = taskState.container_id;
-      }
-      logOrchestratorEvent(orchLog, "container.missing", payload);
-      logTaskReset(orchLog, taskId, reason);
-      return {
-        success: false,
-        taskId,
-        taskSlug: task.slug,
-        branchName: meta.branchName,
-        workspace: meta.workspace,
-        logsDir: meta.logsDir,
-        errorMessage: reason,
-        resetToPending: true,
-      };
-    }
-
-    let logStream: LogStreamHandle | undefined;
     const taskEventsPath = taskEventsLogPath(projectName, runId, taskId, task.slug);
     await ensureDir(path.dirname(taskEventsPath));
     const taskEvents = new JsonlLogger(taskEventsPath, { runId, taskId });
 
+    let resumeResult: WorkerRunnerResult;
     try {
-      const container = docker.getContainer(containerInfo.id);
-      const inspect = await container.inspect();
-      const isRunning = inspect.State?.Running ?? false;
-      const containerId = inspect.Id ?? containerInfo.id;
-
-      taskState.container_id = containerId;
-
-      logStream = await streamContainerLogs(container, taskEvents, {
-        fallbackType: "task.log",
-        includeHistory: true,
-        follow: true,
-      });
-
-      logOrchestratorEvent(orchLog, "container.reattach", {
-        taskId,
-        container_id: containerId,
-        ...(containerInfo.name ? { name: containerInfo.name } : {}),
-        running: isRunning,
-      });
-
-      const waited = await waitContainer(container);
-
-      logOrchestratorEvent(
-        orchLog,
-        isRunning ? "container.exit" : "container.exited-on-resume",
-        { taskId, container_id: containerId, exit_code: waited.exitCode },
-      );
-
-      await syncWorkerStateIntoTask(taskId, meta.workspace);
-
-      if (waited.exitCode === 0) {
-        return {
-          success: true,
-          taskId,
-          taskSlug: task.slug,
-          branchName: meta.branchName,
-          workspace: meta.workspace,
-          logsDir: meta.logsDir,
-        };
-      }
-
-      return {
-        success: false,
+      resumeResult = await workerRunner.resumeAttempt({
         taskId,
         taskSlug: task.slug,
-        branchName: meta.branchName,
         workspace: meta.workspace,
-        logsDir: meta.logsDir,
-        errorMessage: `Task worker container exited with code ${waited.exitCode}`,
-      };
-    } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      logTaskReset(orchLog, taskId, message);
-      return {
-        success: false,
-        taskId,
-        taskSlug: task.slug,
-        branchName: meta.branchName,
-        workspace: meta.workspace,
-        logsDir: meta.logsDir,
-        errorMessage: message,
-        resetToPending: true,
-      };
+        containerIdHint: taskState?.container_id,
+        taskEvents,
+        orchestratorLogger: orchLog,
+      });
     } finally {
-      if (logStream) {
-        try {
-          logStream.detach();
-          await logStream.completed.catch(() => undefined);
-        } catch {
-          // ignore
-        }
-      }
       taskEvents.close();
     }
+
+    if (resumeResult.containerId) {
+      taskState.container_id = resumeResult.containerId;
+    }
+
+    await syncWorkerStateIntoTask(taskId, meta.workspace);
+
+    if (resumeResult.resetToPending) {
+      const reason = resumeResult.errorMessage ?? "Task reset to pending";
+      logTaskReset(orchLog, taskId, reason);
+      return {
+        success: false,
+        taskId,
+        taskSlug: task.slug,
+        branchName: meta.branchName,
+        workspace: meta.workspace,
+        logsDir: meta.logsDir,
+        errorMessage: resumeResult.errorMessage,
+        resetToPending: true,
+      };
+    }
+
+    if (resumeResult.success) {
+      return {
+        success: true,
+        taskId,
+        taskSlug: task.slug,
+        branchName: meta.branchName,
+        workspace: meta.workspace,
+        logsDir: meta.logsDir,
+      };
+    }
+
+    return {
+      success: false,
+      taskId,
+      taskSlug: task.slug,
+      branchName: meta.branchName,
+      workspace: meta.workspace,
+      logsDir: meta.logsDir,
+      errorMessage: resumeResult.errorMessage,
+    };
   };
 
   const logComplianceEvents = (args: {
@@ -3082,139 +2891,6 @@ async function runProjectLegacy(
         state.tasks[taskId].logs_dir = tLogsDir;
         await stateStore.save(state);
 
-        if (useDocker && docker) {
-          const containerName = `to-${projectName}-${runId}-${taskId}-${taskSlug}`
-            .replace(/[^a-zA-Z0-9_.-]/g, "-")
-            .slice(0, 120);
-          const existing = await findContainerByName(docker, containerName);
-          if (existing) {
-            // If container name already exists (stale), remove it.
-            await removeContainer(existing);
-          }
-
-          const codexHomeInContainer = path.posix.join("/workspace", ".mycelium", "codex-home");
-
-          const container = await createContainer(docker, {
-            name: containerName,
-            image: workerImage,
-            user: containerUser,
-            env: {
-              // Credentials / routing (passed through from the host).
-              CODEX_API_KEY: process.env.CODEX_API_KEY ?? process.env.OPENAI_API_KEY,
-              OPENAI_API_KEY: process.env.OPENAI_API_KEY,
-              OPENAI_BASE_URL: process.env.OPENAI_BASE_URL,
-              OPENAI_ORGANIZATION: process.env.OPENAI_ORGANIZATION,
-
-              TASK_ID: taskId,
-              TASK_SLUG: taskSlug,
-              TASK_MANIFEST_PATH: path.posix.join(
-                "/workspace",
-                tasksDirPosix,
-                taskRelativeDirPosix,
-                "manifest.json",
-              ),
-              TASK_SPEC_PATH: path.posix.join(
-                "/workspace",
-                tasksDirPosix,
-                taskRelativeDirPosix,
-                "spec.md",
-              ),
-              TASK_BRANCH: branchName,
-              LINT_CMD: lintCommand,
-              LINT_TIMEOUT: config.lint_timeout ? String(config.lint_timeout) : undefined,
-              DOCTOR_CMD: doctorCommand,
-              DOCTOR_TIMEOUT: config.doctor_timeout ? String(config.doctor_timeout) : undefined,
-              MAX_RETRIES: String(config.max_retries),
-              CHECKPOINT_COMMITS: config.worker.checkpoint_commits ? "true" : "false",
-              DEFAULT_TEST_PATHS: JSON.stringify(config.test_paths ?? []),
-              BOOTSTRAP_CMDS:
-                config.bootstrap.length > 0 ? JSON.stringify(config.bootstrap) : undefined,
-              CODEX_MODEL: config.worker.model,
-              CODEX_MODEL_REASONING_EFFORT: codexReasoningEffort,
-              CODEX_HOME: codexHomeInContainer,
-              RUN_LOGS_DIR: "/run-logs",
-              LOG_CODEX_PROMPTS: config.worker.log_codex_prompts ? "1" : "0",
-            },
-            binds: [
-              { hostPath: workspace, containerPath: "/workspace", mode: "rw" },
-              { hostPath: tLogsDir, containerPath: "/run-logs", mode: "rw" },
-            ],
-            workdir: "/workspace",
-            networkMode,
-            resources: containerResources,
-            labels: buildContainerLabels({
-              projectName,
-              runId,
-              taskId,
-              branchName,
-              workspace,
-            }),
-          });
-
-          const containerInfo = await container.inspect();
-          const containerId = containerInfo.Id;
-          state.tasks[taskId].container_id = containerId;
-          await stateStore.save(state);
-
-          logOrchestratorEvent(orchLog, "container.create", {
-            taskId,
-            container_id: containerId,
-            name: containerName,
-            security: containerSecurityPayload,
-          });
-
-          // Attach log stream
-          const logStream = await streamContainerLogs(container, taskEvents, {
-            fallbackType: "task.log",
-          });
-
-          try {
-            await startContainer(container);
-            logOrchestratorEvent(orchLog, "container.start", { taskId, container_id: containerId });
-
-            if (crashAfterContainerStart) {
-              // Simulate an orchestrator crash for resume drills; the worker container keeps running.
-              process.kill(process.pid, "SIGKILL");
-            }
-
-            const waited = await waitContainer(container);
-
-            logOrchestratorEvent(orchLog, "container.exit", {
-              taskId,
-              container_id: containerId,
-              exit_code: waited.exitCode,
-            });
-
-            await syncWorkerStateIntoTask(taskId, workspace);
-
-            if (waited.exitCode === 0) {
-              return {
-                taskId,
-                taskSlug,
-                branchName,
-                workspace,
-                logsDir: tLogsDir,
-                success: true as const,
-              };
-            }
-
-            return {
-              taskId,
-              taskSlug,
-              branchName,
-              workspace,
-              logsDir: tLogsDir,
-              errorMessage: `Task worker container exited with code ${waited.exitCode}`,
-              success: false as const,
-            };
-          } finally {
-            logStream.detach();
-            await logStream.completed.catch(() => undefined);
-            taskEvents.close();
-          }
-        }
-
-        logOrchestratorEvent(orchLog, "worker.local.start", { taskId, workspace });
         const manifestPath = path.join(
           workspace,
           config.tasks_dir,
@@ -3222,36 +2898,51 @@ async function runProjectLegacy(
           "manifest.json",
         );
         const specPath = path.join(workspace, config.tasks_dir, taskRelativeDir, "spec.md");
-        const workerLogger = createLocalWorkerLogger(taskEvents, { taskId, taskSlug });
 
-        const previousLogCodexPrompts = process.env.LOG_CODEX_PROMPTS;
-        process.env.LOG_CODEX_PROMPTS = config.worker.log_codex_prompts ? "1" : "0";
-
+        let attemptResult: WorkerRunnerResult;
         try {
-          await runWorker(
-            {
-              taskId,
-              taskSlug,
-              taskBranch: branchName,
+          attemptResult = await workerRunner.runAttempt({
+            taskId,
+            taskSlug,
+            taskBranch: branchName,
+            workspace,
+            taskPaths: {
               manifestPath,
               specPath,
-              lintCmd: lintCommand,
-              lintTimeoutSeconds: config.lint_timeout,
-              doctorCmd: doctorCommand,
-              doctorTimeoutSeconds: config.doctor_timeout,
-              maxRetries: config.max_retries,
-              bootstrapCmds: config.bootstrap,
-              runLogsDir: tLogsDir,
-              codexHome,
-              codexModel: config.worker.model,
-              checkpointCommits: config.worker.checkpoint_commits,
-              workingDirectory: workspace,
-              defaultTestPaths: config.test_paths,
+              taskRelativeDirPosix,
             },
-            workerLogger,
-          );
-          logOrchestratorEvent(orchLog, "worker.local.complete", { taskId });
-          await syncWorkerStateIntoTask(taskId, workspace);
+            lintCommand: lintCommand,
+            lintTimeoutSeconds: config.lint_timeout,
+            doctorCommand: doctorCommand,
+            doctorTimeoutSeconds: config.doctor_timeout,
+            maxRetries: config.max_retries,
+            bootstrapCmds: config.bootstrap,
+            runLogsDir: tLogsDir,
+            codexHome,
+            codexModel: config.worker.model,
+            codexModelReasoningEffort: codexReasoningEffort,
+            checkpointCommits: config.worker.checkpoint_commits,
+            defaultTestPaths: config.test_paths,
+            logCodexPrompts: config.worker.log_codex_prompts,
+            crashAfterStart: crashAfterContainerStart,
+            taskEvents,
+            orchestratorLogger: orchLog,
+            onContainerReady: async (containerId) => {
+              state.tasks[taskId].container_id = containerId;
+              await stateStore.save(state);
+            },
+          });
+        } finally {
+          taskEvents.close();
+        }
+
+        if (attemptResult.containerId) {
+          state.tasks[taskId].container_id = attemptResult.containerId;
+        }
+
+        await syncWorkerStateIntoTask(taskId, workspace);
+
+        if (attemptResult.success) {
           return {
             taskId,
             taskSlug,
@@ -3260,27 +2951,17 @@ async function runProjectLegacy(
             logsDir: tLogsDir,
             success: true as const,
           };
-        } catch (err) {
-          const message = err instanceof Error ? err.message : String(err);
-          logOrchestratorEvent(orchLog, "worker.local.error", { taskId, message });
-          await syncWorkerStateIntoTask(taskId, workspace);
-          return {
-            taskId,
-            taskSlug,
-            branchName,
-            workspace,
-            logsDir: tLogsDir,
-            errorMessage: message,
-            success: false as const,
-          };
-        } finally {
-          if (previousLogCodexPrompts === undefined) {
-            delete process.env.LOG_CODEX_PROMPTS;
-          } else {
-            process.env.LOG_CODEX_PROMPTS = previousLogCodexPrompts;
-          }
-          taskEvents.close();
         }
+
+        return {
+          taskId,
+          taskSlug,
+          branchName,
+          workspace,
+          logsDir: tLogsDir,
+          errorMessage: attemptResult.errorMessage,
+          success: false as const,
+        };
       }),
     );
 
@@ -4060,6 +3741,36 @@ function buildStatusSets(state: RunState): { completed: Set<string>; failed: Set
   return { completed, failed };
 }
 
+function createWorkerRunner(input: {
+  useDocker: boolean;
+  projectName: string;
+  runId: string;
+  config: ProjectConfig;
+  tasksDirPosix: string;
+  workerImage: string;
+  containerResources?: ContainerSpec["resources"];
+  containerSecurityPayload: JsonObject;
+  networkMode?: ProjectConfig["docker"]["network_mode"];
+  containerUser?: string;
+}): WorkerRunner {
+  if (!input.useDocker) {
+    return new LocalWorkerRunner();
+  }
+
+  return new DockerWorkerRunner({
+    projectName: input.projectName,
+    runId: input.runId,
+    workerImage: input.workerImage,
+    dockerfile: input.config.docker.dockerfile,
+    buildContext: input.config.docker.build_context,
+    tasksDirPosix: input.tasksDirPosix,
+    containerResources: input.containerResources,
+    containerSecurityPayload: input.containerSecurityPayload,
+    networkMode: input.networkMode,
+    containerUser: input.containerUser,
+  });
+}
+
 export function mergeCheckpointCommits(
   existing: CheckpointCommit[],
   incoming: WorkerCheckpoint[],
@@ -4089,56 +3800,6 @@ export function checkpointListsEqual(a: CheckpointCommit[], b: CheckpointCommit[
       entry.sha === b[idx].sha &&
       entry.created_at === b[idx].created_at,
   );
-}
-
-function firstContainerName(names?: string[]): string | undefined {
-  if (!names || names.length === 0) return undefined;
-  const raw = names[0] ?? "";
-  return raw.startsWith("/") ? raw.slice(1) : raw;
-}
-
-function createLocalWorkerLogger(
-  taskEvents: JsonlLogger,
-  defaults: { taskId: string; taskSlug: string },
-): WorkerLogger {
-  return {
-    log(event: WorkerLogEventInput) {
-      const normalized = normalizeWorkerEvent(event, defaults);
-      logJsonLineOrRaw(taskEvents, JSON.stringify(normalized), "stdout", "task.log");
-    },
-  };
-}
-
-function normalizeWorkerEvent(
-  event: WorkerLogEventInput,
-  defaults: { taskId: string; taskSlug: string },
-): Record<string, unknown> {
-  const ts =
-    typeof event.ts === "string"
-      ? event.ts
-      : event.ts instanceof Date
-        ? event.ts.toISOString()
-        : isoNow();
-
-  const payload =
-    event.payload && Object.keys(event.payload).length > 0 ? event.payload : undefined;
-
-  const normalized: Record<string, unknown> = {
-    ts,
-    type: event.type,
-  };
-
-  if (event.attempt !== undefined) normalized.attempt = event.attempt;
-
-  const taskId = event.taskId ?? defaults.taskId;
-  if (taskId) normalized.task_id = taskId;
-
-  const taskSlug = event.taskSlug ?? defaults.taskSlug;
-  if (taskSlug) normalized.task_slug = taskSlug;
-
-  if (payload) normalized.payload = payload;
-
-  return normalized;
 }
 
 async function writeCodexConfig(

@@ -9,32 +9,78 @@ const mocks = vi.hoisted(() => {
   const listContainersMock = vi.fn();
   const getContainerMock = vi.fn();
   const removeContainerMock = vi.fn(async () => undefined);
+  const stopContainerMock = vi.fn(async () => undefined);
   const imageExistsMock = vi.fn(async () => true);
-  const dockerClientMock = vi.fn(() => ({
-    listContainers: listContainersMock,
-    getContainer: getContainerMock,
-  }));
+  const findContainerByNameMock = vi.fn(async () => null);
+  const createContainerMock = vi.fn();
+  const inspectContainerMock = vi.fn();
+  const startContainerMock = vi.fn();
+  const waitForExitMock = vi.fn();
+  const streamLogsToLoggerMock = vi.fn();
 
   return {
     listContainersMock,
     getContainerMock,
     removeContainerMock,
+    stopContainerMock,
     imageExistsMock,
-    dockerClientMock,
+    findContainerByNameMock,
+    createContainerMock,
+    inspectContainerMock,
+    startContainerMock,
+    waitForExitMock,
+    streamLogsToLoggerMock,
   };
 });
 
-vi.mock("../docker/docker.js", () => {
-  return {
-    DEFAULT_CPU_PERIOD: 100000,
-    dockerClient: mocks.dockerClientMock,
-    imageExists: mocks.imageExistsMock,
-    removeContainer: mocks.removeContainerMock,
-    createContainer: vi.fn(),
-    startContainer: vi.fn(),
-    waitContainer: vi.fn(),
-    findContainerByName: vi.fn(),
-  };
+vi.mock("../docker/manager.js", () => {
+  class DockerManager {
+    async listContainers(opts?: unknown): Promise<unknown> {
+      return mocks.listContainersMock(opts);
+    }
+
+    getContainer(id: string): unknown {
+      return mocks.getContainerMock(id);
+    }
+
+    async stopContainer(container: unknown): Promise<void> {
+      await mocks.stopContainerMock(container);
+    }
+
+    async removeContainer(container: unknown): Promise<void> {
+      await mocks.removeContainerMock(container);
+    }
+
+    async imageExists(imageName: string): Promise<boolean> {
+      return mocks.imageExistsMock(imageName);
+    }
+
+    async findContainerByName(name: string): Promise<unknown> {
+      return mocks.findContainerByNameMock(name);
+    }
+
+    async createContainer(...args: unknown[]): Promise<unknown> {
+      return mocks.createContainerMock(...args);
+    }
+
+    async inspectContainer(container: unknown): Promise<unknown> {
+      return mocks.inspectContainerMock(container);
+    }
+
+    async startContainer(container: unknown): Promise<void> {
+      await mocks.startContainerMock(container);
+    }
+
+    async waitForExit(container: unknown): Promise<unknown> {
+      return mocks.waitForExitMock(container);
+    }
+
+    async streamLogsToLogger(...args: unknown[]): Promise<unknown> {
+      return mocks.streamLogsToLoggerMock(...args);
+    }
+  }
+
+  return { DockerManager };
 });
 
 import { runProject } from "../core/executor.js";
@@ -108,7 +154,7 @@ describe("executor: --stop-containers-on-exit", () => {
     seedDockerContainers({ projectName, runId, taskIds: ["001", "002"] });
 
     mocks.getContainerMock.mockImplementation((id: string) => {
-      return { id, stop: vi.fn(async () => undefined) };
+      return { id };
     });
 
     const controller = new AbortController();
@@ -220,9 +266,9 @@ function seedDockerContainers(args: {
 
   const containers = taskIds.map((taskId) => {
     return {
-      Id: `mock-${taskId}`,
-      Names: [`/mycelium-${taskId}`],
-      Labels: {
+      id: `mock-${taskId}`,
+      names: [`/mycelium-${taskId}`],
+      labels: {
         "mycelium.project": projectName,
         "mycelium.run_id": runId,
         "mycelium.task_id": taskId,
@@ -231,9 +277,9 @@ function seedDockerContainers(args: {
   });
 
   containers.push({
-    Id: "ignored",
-    Names: ["/unrelated"],
-    Labels: {
+    id: "ignored",
+    names: ["/unrelated"],
+    labels: {
       "mycelium.project": "other",
       "mycelium.run_id": "other",
       "mycelium.task_id": "999",

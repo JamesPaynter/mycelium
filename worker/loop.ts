@@ -47,6 +47,7 @@ export type WorkerConfig = {
   workingDirectory: string;
   checkpointCommits: boolean;
   defaultTestPaths?: string[];
+  logCodexPrompts?: boolean;
 };
 
 const DOCTOR_PROMPT_LIMIT = 12_000;
@@ -59,6 +60,7 @@ const PROMPT_PREVIEW_LIMIT = 4_000;
 
 export async function runWorker(config: WorkerConfig, logger?: WorkerLogger): Promise<void> {
   const log = logger ?? createStdoutLogger({ taskId: config.taskId, taskSlug: config.taskSlug });
+  const logCodexPrompts = config.logCodexPrompts === true;
 
   if (config.maxRetries < 1) {
     throw new Error(`maxRetries must be at least 1 (received ${config.maxRetries})`);
@@ -74,6 +76,7 @@ export async function runWorker(config: WorkerConfig, logger?: WorkerLogger): Pr
     CODEX_HOME: config.codexHome,
     RUN_LOGS_DIR: config.runLogsDir,
     WORKER_FAIL_ONCE_FILE: workerFailOnceFile,
+    LOG_CODEX_PROMPTS: logCodexPrompts ? "1" : "0",
   };
   if (config.codexModel) {
     commandEnv.CODEX_MODEL = config.codexModel;
@@ -191,6 +194,7 @@ export async function runWorker(config: WorkerConfig, logger?: WorkerLogger): Pr
       log,
       workerState,
       loggedResumeEvent,
+      logCodexPrompts,
       prompt,
       runLogsDir: config.runLogsDir,
     });
@@ -581,13 +585,14 @@ async function runCodexTurn(args: {
   log: WorkerLogger;
   workerState: WorkerStateStore;
   loggedResumeEvent: boolean;
+  logCodexPrompts: boolean;
   runLogsDir: string;
 }): Promise<boolean> {
   await args.workerState.recordAttemptStart(args.attempt);
   args.log.log({ type: "turn.start", attempt: args.attempt });
 
   const promptPreview = truncateText(args.prompt, PROMPT_PREVIEW_LIMIT);
-  const shouldPersistPrompt = isTruthyEnv(process.env.LOG_CODEX_PROMPTS);
+  const shouldPersistPrompt = args.logCodexPrompts;
   const promptLogFile = shouldPersistPrompt
     ? `codex-prompt-${safeAttemptName(args.attempt)}.txt`
     : undefined;
@@ -962,10 +967,4 @@ function truncateText(text: string, limit: number): { text: string; truncated: b
     return { text, truncated: false };
   }
   return { text: text.slice(0, limit), truncated: true };
-}
-
-function isTruthyEnv(value: string | undefined): boolean {
-  if (!value) return false;
-  const normalized = value.trim().toLowerCase();
-  return normalized === "1" || normalized === "true" || normalized === "yes" || normalized === "on";
 }

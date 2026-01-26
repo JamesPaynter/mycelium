@@ -2,8 +2,8 @@ import path from "node:path";
 
 import { Command } from "commander";
 
-import { runWorker, type WorkerConfig } from "./loop.js";
 import { createStdoutLogger, toErrorMessage } from "./logging.js";
+import { runWorker, type WorkerConfig } from "./loop.js";
 
 // =============================================================================
 // CLI
@@ -28,6 +28,7 @@ type CliOptions = {
   codexModel?: string;
   workdir?: string;
   checkpointCommits?: boolean;
+  logCodexPrompts?: boolean;
 };
 
 export async function main(argv: string[]): Promise<void> {
@@ -201,6 +202,7 @@ function buildConfig(opts: CliOptions): WorkerConfig {
     codexModel: opts.codexModel ?? envOrUndefined("CODEX_MODEL") ?? undefined,
     workingDirectory,
     checkpointCommits,
+    logCodexPrompts: resolveBooleanEnv("LOG_CODEX_PROMPTS"),
   };
 }
 
@@ -240,6 +242,12 @@ function parseBoolean(value: string, label: string): boolean {
   if (["true", "1", "yes", "y", "on"].includes(normalized)) return true;
   if (["false", "0", "no", "n", "off"].includes(normalized)) return false;
   throw new Error(`${label} must be true or false.`);
+}
+
+function resolveBooleanEnv(name: string): boolean | undefined {
+  const raw = envOrUndefined(name);
+  if (raw === undefined) return undefined;
+  return parseBoolean(raw, name);
 }
 
 function parseBootstrap(raw: string | undefined): string[] {

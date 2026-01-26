@@ -10,6 +10,7 @@ import {
   type ContainerWaitResult,
   createContainer as createDockerContainer,
   dockerClient,
+  imageExists,
   removeContainer as removeDockerContainer,
   startContainer as startDockerContainer,
   waitContainer,
@@ -43,6 +44,14 @@ export type ExecResult = {
 export type RunContainerSummary = {
   id: string;
   name?: string;
+  state?: string;
+  status?: string;
+};
+
+export type ListedContainer = {
+  id: string;
+  names: string[];
+  labels: Record<string, string>;
   state?: string;
   status?: string;
 };
@@ -81,9 +90,9 @@ export class DockerManager {
   async streamLogsToLogger(
     container: Docker.Container,
     logger: JsonlLogger,
-    fallbackType?: string,
+    opts: { fallbackType?: string; includeHistory?: boolean; follow?: boolean } = {},
   ): Promise<LogStreamHandle> {
-    return streamContainerLogs(container, logger, { fallbackType });
+    return streamContainerLogs(container, logger, opts);
   }
 
   async runContainer(opts: RunContainerOptions): Promise<RunContainerResult> {
@@ -93,7 +102,9 @@ export class DockerManager {
     let logHandle: LogStreamHandle | undefined;
     try {
       if (opts.logger) {
-        logHandle = await this.streamLogsToLogger(container, opts.logger, opts.logFallbackType);
+        logHandle = await this.streamLogsToLogger(container, opts.logger, {
+          fallbackType: opts.logFallbackType,
+        });
       }
 
       await this.startContainer(container);
@@ -162,6 +173,44 @@ export class DockerManager {
 
   async removeContainer(container: Docker.Container): Promise<void> {
     await removeDockerContainer(container);
+  }
+
+  async imageExists(imageName: string): Promise<boolean> {
+    return imageExists(this.docker, imageName);
+  }
+
+  async stopContainer(container: Docker.Container, timeoutSeconds = 5): Promise<void> {
+    try {
+      await container.stop({ t: timeoutSeconds });
+    } catch {
+      // best-effort stop
+    }
+  }
+
+  async inspectContainer(container: Docker.Container): Promise<Docker.ContainerInspectInfo> {
+    return container.inspect();
+  }
+
+  getContainer(containerId: string): Docker.Container {
+    return this.docker.getContainer(containerId);
+  }
+
+  async listContainers(opts: { all?: boolean } = {}): Promise<ListedContainer[]> {
+    const containers = await this.docker.listContainers({ all: opts.all ?? true });
+    return containers.map((container) => ({
+      id: container.Id,
+      names: container.Names ?? [],
+      labels: container.Labels ?? {},
+      state: container.State,
+      status: container.Status,
+    }));
+  }
+
+  async findContainerByName(name: string): Promise<Docker.Container | null> {
+    const containers = await this.docker.listContainers({ all: true });
+    const match = containers.find((c) => (c.Names ?? []).includes(`/${name}`));
+    if (!match) return null;
+    return this.docker.getContainer(match.Id);
   }
 
   async listRunContainers(projectName: string, runId: string): Promise<RunContainerSummary[]> {
