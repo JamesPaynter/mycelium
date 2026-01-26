@@ -27,6 +27,11 @@ import {
 import type { DoctorValidationReport } from "../validators/doctor-validator.js";
 import type { TestValidationReport } from "../validators/test-validator.js";
 import type { StyleValidationReport } from "../validators/style-validator.js";
+import {
+  summarizeDoctorReport,
+  summarizeStyleReport,
+  summarizeTestReport,
+} from "../app/orchestrator/validation/summaries.js";
 import { AnthropicClient } from "../llm/anthropic.js";
 import type { LlmClient } from "../llm/client.js";
 import { MockLlmClient, isMockLlmEnabled } from "../llm/mock.js";
@@ -1362,39 +1367,6 @@ function readValidatorResultFromFile<T>(filePath: string): T | null {
   } catch {
     return null;
   }
-}
-
-function summarizeTestReport(report: TestValidationReport): string {
-  const parts = [report.summary];
-  if (report.concerns.length > 0) {
-    parts.push(`Concerns: ${report.concerns.length}`);
-  }
-  if (report.coverage_gaps.length > 0) {
-    parts.push(`Coverage gaps: ${report.coverage_gaps.length}`);
-  }
-  return parts.filter(Boolean).join(" | ");
-}
-
-function summarizeStyleReport(report: StyleValidationReport): string {
-  const parts = [report.summary];
-  if (report.concerns.length > 0) {
-    parts.push(`Concerns: ${report.concerns.length}`);
-  }
-  return parts.filter(Boolean).join(" | ");
-}
-
-function summarizeDoctorReport(report: DoctorValidationReport): string {
-  const parts = [
-    `Effective: ${report.effective ? "yes" : "no"}`,
-    `Coverage: ${report.coverage_assessment}`,
-  ];
-  if (report.concerns.length > 0) {
-    parts.push(`Concerns: ${report.concerns.length}`);
-  }
-  if (report.recommendations.length > 0) {
-    parts.push(`Recs: ${report.recommendations.length}`);
-  }
-  return parts.join(" | ");
 }
 
 function queryLogsFromIndex(
