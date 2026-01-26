@@ -1,13 +1,14 @@
+import { randomUUID } from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
-import { randomUUID } from "node:crypto";
 
 import fse from "fs-extra";
 import { z } from "zod";
 
 import type { PathsContext } from "./paths.js";
-import { stateBaseDir, runHistoryIndexPath } from "./paths.js";
-import { RunStateSchema, RunStatusSchema, type RunState, type RunStatus } from "./state.js";
+import { runHistoryIndexPath, stateBaseDir } from "./paths.js";
+import { loadRunState } from "./run-state-io.js";
+import { RunStatusSchema, type RunState, type RunStatus } from "./state.js";
 import { isoNow } from "./utils.js";
 
 // =============================================================================
@@ -177,7 +178,7 @@ async function loadRunHistoryEntriesFromState(
   const results: RunHistoryEntry[] = [];
   for (const file of runFiles) {
     const fullPath = path.join(dir, file.name);
-    const state = await readRunStateFile(fullPath);
+    const state = await readRunStateFile(fullPath, paths);
     if (!state) continue;
     results.push(buildRunHistoryEntry(state));
   }
@@ -185,21 +186,15 @@ async function loadRunHistoryEntriesFromState(
   return results;
 }
 
-async function readRunStateFile(filePath: string): Promise<RunState | null> {
-  const raw = await fs.readFile(filePath, "utf8").catch((err) => {
-    if (isMissingFile(err)) return null;
-    throw err;
-  });
-
-  if (!raw) {
-    return null;
-  }
-
+async function readRunStateFile(filePath: string, paths?: PathsContext): Promise<RunState | null> {
   try {
-    const parsed = RunStateSchema.safeParse(JSON.parse(raw));
-    return parsed.success ? parsed.data : null;
-  } catch {
-    return null;
+    return await loadRunState(filePath, { paths });
+  } catch (err) {
+    if (isMissingFile(err)) return null;
+    if (err instanceof Error && err.message.startsWith("Invalid run state")) {
+      return null;
+    }
+    throw err;
   }
 }
 

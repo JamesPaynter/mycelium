@@ -1,22 +1,19 @@
-import fs from "node:fs/promises";
-import path from "node:path";
 import { randomUUID } from "node:crypto";
+import path from "node:path";
 
 import fse from "fs-extra";
 
 import type { PathsContext } from "./paths.js";
 import { runStateDir, runStatePath, runStateTempPath } from "./paths.js";
+import { listRunHistoryEntries, recordRunHistory } from "./run-history.js";
+import { loadRunState, recoverRunState, saveRunState } from "./run-state-io.js";
 import {
-  RunStateSchema,
-  resetRunningTasks,
   type BatchState,
   type RunState,
   type RunStatus,
   type TaskState,
   type TaskStatus,
 } from "./state.js";
-import { isoNow } from "./utils.js";
-import { recordRunHistory } from "./run-history.js";
 
 export type BatchStatusCounts = {
   total: number;
@@ -104,7 +101,7 @@ export class StateStore {
   }
 
   async load(): Promise<RunState> {
-    return loadRunState(this.statePathValue);
+    return loadRunState(this.statePathValue, { paths: this.paths });
   }
 
   async save(state: RunState): Promise<void> {
@@ -116,9 +113,11 @@ export class StateStore {
   }
 
   async loadAndRecover(reason?: string): Promise<RunState> {
-    const state = await this.load();
-    resetRunningTasks(state, reason);
-    await this.save(state);
+    const state = await recoverRunState(this.statePathValue, reason, this.tempPath());
+    await recordRunHistory(state, this.statePathValue, this.paths).catch((err) => {
+      const detail = err instanceof Error ? err.message : String(err);
+      console.warn(`Warning: failed to update run history for ${this.runId}. ${detail}`);
+    });
     return state;
   }
 
@@ -151,6 +150,15 @@ export async function findLatestRunId(
   return normalizeRunId(withMtime[0].file);
 }
 
+export async function findLatestPausedRunId(
+  projectName: string,
+  paths?: PathsContext,
+): Promise<string | null> {
+  const runs = await listRunHistoryEntries(projectName, {}, paths);
+  const paused = runs.find((run) => run.status === "paused");
+  return paused?.runId ?? null;
+}
+
 export async function loadRunStateForProject(
   projectName: string,
   runId?: string,
@@ -180,43 +188,6 @@ export function summarizeRunState(state: RunState): RunStatusSummary {
     humanReview: buildHumanReviewRows(state.tasks),
     topSpenders: buildTopSpenders(state.tasks),
   };
-}
-
-export async function loadRunState(statePath: string): Promise<RunState> {
-  const raw = await fse.readFile(statePath, "utf8");
-  const parsed = RunStateSchema.safeParse(JSON.parse(raw));
-  if (!parsed.success) {
-    throw new Error(`Invalid run state at ${statePath}: ${parsed.error.toString()}`);
-  }
-
-  return parsed.data;
-}
-
-export async function saveRunState(
-  statePath: string,
-  state: RunState,
-  tempPath?: string,
-): Promise<void> {
-  const parsed = RunStateSchema.safeParse(state);
-  if (!parsed.success) {
-    throw new Error(`Cannot save run state: ${parsed.error.toString()}`);
-  }
-
-  const normalized: RunState = { ...parsed.data, updated_at: isoNow() };
-  Object.assign(state, normalized);
-
-  await writeStateFile(statePath, normalized, tempPath);
-}
-
-export async function recoverRunState(
-  statePath: string,
-  reason?: string,
-  tempPath?: string,
-): Promise<RunState> {
-  const state = await loadRunState(statePath);
-  resetRunningTasks(state, reason);
-  await saveRunState(statePath, state, tempPath);
-  return state;
 }
 
 function summarizeBatchStatuses(batches: BatchState[]): BatchStatusCounts {
@@ -304,28 +275,7 @@ function buildTopSpenders(tasks: Record<string, TaskState>, limit = 5): TaskSpen
     .slice(0, limit);
 }
 
-async function writeStateFile(
-  statePath: string,
-  state: RunState,
-  tempPath?: string,
-): Promise<void> {
-  const dir = path.dirname(statePath);
-  await fse.ensureDir(dir);
-
-  const tmpPath = tempPath ?? `${statePath}.${randomUUID()}.tmp`;
-  const handle = await fs.open(tmpPath, "w");
-
-  try {
-    await handle.writeFile(JSON.stringify(state, null, 2) + "\n", "utf8");
-    await handle.sync();
-    await handle.close();
-    await fs.rename(tmpPath, statePath);
-  } catch (err) {
-    await handle.close().catch(() => undefined);
-    await fse.remove(tmpPath).catch(() => undefined);
-    throw err;
-  }
-}
+export { loadRunState, recoverRunState, saveRunState };
 
 function normalizeRunId(fileName: string): string {
   return fileName.replace(/^run-/, "").replace(/\.json$/, "");

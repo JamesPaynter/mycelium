@@ -4,6 +4,15 @@ import path from "node:path";
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+import { createPathsContext, orchestratorLogPath } from "./paths.js";
+import {
+  findLatestRunId,
+  loadRunState,
+  loadRunStateForProject,
+  summarizeRunState,
+  saveRunState,
+  StateStore,
+} from "./state-store.js";
 import {
   applyTaskStatusOverride,
   completeBatch,
@@ -16,15 +25,6 @@ import {
   RunStateSchema,
   startBatch,
 } from "./state.js";
-import { createPathsContext } from "./paths.js";
-import {
-  findLatestRunId,
-  loadRunState,
-  loadRunStateForProject,
-  summarizeRunState,
-  saveRunState,
-  StateStore,
-} from "./state-store.js";
 
 afterEach(() => {
   vi.useRealTimers();
@@ -270,6 +270,41 @@ describe("state store", () => {
     }
   });
 
+  it("recovers stale running runs on load and logs an event", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2024-04-01T00:00:00Z"));
+
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "state-store-stale-"));
+    const paths = createPathsContext({ myceliumHome: tmpDir });
+
+    try {
+      const project = "demo-stale";
+      const runId = "run-stale";
+      const store = new StateStore(project, runId, paths);
+      const state = createRunState({
+        runId,
+        project,
+        repoPath: "/repo",
+        mainBranch: "main",
+        taskIds: ["001"],
+      });
+      startBatch(state, { batchId: 1, taskIds: ["001"] });
+      await store.save(state);
+
+      vi.setSystemTime(new Date("2024-04-01T00:20:00Z"));
+      const loaded = await store.load();
+
+      expect(loaded.status).toBe("paused");
+      expect(loaded.tasks["001"].status).toBe("pending");
+      expect(loaded.tasks["001"].last_error).toMatch(/Stale recovery/);
+
+      const events = await readJsonl(orchestratorLogPath(project, runId, paths));
+      expect(events.some((event) => event.type === "run.stale_recovery")).toBe(true);
+    } finally {
+      fs.rmSync(tmpDir, { recursive: true, force: true });
+    }
+  });
+
   it("finds the latest run id and loads matching state", async () => {
     const tmpHome = fs.mkdtempSync(path.join(os.tmpdir(), "orchestrator-home-"));
     const paths = createPathsContext({ myceliumHome: tmpHome });
@@ -379,3 +414,14 @@ describe("state store", () => {
     ]);
   });
 });
+
+type JsonlEvent = { type?: string };
+
+async function readJsonl(filePath: string): Promise<JsonlEvent[]> {
+  const raw = await fs.promises.readFile(filePath, "utf8");
+  return raw
+    .split("\n")
+    .map((line: string) => line.trim())
+    .filter((line: string) => line.length > 0)
+    .map((line: string) => JSON.parse(line) as JsonlEvent);
+}
