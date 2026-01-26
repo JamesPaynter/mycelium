@@ -77,7 +77,7 @@ const WorkerSchema = z
     // Optional Codex config field (written to config.toml as model_reasoning_effort).
     // This is intentionally permissive because support depends on the model family.
     reasoning_effort: z.enum(["minimal", "low", "medium", "high", "xhigh"]).optional(),
-    max_retries: z.number().int().positive().optional(),
+    max_retries: z.number().int().nonnegative().optional(),
     checkpoint_commits: z.boolean().default(true),
     log_codex_prompts: z.boolean().default(false),
   })
@@ -183,7 +183,7 @@ export const ProjectConfigSchema = z
     planning_dir: z.string().min(1).default(".mycelium/planning"),
 
     max_parallel: z.number().int().positive().default(4),
-    max_retries: z.number().int().positive().default(20),
+    max_retries: z.number().int().nonnegative().default(20),
     timeout_minutes: z.number().int().positive().optional(),
 
     lint: z.string().min(1).optional(),

@@ -55,7 +55,7 @@ export async function main(argv: string[]): Promise<void> {
     .option("--doctor <cmd>", "Doctor command to run (env: DOCTOR_CMD)")
     .option(
       "--max-retries <n>",
-      "Maximum Codex attempts before failing (env: MAX_RETRIES, default 20)",
+      "Maximum Codex attempts before failing (env: MAX_RETRIES, default 20; 0 = unlimited)",
       (v) => parseInt(v, 10),
     )
     .option(
@@ -147,8 +147,8 @@ function buildConfig(opts: CliOptions): WorkerConfig {
 
   const maxRetries =
     getIntOption(opts.maxRetries, envOrUndefined("MAX_RETRIES"), "MAX_RETRIES") ?? 20;
-  if (maxRetries <= 0) {
-    throw new Error("MAX_RETRIES must be a positive integer.");
+  if (maxRetries < 0) {
+    throw new Error("MAX_RETRIES must be a non-negative integer.");
   }
 
   const lintTimeoutSeconds = getIntOption(
