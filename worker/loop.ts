@@ -77,6 +77,8 @@ export async function runWorker(config: WorkerConfig, logger?: WorkerLogger): Pr
     throw new Error(`maxRetries must be non-negative (received ${config.maxRetries})`);
   }
 
+  await maybeFailWorkerOnce({ workingDirectory: config.workingDirectory, log });
+
   const { spec, manifest } = await loadTaskInputs(config.specPath, config.manifestPath);
   const workerFailOnceFile = path.join(config.codexHome, ".fail-once");
   const commandEnv: NodeJS.ProcessEnv = {
@@ -769,6 +771,32 @@ async function loadTaskInputs(
   }
 
   return { spec: specRaw, manifest };
+}
+
+async function maybeFailWorkerOnce(args: {
+  workingDirectory: string;
+  log: WorkerLogger;
+}): Promise<void> {
+  const raw = process.env.MYCELIUM_WORKER_FAIL_ONCE_FILE?.trim();
+  if (!raw) return;
+
+  // Test-only guard to simulate a worker crash once per run.
+  const guardPath = path.isAbsolute(raw) ? raw : path.join(args.workingDirectory, raw);
+
+  try {
+    await fs.stat(guardPath);
+    return;
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code !== "ENOENT") {
+      throw err;
+    }
+  }
+
+  await fs.mkdir(path.dirname(guardPath), { recursive: true });
+  await fs.writeFile(guardPath, "fail-once\n", "utf8");
+  args.log.log({ type: "worker.fail_once", payload: { file: guardPath } });
+
+  throw new Error("Worker forced to fail once via MYCELIUM_WORKER_FAIL_ONCE_FILE");
 }
 
 async function runStrictTddStageA(args: {

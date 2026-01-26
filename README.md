@@ -64,7 +64,8 @@ npm run dev -- autopilot --project <project-name> --local-worker --max-parallel 
 - Resources: `resources[].paths` drive scheduler locks; manifests declare `locks.reads/writes` and `files.reads/writes`.
 - Control plane: `control_plane.enabled` derives component resources (`component_resource_prefix`), `resources_mode` selects how resources resolve (`prefer-derived`), `fallback_resource` handles unmapped files, `scope_mode` controls compliance enforcement (off/shadow/enforce), `lock_mode` selects declared/shadow/derived scheduling, `control_plane.checks.mode` (off/report/enforce) enables scoped doctor commands via `commands_by_component` with fallback to the global doctor, and `control_plane.surface_locks.enabled` adds `surface:<component>` locks for surface changes.
 - Manifest enforcement: `manifest_enforcement: off|warn|block`; violations emit `access.requested` and trigger auto-rescope when possible, unless `control_plane.scope_mode=shadow`.
-- Task failure policy: `task_failure_policy: retry|fail_fast` (default `retry`), controls whether worker failures reset tasks to pending or fail the task.
+- Task failure policy: `task_failure_policy: retry|fail_fast` (default `retry`); retry treats worker non-zero exits as retryable and resets tasks to pending, while `fail_fast` treats them as catastrophic and fails the task/run.
+- Worker retries: `max_retries` caps per-task worker attempts (`0` means retry forever); hitting the limit causes the worker to exit non-zero.
 - Validators: `test_validator`, `style_validator`, `architecture_validator`, and `doctor_validator` respect `enabled` + `mode` (`warn|block`); architecture validator uses `docs_glob` + `fail_if_docs_missing`, doctor validator cadence via `run_every_n_tasks` and also when integration doctor fails or the canary passes unexpectedly.
 - Doctor canary: configure `doctor_canary` (`mode: off|env`, `env_var`, `warn_on_unexpected_pass`) to control the integration doctor re-run and warning behavior.
 - Budgets: `budgets.mode warn|block` with `max_tokens_per_task` / `max_cost_per_run`; defaults warn.
@@ -77,7 +78,10 @@ npm run dev -- autopilot --project <project-name> --local-worker --max-parallel 
 - Signals: Ctrl+C/SIGTERM logs `run.stop`, persists state, and leaves task containers running for `resume` (use `--stop-containers-on-exit` on `run`/`resume`/`autopilot` to stop them).
 - Resume: run state is persisted after every mutation; `resume` reattaches to labeled containers when they still exist (streams historical logs), otherwise resets those tasks to pending; worker state restores Codex thread ids and checkpoint commits when available.
 - Doctors: per-task doctor runs each attempt; integration doctor runs after each batch; canary reruns doctor with `doctor_canary.env_var=1` (default `ORCH_CANARY`) unless `doctor_canary.mode=off`.
+- Worker retries: tasks loop through attempts until doctor passes or `max_retries` is hit (`0` = retry forever); worker crashes/non-zero exits reset tasks to pending when `task_failure_policy=retry`.
 - Strict TDD: when `tdd_mode: "strict"` and `verify.fast` is set, Stage A requires failing tests first; Stage B implements until doctor passes; non-test changes in Stage A fail the attempt.
+- Attempt summaries: each worker attempt writes `attempt-<N>.summary.json` plus `attempts.summary.md` under the task run logs dir (`<mycelium_home>/logs/<project>/run-<id>/tasks/<taskId>-<slug>`). Summaries include phase, retry reason + evidence paths, changed files, scope divergence vs `manifest.files.writes`, and TDD signals.
+- Scope drift: changes outside `manifest.files.writes` are recorded in attempt summaries and compliance reports; `control_plane.scope_mode=shadow` logs without blocking, while `manifest_enforcement=block` or `scope_mode=enforce` can stop and rescope.
 - Manifest rescope: undeclared writes generate compliance reports and `task.rescope.*` events; successful rescope updates the manifest/locks and retries the task.
 - Log summaries: `logs summarize --task <id>` prints validator summaries; add `--llm` to use the configured LLM summaries when enabled.
 
