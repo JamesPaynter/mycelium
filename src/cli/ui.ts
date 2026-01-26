@@ -134,11 +134,23 @@ export async function launchUiServer(args: {
   }
 
   try {
+    const appContext = args.appContext;
+    if (!appContext) {
+      const err = new Error(
+        "App context is required to start the UI server. Create one via createAppContext() or loadAppContext().",
+      );
+      if (args.onError === "warn") {
+        console.warn(formatUiStartWarning(err, args.runtime.port));
+        return null;
+      }
+      throw err;
+    }
+
     const handle = await startUiServer({
       project: args.projectName,
       runId: args.runId,
       port: args.runtime.port,
-      appContext: args.appContext,
+      appContext,
     });
 
     return {

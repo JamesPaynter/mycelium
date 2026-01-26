@@ -20,28 +20,30 @@ import { StateStore, summarizeRunState } from "../core/state-store.js";
 import { defaultRunId, isoNow } from "../core/utils.js";
 
 import { planProject } from "./plan.js";
-import { resolveRunDebugFlags } from "./run-flags.js";
+import { resolveRunDebugFlags, type RunDebugFlags } from "./run-flags.js";
 import { createRunStopSignalHandler } from "./signal-handlers.js";
 
 // =============================================================================
 // CLI ENTRYPOINT
 // =============================================================================
 
+type AutopilotOptions = {
+  planInput?: string;
+  planOutput?: string;
+  runId?: string;
+  maxQuestions?: number;
+  maxParallel?: number;
+  skipRun?: boolean;
+  runDryRun?: boolean;
+  buildImage?: boolean;
+  useDocker?: boolean;
+  stopContainersOnExit?: boolean;
+} & RunDebugFlags;
+
 export async function autopilotCommand(
   projectName: string,
   config: ProjectConfig,
-  opts: {
-    planInput?: string;
-    planOutput?: string;
-    runId?: string;
-    maxQuestions?: number;
-    maxParallel?: number;
-    skipRun?: boolean;
-    runDryRun?: boolean;
-    buildImage?: boolean;
-    useDocker?: boolean;
-    stopContainersOnExit?: boolean;
-  },
+  opts: AutopilotOptions,
   appContext?: AppContext,
 ): Promise<void> {
   const paths = appContext?.paths ?? createAppPathsContext({ repoPath: config.repo_path });
@@ -78,7 +80,10 @@ export async function autopilotCommand(
       );
     },
   });
-  const runDebugFlags = resolveRunDebugFlags(opts);
+  const runDebugFlags = resolveRunDebugFlags({
+    useLegacyEngine: opts.useLegacyEngine,
+    crashAfterContainerStart: opts.crashAfterContainerStart,
+  });
 
   const transcriptData: Omit<AutopilotTranscriptData, keyof AutopilotTranscriptContext> = {
     turns: [],

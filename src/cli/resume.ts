@@ -4,7 +4,7 @@ import type { ProjectConfig } from "../core/config.js";
 import { runProject, type RunOptions } from "../core/executor.js";
 import { loadRunStateForProject } from "../core/state-store.js";
 
-import { resolveRunDebugFlags } from "./run-flags.js";
+import { resolveRunDebugFlags, type RunDebugFlags } from "./run-flags.js";
 import { createRunStopSignalHandler } from "./signal-handlers.js";
 import {
   closeUiServer,
@@ -23,7 +23,8 @@ type ResumeOptions = Pick<
   | "stopContainersOnExit"
   | "reuseCompleted"
   | "importRun"
-> & {
+> &
+  RunDebugFlags & {
   runId?: string;
   ui?: boolean;
   uiPort?: number;
@@ -37,7 +38,10 @@ export async function resumeCommand(
   appContext?: AppContext,
 ): Promise<void> {
   const paths = appContext?.paths ?? createAppPathsContext({ repoPath: config.repo_path });
-  const runDebugFlags = resolveRunDebugFlags(opts);
+  const runDebugFlags = resolveRunDebugFlags({
+    useLegacyEngine: opts.useLegacyEngine,
+    crashAfterContainerStart: opts.crashAfterContainerStart,
+  });
   const resolved = await loadRunStateForProject(projectName, opts.runId, paths);
   if (!resolved) {
     const notFound = opts.runId

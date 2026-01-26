@@ -168,13 +168,17 @@ export async function buildRunContextBase<RunOptions extends RunContextOptions>(
   const isResume = input.options.resume ?? false;
   let runId = input.options.runId;
   if (isResume && !runId) {
-    runId = await ports.stateRepository.findLatestRunId(input.projectName);
-    if (!runId) {
-      throw new Error(`No runs found to resume for project ${input.projectName}.`);
-    }
+    const latestRunId = await ports.stateRepository.findLatestRunId(input.projectName);
+    runId = latestRunId ?? undefined;
+  }
+  if (isResume && !runId) {
+    throw new Error(`No runs found to resume for project ${input.projectName}.`);
   }
   if (!isResume) {
     runId = runId ?? defaultRunId();
+  }
+  if (!runId) {
+    throw new Error("Run id could not be resolved.");
   }
 
   const reuseCompleted = input.options.reuseCompleted ?? !isResume;

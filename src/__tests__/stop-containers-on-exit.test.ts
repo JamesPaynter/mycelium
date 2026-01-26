@@ -5,26 +5,28 @@ import path from "node:path";
 import { execa } from "execa";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import type { DockerManager } from "../docker/manager.js";
+import type { DockerManager as DockerManagerType } from "../docker/manager.js";
 
 const mocks = vi.hoisted(() => {
-  const listContainersMock = vi.fn<DockerManager["listContainers"]>();
-  const getContainerMock = vi.fn<DockerManager["getContainer"]>();
-  const removeContainerMock = vi.fn<DockerManager["removeContainer"]>(async (_container) => undefined);
-  const stopContainerMock = vi.fn<DockerManager["stopContainer"]>(
-    async (_container, _timeoutSeconds) => undefined,
-  );
-  const imageExistsMock = vi.fn<DockerManager["imageExists"]>(async (_imageName) => true);
-  const findContainerByNameMock = vi.fn<DockerManager["findContainerByName"]>(
-    async (_name) => null,
-  );
-  const createContainerMock = vi.fn<DockerManager["createContainer"]>();
-  const inspectContainerMock = vi.fn<DockerManager["inspectContainer"]>();
-  const startContainerMock = vi.fn<DockerManager["startContainer"]>(
+  const listContainersMock = vi.fn<DockerManagerType["listContainers"]>();
+  const getContainerMock = vi.fn<DockerManagerType["getContainer"]>();
+  const removeContainerMock = vi.fn<DockerManagerType["removeContainer"]>(
     async (_container) => undefined,
   );
-  const waitForExitMock = vi.fn<DockerManager["waitForExit"]>();
-  const streamLogsToLoggerMock = vi.fn<DockerManager["streamLogsToLogger"]>();
+  const stopContainerMock = vi.fn<DockerManagerType["stopContainer"]>(
+    async (_container, _timeoutSeconds) => undefined,
+  );
+  const imageExistsMock = vi.fn<DockerManagerType["imageExists"]>(async (_imageName) => true);
+  const findContainerByNameMock = vi.fn<DockerManagerType["findContainerByName"]>(
+    async (_name) => null,
+  );
+  const createContainerMock = vi.fn<DockerManagerType["createContainer"]>();
+  const inspectContainerMock = vi.fn<DockerManagerType["inspectContainer"]>();
+  const startContainerMock = vi.fn<DockerManagerType["startContainer"]>(
+    async (_container) => undefined,
+  );
+  const waitForExitMock = vi.fn<DockerManagerType["waitForExit"]>();
+  const streamLogsToLoggerMock = vi.fn<DockerManagerType["streamLogsToLogger"]>();
 
   return {
     listContainersMock,
@@ -43,47 +45,53 @@ const mocks = vi.hoisted(() => {
 
 vi.mock("../docker/manager.js", () => {
   class DockerManager {
-    async listContainers(opts?: unknown): Promise<unknown> {
+    async listContainers(opts?: Parameters<DockerManagerType["listContainers"]>[0]) {
       return mocks.listContainersMock(opts);
     }
 
-    getContainer(id: string): unknown {
-      return mocks.getContainerMock(id);
+    getContainer(containerId: Parameters<DockerManagerType["getContainer"]>[0]) {
+      return mocks.getContainerMock(containerId);
     }
 
-    async stopContainer(container: unknown): Promise<void> {
-      await mocks.stopContainerMock(container);
+    async stopContainer(
+      container: Parameters<DockerManagerType["stopContainer"]>[0],
+      timeoutSeconds?: Parameters<DockerManagerType["stopContainer"]>[1],
+    ) {
+      await mocks.stopContainerMock(container, timeoutSeconds);
     }
 
-    async removeContainer(container: unknown): Promise<void> {
+    async removeContainer(container: Parameters<DockerManagerType["removeContainer"]>[0]) {
       await mocks.removeContainerMock(container);
     }
 
-    async imageExists(imageName: string): Promise<boolean> {
+    async imageExists(imageName: Parameters<DockerManagerType["imageExists"]>[0]) {
       return mocks.imageExistsMock(imageName);
     }
 
-    async findContainerByName(name: string): Promise<unknown> {
+    async findContainerByName(name: Parameters<DockerManagerType["findContainerByName"]>[0]) {
       return mocks.findContainerByNameMock(name);
     }
 
-    async createContainer(...args: unknown[]): Promise<unknown> {
+    async createContainer(...args: Parameters<DockerManagerType["createContainer"]>) {
       return mocks.createContainerMock(...args);
     }
 
-    async inspectContainer(container: unknown): Promise<unknown> {
+    async inspectContainer(container: Parameters<DockerManagerType["inspectContainer"]>[0]) {
       return mocks.inspectContainerMock(container);
     }
 
-    async startContainer(container: unknown): Promise<void> {
+    async startContainer(container: Parameters<DockerManagerType["startContainer"]>[0]) {
       await mocks.startContainerMock(container);
     }
 
-    async waitForExit(container: unknown): Promise<unknown> {
-      return mocks.waitForExitMock(container);
+    async waitForExit(
+      container: Parameters<DockerManagerType["waitForExit"]>[0],
+      opts?: Parameters<DockerManagerType["waitForExit"]>[1],
+    ) {
+      return mocks.waitForExitMock(container, opts);
     }
 
-    async streamLogsToLogger(...args: unknown[]): Promise<unknown> {
+    async streamLogsToLogger(...args: Parameters<DockerManagerType["streamLogsToLogger"]>) {
       return mocks.streamLogsToLoggerMock(...args);
     }
   }
@@ -162,7 +170,7 @@ describe("executor: --stop-containers-on-exit", () => {
     seedDockerContainers({ projectName, runId, taskIds: ["001", "002"] });
 
     mocks.getContainerMock.mockImplementation((id: string) => {
-      return { id };
+      return { id } as ReturnType<DockerManagerType["getContainer"]>;
     });
 
     const controller = new AbortController();
