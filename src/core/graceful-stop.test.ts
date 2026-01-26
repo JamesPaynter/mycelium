@@ -73,7 +73,7 @@ describe("graceful stop signals", () => {
     clearTimeout(abortTimer);
 
     expect(stoppedRun.stopped).toBeDefined();
-    expect(stoppedRun.state.status).toBe("running");
+    expect(stoppedRun.state.status).toBe("paused");
 
     const orchestratorEvents = await readJsonl(orchestratorLogPath(projectName, runId, paths));
     const stopEvents = orchestratorEvents.filter((event) => event.type === "run.stop");

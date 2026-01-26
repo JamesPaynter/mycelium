@@ -2,12 +2,12 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { runHistoryIndexPath } from "../core/paths.js";
 import { listRunHistoryEntries } from "../core/run-history.js";
-import { createRunState } from "../core/state.js";
 import { StateStore } from "../core/state-store.js";
+import { createRunState } from "../core/state.js";
 
 const originalHome = process.env.MYCELIUM_HOME;
 const tempDirs: string[] = [];
@@ -23,6 +23,8 @@ afterEach(() => {
   } else {
     process.env.MYCELIUM_HOME = originalHome;
   }
+
+  vi.useRealTimers();
 });
 
 // =============================================================================
@@ -100,5 +102,27 @@ describe("run history", () => {
 
     const indexPath = runHistoryIndexPath(project);
     expect(fs.existsSync(indexPath)).toBe(true);
+  });
+
+  it("pauses stale running runs when listing history", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2024-05-01T00:00:00Z"));
+
+    const home = makeTempHome();
+    process.env.MYCELIUM_HOME = home;
+
+    const project = "demo-project";
+    const runId = "run-stale";
+
+    writeRunStateFile(home, project, runId, ["alpha"]);
+
+    vi.setSystemTime(new Date("2024-05-01T00:20:00Z"));
+    const runs = await listRunHistoryEntries(project);
+    const entry = runs.find((item) => item.runId === runId);
+    expect(entry?.status).toBe("paused");
+
+    const statePath = path.join(home, "state", project, `run-${runId}.json`);
+    const state = JSON.parse(fs.readFileSync(statePath, "utf8")) as { status?: string };
+    expect(state.status).toBe("paused");
   });
 });

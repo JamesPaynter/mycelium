@@ -2,6 +2,7 @@ import type { AppContext } from "../app/context.js";
 import { createAppPathsContext } from "../app/paths.js";
 import type { ProjectConfig } from "../core/config.js";
 import { runProject, type BatchPlanEntry, type RunOptions } from "../core/executor.js";
+import { findLatestPausedRunId, loadRunStateForProject } from "../core/state-store.js";
 import { defaultRunId } from "../core/utils.js";
 
 import { resolveRunDebugFlags } from "./run-flags.js";
@@ -26,18 +27,38 @@ export async function runCommand(
   opts: RunCommandOptions,
   appContext?: AppContext,
 ): Promise<void> {
-  const { ui, uiPort, uiOpen, ...runOptions } = opts;
-  const runId = runOptions.runId ?? defaultRunId();
+  const { ui, uiPort, uiOpen, runId: requestedRunId, resume: resumeFlag, ...runOptions } = opts;
+  const paths = appContext?.paths ?? createAppPathsContext({ repoPath: config.repo_path });
   const runDebugFlags = resolveRunDebugFlags({
     useLegacyEngine: runOptions.useLegacyEngine,
     crashAfterContainerStart: runOptions.crashAfterContainerStart,
   });
-  const paths = appContext?.paths ?? createAppPathsContext({ repoPath: config.repo_path });
   const uiRuntime = resolveUiRuntimeConfig(config.ui, {
     enabled: ui,
     port: uiPort,
     openBrowser: uiOpen,
   });
+
+  let runId = requestedRunId;
+  let resume = resumeFlag ?? false;
+
+  if (!runId) {
+    const pausedRunId = await findLatestPausedRunId(projectName, paths);
+    if (pausedRunId) {
+      runId = pausedRunId;
+      resume = true;
+      console.log(`Resuming paused run ${runId} (latest paused).`);
+    } else {
+      runId = defaultRunId();
+    }
+  } else {
+    const resolved = await loadRunStateForProject(projectName, runId, paths);
+    if (resolved?.state.status === "paused" && !resume) {
+      resume = true;
+      console.log(`Resuming paused run ${runId}.`);
+    }
+  }
+
   const stopHandler = createRunStopSignalHandler({
     onSignal: (signal) => {
       const containerNote = runOptions.stopContainersOnExit
@@ -71,6 +92,7 @@ export async function runCommand(
         ...runOptions,
         ...runDebugFlags,
         runId,
+        resume,
         stopSignal: stopHandler.signal,
       },
       paths,

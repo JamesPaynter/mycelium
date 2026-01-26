@@ -87,6 +87,8 @@ import type { ContainerSpec } from "../../../docker/docker.js";
 import { createBatchEngine } from "./batch-engine.js";
 import { createTaskEngine } from "./task-engine.js";
 
+const RUN_HEARTBEAT_INTERVAL_MS = 30_000;
+
 // =============================================================================
 // PUBLIC TYPES
 // =============================================================================
@@ -141,6 +143,7 @@ export async function runLegacyEngine(
 
 async function runEngineImpl(context: RunContext<RunOptions, RunResult>): Promise<RunResult> {
   const stopController = buildStopController(context.options.stopSignal);
+  let heartbeat: RunHeartbeat | null = null;
 
   try {
     const {
@@ -307,6 +310,13 @@ async function runEngineImpl(context: RunContext<RunOptions, RunResult>): Promis
         enabled: controlPlaneSnapshot.enabled,
       };
     }
+
+    heartbeat = startRunHeartbeat({
+      state,
+      stateStore,
+      orchestratorLog: orchLog,
+      intervalMs: RUN_HEARTBEAT_INTERVAL_MS,
+    });
 
     const lockMode = resolveEffectiveLockMode(controlPlaneConfig);
     const scopeComplianceMode = resolveScopeComplianceMode(controlPlaneConfig);
@@ -620,7 +630,7 @@ async function runEngineImpl(context: RunContext<RunOptions, RunResult>): Promis
         orchestratorLogger: orchLog,
       });
       const containerAction: RunStopInfo["containers"] = stopSummary ? "stopped" : "left_running";
-      state.status = "running";
+      state.status = "paused";
 
       const payload: JsonObject = {
         reason: reason.kind,
@@ -979,6 +989,7 @@ async function runEngineImpl(context: RunContext<RunOptions, RunResult>): Promis
 
     return { runId, state, plan: plannedBatches };
   } finally {
+    heartbeat?.stop();
     stopController.cleanup();
   }
 }
@@ -999,6 +1010,10 @@ type RunStopInfo = {
 type StopRequest = { kind: "signal"; signal?: string };
 
 type StopController = { readonly reason: StopRequest | null; cleanup: () => void };
+
+type RunHeartbeat = {
+  stop: () => void;
+};
 
 // =============================================================================
 // CONTROL PLANE SNAPSHOT
@@ -1484,6 +1499,45 @@ function buildStopController(signal?: AbortSignal): StopController {
       if (signal) {
         signal.removeEventListener("abort", onAbort);
       }
+    },
+  };
+}
+
+// =============================================================================
+// RUN HEARTBEAT
+// =============================================================================
+
+function startRunHeartbeat(input: {
+  state: RunState;
+  stateStore: StateStore;
+  orchestratorLog: JsonlLogger;
+  intervalMs: number;
+}): RunHeartbeat {
+  let stopped = false;
+  let errorLogged = false;
+
+  const tick = (): void => {
+    if (stopped) return;
+    if (input.state.status !== "running") return;
+
+    void input.stateStore.save(input.state).catch((err) => {
+      if (errorLogged) return;
+      errorLogged = true;
+      logOrchestratorEvent(input.orchestratorLog, "run.heartbeat.error", {
+        message: formatErrorMessage(err),
+      });
+    });
+  };
+
+  const handle = setInterval(tick, input.intervalMs);
+  if (typeof handle.unref === "function") {
+    handle.unref();
+  }
+
+  return {
+    stop: () => {
+      stopped = true;
+      clearInterval(handle);
     },
   };
 }
