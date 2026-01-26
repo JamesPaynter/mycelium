@@ -12,7 +12,11 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { ProjectConfigSchema, type ProjectConfig } from "../../../core/config.js";
-import { createPathsContext, runSummaryReportPath, type PathsContext } from "../../../core/paths.js";
+import {
+  createPathsContext,
+  runSummaryReportPath,
+  type PathsContext,
+} from "../../../core/paths.js";
 import { StateStore } from "../../../core/state-store.js";
 import { createRunState, startBatch } from "../../../core/state.js";
 import { buildTaskDirName, type TaskManifest } from "../../../core/task-manifest.js";
@@ -32,13 +36,7 @@ import type {
   WorkerStopResult,
 } from "../workers/worker-runner.js";
 
-import {
-  FakeClock,
-  FakeLogSink,
-  FakeStateRepository,
-  FakeVcs,
-  FakeWorkerRunner,
-} from "./fakes.js";
+import { FakeClock, FakeLogSink, FakeStateRepository, FakeVcs, FakeWorkerRunner } from "./fakes.js";
 
 const workerRunnerMocks = vi.hoisted(() => {
   let activeRunner: WorkerRunner | null = null;
@@ -94,12 +92,10 @@ vi.mock("../../../core/workspaces.js", async () => {
   const actual = await vi.importActual<typeof import("../../../core/workspaces.js")>(
     "../../../core/workspaces.js",
   );
-  const { taskWorkspaceDir } = await vi.importActual<typeof import("../../../core/paths.js")>(
-    "../../../core/paths.js",
-  );
-  const { ensureDir } = await vi.importActual<typeof import("../../../core/utils.js")>(
-    "../../../core/utils.js",
-  );
+  const { taskWorkspaceDir } =
+    await vi.importActual<typeof import("../../../core/paths.js")>("../../../core/paths.js");
+  const { ensureDir } =
+    await vi.importActual<typeof import("../../../core/utils.js")>("../../../core/utils.js");
 
   return {
     ...actual,
@@ -109,12 +105,7 @@ vi.mock("../../../core/workspaces.js", async () => {
       taskId: string;
       paths?: PathsContext;
     }) => {
-      const workspacePath = taskWorkspaceDir(
-        opts.projectName,
-        opts.runId,
-        opts.taskId,
-        opts.paths,
-      );
+      const workspacePath = taskWorkspaceDir(opts.projectName, opts.runId, opts.taskId, opts.paths);
       await ensureDir(workspacePath);
       return { workspacePath, created: true };
     },
@@ -127,7 +118,6 @@ vi.mock("../../../git/changes.js", () => ({
   listChangedFiles: (...args: Parameters<typeof listChangedFiles>) =>
     changesMocks.listChangedFilesMock(...args),
 }));
-
 
 // =============================================================================
 // TEST SETUP
@@ -148,7 +138,6 @@ afterEach(async () => {
 
   workerRunnerMocks.clearRunner();
 });
-
 
 // =============================================================================
 // HELPERS
@@ -281,7 +270,6 @@ async function buildTestContext(input: {
 function useFakeRunner(runner: WorkerRunner): void {
   workerRunnerMocks.setRunner(runner);
 }
-
 
 // =============================================================================
 // TESTS

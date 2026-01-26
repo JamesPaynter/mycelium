@@ -20,8 +20,6 @@ import { taskEventsLogPath } from "../../../core/paths.js";
 import type { RunState } from "../../../core/state.js";
 import type { TaskSpec } from "../../../core/task-manifest.js";
 
-
-
 // =============================================================================
 // TYPES
 // =============================================================================
@@ -66,8 +64,6 @@ export type BudgetTrackerOptions = {
   readTaskUsage?: TaskUsageReader;
   paths?: PathsContext;
 };
-
-
 
 // =============================================================================
 // BUDGET TRACKER
@@ -180,10 +176,7 @@ export class BudgetTracker {
     };
   }
 
-  private refreshTaskUsage(
-    state: RunState,
-    input: BudgetTaskResult,
-  ): TaskUsageUpdate | null {
+  private refreshTaskUsage(state: RunState, input: BudgetTaskResult): TaskUsageUpdate | null {
     const taskState = state.tasks[input.taskId];
     if (!taskState) return null;
 

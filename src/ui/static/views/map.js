@@ -92,7 +92,6 @@ export function createMapView({ appState } = {}) {
     refresh,
   };
 
-
   // =============================================================================
   // INITIALIZATION
   // =============================================================================
@@ -591,7 +590,6 @@ export function createMapView({ appState } = {}) {
     }
   }
 
-
   // =============================================================================
   // VIEW STATE
   // =============================================================================
@@ -648,7 +646,6 @@ export function createMapView({ appState } = {}) {
     renderGraph(response.result);
   }
 
-
   // =============================================================================
   // API
   // =============================================================================
@@ -695,7 +692,6 @@ export function createMapView({ appState } = {}) {
       appState.runId,
     )}/code-graph`;
   }
-
 
   // =============================================================================
   // RENDERING
@@ -1055,7 +1051,10 @@ export function createMapView({ appState } = {}) {
     const hasDeps = Array.isArray(snapshot.deps);
     const baseSha = snapshot.base_sha ?? snapshot.baseSha ?? null;
 
-    setMetaValue(elements.meta.components, hasComponents ? String(snapshot.components.length) : "—");
+    setMetaValue(
+      elements.meta.components,
+      hasComponents ? String(snapshot.components.length) : "—",
+    );
     setMetaValue(elements.meta.edges, hasDeps ? String(snapshot.deps.length) : "—");
     setMetaValue(elements.meta.baseSha, baseSha ? String(baseSha) : "—");
   }
@@ -1067,7 +1066,6 @@ export function createMapView({ appState } = {}) {
 
     target.textContent = value;
   }
-
 
   // =============================================================================
   // GRAPH DATA
@@ -1108,7 +1106,6 @@ export function createMapView({ appState } = {}) {
 
     return { depsOut, depsIn };
   }
-
 
   // =============================================================================
   // INSPECTOR + HIGHLIGHTING
@@ -1161,7 +1158,11 @@ export function createMapView({ appState } = {}) {
     setInspectorValue(elements.inspector.componentId, selectedId);
     renderInspectorList(elements.inspector.rootsList, roots, "No roots recorded.");
     renderInspectorList(elements.inspector.depsList, dependencies, "No direct deps.");
-    renderInspectorList(elements.inspector.reverseDepsList, reverseDependencies, "No reverse deps.");
+    renderInspectorList(
+      elements.inspector.reverseDepsList,
+      reverseDependencies,
+      "No reverse deps.",
+    );
 
     setInspectorValue(elements.inspector.stats.codeLoc, String(stats.code_loc));
     setInspectorValue(elements.inspector.stats.codeFiles, String(stats.code_files));
@@ -1176,10 +1177,7 @@ export function createMapView({ appState } = {}) {
       elements.inspector.commands.showComponent,
       `mycelium cp components show ${selectedId}`,
     );
-    setCommandValue(
-      elements.inspector.commands.showDependencies,
-      `mycelium cp deps ${selectedId}`,
-    );
+    setCommandValue(elements.inspector.commands.showDependencies, `mycelium cp deps ${selectedId}`);
     setCommandValue(
       elements.inspector.commands.showReverseDependencies,
       `mycelium cp rdeps ${selectedId}`,
@@ -1234,7 +1232,10 @@ export function createMapView({ appState } = {}) {
       const isNeighbor = Boolean(highlight && highlight.neighborIds.has(id));
       node.classList.toggle("is-selected", isSelected);
       node.classList.toggle("is-neighbor", isNeighbor);
-      node.classList.toggle("is-dimmed", Boolean(highlight && shouldDim && !isSelected && !isNeighbor));
+      node.classList.toggle(
+        "is-dimmed",
+        Boolean(highlight && shouldDim && !isSelected && !isNeighbor),
+      );
     }
 
     for (const edge of viewState.edgeElements) {
@@ -1293,7 +1294,6 @@ export function createMapView({ appState } = {}) {
       fallbackInput.select();
     }
   }
-
 
   // =============================================================================
   // LAYOUT
@@ -1477,8 +1477,7 @@ export function createMapView({ appState } = {}) {
       const end = positions.get(edge.to);
       const fromStats = getComponentStats(statsById, edge.from);
       const toStats = getComponentStats(statsById, edge.to);
-      const edgeFootprint =
-        (getCodeFootprint(fromStats) + getCodeFootprint(toStats)) / 2;
+      const edgeFootprint = (getCodeFootprint(fromStats) + getCodeFootprint(toStats)) / 2;
       const strokeWidth = computeHyphaWidth(edgeFootprint);
       const path = buildBezierPath(start, end, edge.from, edge.to);
       edges.push({ from: edge.from, to: edge.to, path, strokeWidth });
@@ -1581,7 +1580,6 @@ export function createMapView({ appState } = {}) {
 
     return lines.join("\n");
   }
-
 
   // =============================================================================
   // SEMANTIC MAPPING
@@ -1689,7 +1687,6 @@ export function createMapView({ appState } = {}) {
   function clampValue(minValue, maxValue, value) {
     return Math.min(maxValue, Math.max(minValue, value));
   }
-
 
   // =============================================================================
   // UTILITIES

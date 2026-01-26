@@ -25,7 +25,6 @@ afterEach(() => {
   temporaryDirectories.length = 0;
 });
 
-
 // =============================================================================
 // HELPERS
 // =============================================================================
@@ -35,7 +34,6 @@ function makeTemporaryDirectory(prefix: string): string {
   temporaryDirectories.push(directoryPath);
   return directoryPath;
 }
-
 
 // =============================================================================
 // TESTS

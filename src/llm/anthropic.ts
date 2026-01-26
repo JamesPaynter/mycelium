@@ -21,7 +21,10 @@ import {
 // =============================================================================
 
 type AnthropicTransport = {
-  create: (body: MessageCreateParamsNonStreaming, options?: AnthropicRequestOptions) => Promise<Message>;
+  create: (
+    body: MessageCreateParamsNonStreaming,
+    options?: AnthropicRequestOptions,
+  ) => Promise<Message>;
 };
 
 type AnthropicClientOptions = {
@@ -125,8 +128,7 @@ export class AnthropicClient implements LlmClient {
     prompt: string,
     options: LlmCompletionOptions,
   ): MessageCreateParamsNonStreaming {
-    const temperature =
-      options.temperature ?? this.defaultTemperature ?? 0; // Deterministic by default for validators.
+    const temperature = options.temperature ?? this.defaultTemperature ?? 0; // Deterministic by default for validators.
 
     const body: MessageCreateParamsNonStreaming = {
       model: this.model,
@@ -147,7 +149,7 @@ export class AnthropicClient implements LlmClient {
   private buildStructuredOutputTool(schema: Record<string, unknown>): Tool {
     const inputSchema: Tool.InputSchema = { type: "object", ...schema };
     if (inputSchema.type !== "object") {
-      throw new LlmError("Anthropic structured outputs require a schema with type \"object\".");
+      throw new LlmError('Anthropic structured outputs require a schema with type "object".');
     }
 
     return {
@@ -204,9 +206,14 @@ export class AnthropicClient implements LlmClient {
   }
 
   private extractStructured<T>(message: Message): T {
-    const block = message.content.find((part) => part.type === "tool_use") as ToolUseBlock | undefined;
+    const block = message.content.find((part) => part.type === "tool_use") as
+      | ToolUseBlock
+      | undefined;
     if (!block) {
-      throw new LlmError("Anthropic response did not include a tool_use block for structured output.", message);
+      throw new LlmError(
+        "Anthropic response did not include a tool_use block for structured output.",
+        message,
+      );
     }
 
     ensureJsonObject(block.input);
@@ -269,7 +276,8 @@ function extractText(content: ContentBlock[]): string {
   return content
     .map((block) => {
       if (block.type === "text") return block.text ?? "";
-      if (block.type === "thinking" && "thinking" in block) return (block as { thinking: string }).thinking;
+      if (block.type === "thinking" && "thinking" in block)
+        return (block as { thinking: string }).thinking;
       if (block.type === "redacted_thinking" && "thinking" in block) {
         return (block as { thinking: string }).thinking;
       }

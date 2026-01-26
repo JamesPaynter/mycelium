@@ -3,7 +3,6 @@ import fsPromises from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-
 // =============================================================================
 // ENTRYPOINT
 // =============================================================================
@@ -15,8 +14,6 @@ const sourceDir = path.join(packageRoot, "src", "ui", "static");
 const targetDir = path.join(packageRoot, "dist", "ui");
 
 await buildUiAssets(sourceDir, targetDir);
-
-
 
 // =============================================================================
 // HELPERS

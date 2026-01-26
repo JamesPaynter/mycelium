@@ -9,8 +9,6 @@ import { taskBlastReportPath } from "../../../core/paths.js";
 
 import type { ControlPlaneCommandContext } from "./index.js";
 
-
-
 // =============================================================================
 // TYPES
 // =============================================================================
@@ -22,8 +20,6 @@ type BlastQueryOptions = {
   run?: string;
   task?: string;
 };
-
-
 
 // =============================================================================
 // COMMAND REGISTRATION
@@ -46,8 +42,6 @@ export function registerBlastRadiusCommand(
       await handleBlastQuery(ctx, targets as string[], opts as BlastQueryOptions, command);
     });
 }
-
-
 
 // =============================================================================
 // COMMANDS
@@ -113,8 +107,6 @@ async function handleBlastQuery(
   }
 }
 
-
-
 // =============================================================================
 // INTERNAL HELPERS
 // =============================================================================
@@ -148,8 +140,7 @@ function resolveBlastChangeInput(
   options: BlastQueryOptions,
   targets: string[],
 ): { changedInput: string[]; hasExplicitChangeInput: boolean } {
-  const changedInput =
-    options.changed && options.changed.length > 0 ? options.changed : targets;
+  const changedInput = options.changed && options.changed.length > 0 ? options.changed : targets;
   const hasExplicitChangeInput =
     changedInput.length > 0 || Boolean(options.diff) || Boolean(options.against);
 

@@ -37,10 +37,7 @@ const TS_FILE_IGNORES = [
 
 const IMPORT_EXPORT_REGEX =
   /(?:^|\s)(?:import|export)\s+(?:type\s+)?(?:[^'"]*?\s+from\s+)?['"]([^'"]+)['"]/g;
-const DYNAMIC_IMPORT_REGEX =
-  /\b(?:import|require)\s*\(\s*['"]([^'"]+)['"]\s*\)/g;
-
-
+const DYNAMIC_IMPORT_REGEX = /\b(?:import|require)\s*\(\s*['"]([^'"]+)['"]\s*\)/g;
 
 // =============================================================================
 // PUBLIC API
@@ -103,8 +100,6 @@ export async function extractTypeScriptImportDependencyEdges(
 
   return edges;
 }
-
-
 
 // =============================================================================
 // WORKSPACE PACKAGE LOADING
@@ -169,8 +164,6 @@ function indexWorkspacePackagesByName(packages: WorkspacePackage[]): Map<string,
   return index;
 }
 
-
-
 // =============================================================================
 // IMPORT SCANNING
 // =============================================================================
@@ -230,8 +223,6 @@ function resolveWorkspaceTargets(
   return Array.from(matches);
 }
 
-
-
 // =============================================================================
 // PACKAGE JSON HELPERS
 // =============================================================================
@@ -286,8 +277,6 @@ async function readJsonIfPresent(filePath: string): Promise<unknown | null> {
 function isNonEmptyString(value: unknown): value is string {
   return typeof value === "string" && value.trim().length > 0;
 }
-
-
 
 // =============================================================================
 // PATH HELPERS

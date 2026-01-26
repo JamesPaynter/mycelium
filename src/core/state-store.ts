@@ -89,7 +89,7 @@ export class StateStore {
     const statePathValue =
       typeof pathsOrStatePath === "string"
         ? pathsOrStatePath
-        : statePathOverride ?? runStatePath(projectName, runId, paths);
+        : (statePathOverride ?? runStatePath(projectName, runId, paths));
 
     this.paths = paths;
     this.statePathValue = statePathValue;

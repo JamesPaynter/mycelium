@@ -36,8 +36,6 @@ afterEach(async () => {
   }
 });
 
-
-
 // =============================================================================
 // HELPERS
 // =============================================================================
@@ -121,8 +119,6 @@ function closeServer(server: http.Server): Promise<void> {
   });
 }
 
-
-
 // =============================================================================
 // TESTS
 // =============================================================================
@@ -161,7 +157,9 @@ describe("UI task events API", () => {
 
     expect(response.status).toBe(200);
     expect(payload.ok).toBe(true);
-    expect(payload.result.file).toBe(path.posix.join("tasks", `${taskId}-${taskSlug}`, "events.jsonl"));
+    expect(payload.result.file).toBe(
+      path.posix.join("tasks", `${taskId}-${taskSlug}`, "events.jsonl"),
+    );
     expect(payload.result.lines).toEqual(lines.slice(0, 2));
     expect(payload.result.cursor).toBe(0);
     expect(payload.result.truncated).toBe(false);

@@ -6,7 +6,10 @@ import { createAppPathsContext } from "../app/paths.js";
 import type { ProjectConfig } from "./config.js";
 import { getDefaultPathsContext, setDefaultPathsContext, type PathsContext } from "./paths.js";
 
-export { checkpointListsEqual, mergeCheckpointCommits } from "../app/orchestrator/run/task-engine.js";
+export {
+  checkpointListsEqual,
+  mergeCheckpointCommits,
+} from "../app/orchestrator/run/task-engine.js";
 export type { BatchPlanEntry, RunOptions, RunResult } from "../app/orchestrator/run/run-engine.js";
 export {
   summarizeArchitectureReport,
@@ -14,7 +17,6 @@ export {
   summarizeStyleReport,
   summarizeTestReport,
 } from "../app/orchestrator/validation/summaries.js";
-
 
 // =============================================================================
 // PUBLIC API
@@ -37,7 +39,6 @@ export async function runProject(
 
   return runEngine(context);
 }
-
 
 // =============================================================================
 // LEGACY FALLBACK

@@ -24,7 +24,6 @@ import type {
   WorkerStopResult,
 } from "../workers/worker-runner.js";
 
-
 // =============================================================================
 // WORKER RUNNER
 // =============================================================================
@@ -50,19 +49,11 @@ export class FakeWorkerRunner implements WorkerRunner {
   readonly stopCalls: WorkerStopInput[] = [];
   readonly cleanupCalls: WorkerCleanupInput[] = [];
 
-  queueRunAttempt(
-    taskId: string,
-    result: WorkerRunnerResult,
-    usage?: UsageEventPlan,
-  ): void {
+  queueRunAttempt(taskId: string, result: WorkerRunnerResult, usage?: UsageEventPlan): void {
     enqueueResult(this.runQueue, taskId, { result, usage });
   }
 
-  queueResumeAttempt(
-    taskId: string,
-    result: WorkerRunnerResult,
-    usage?: UsageEventPlan,
-  ): void {
+  queueResumeAttempt(taskId: string, result: WorkerRunnerResult, usage?: UsageEventPlan): void {
     enqueueResult(this.resumeQueue, taskId, { result, usage });
   }
 
@@ -137,7 +128,6 @@ function logUsageEvent(logger: JsonlLogger, usage: UsageEventPlan): void {
     },
   });
 }
-
 
 // =============================================================================
 // VCS
@@ -223,7 +213,6 @@ function normalizeSlug(input: string): string {
   return normalized.length > 0 ? normalized : "task";
 }
 
-
 // =============================================================================
 // STATE REPOSITORY
 // =============================================================================
@@ -246,7 +235,6 @@ export class FakeStateRepository implements StateRepository {
   }
 }
 
-
 // =============================================================================
 // LOG SINK
 // =============================================================================
@@ -267,16 +255,11 @@ export class FakeLogSink implements LogSink {
     return new JsonlLogger(logPath, { runId });
   }
 
-  logOrchestratorEvent(
-    logger: JsonlLogger,
-    type: string,
-    payload?: JsonObject,
-  ): void {
+  logOrchestratorEvent(logger: JsonlLogger, type: string, payload?: JsonObject): void {
     this.events.push({ type, payload, loggerPath: logger.filePath });
     logOrchestratorEvent(logger, type, payload);
   }
 }
-
 
 // =============================================================================
 // CLOCK

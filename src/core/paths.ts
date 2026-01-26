@@ -17,7 +17,6 @@ export type ResolveMyceliumHomeOptions = {
   repoPath?: string;
 };
 
-
 // =============================================================================
 // CONTEXT
 // =============================================================================
@@ -56,7 +55,6 @@ function normalizeMyceliumHome(paths?: PathsContext): string {
   const resolved = paths ?? defaultPathsContext;
   return resolveMyceliumHome({ myceliumHome: resolved?.myceliumHome });
 }
-
 
 // =============================================================================
 // PATH HELPERS
@@ -171,7 +169,11 @@ export function plannerLogPath(projectName: string, runId: string, paths?: Paths
   return path.join(runLogsDir(projectName, runId, paths), "planner.jsonl");
 }
 
-export function validatorsLogsDir(projectName: string, runId: string, paths?: PathsContext): string {
+export function validatorsLogsDir(
+  projectName: string,
+  runId: string,
+  paths?: PathsContext,
+): string {
   return path.join(runLogsDir(projectName, runId, paths), "validators");
 }
 
@@ -220,11 +222,7 @@ export function taskLogsDir(
   taskSlug: string,
   paths?: PathsContext,
 ): string {
-  return path.join(
-    runLogsDir(projectName, runId, paths),
-    "tasks",
-    `${taskId}-${taskSlug}`,
-  );
+  return path.join(runLogsDir(projectName, runId, paths), "tasks", `${taskId}-${taskSlug}`);
 }
 
 export function taskEventsLogPath(
@@ -263,11 +261,7 @@ export function taskLockDerivationReportPath(
   );
 }
 
-export function taskBlastReportPath(
-  repoPath: string,
-  runId: string,
-  taskId: string,
-): string {
+export function taskBlastReportPath(repoPath: string, runId: string, taskId: string): string {
   return path.join(
     repoPath,
     ".mycelium",
@@ -279,11 +273,7 @@ export function taskBlastReportPath(
   );
 }
 
-export function taskChecksetReportPath(
-  repoPath: string,
-  runId: string,
-  taskId: string,
-): string {
+export function taskChecksetReportPath(repoPath: string, runId: string, taskId: string): string {
   return path.join(
     repoPath,
     ".mycelium",
@@ -295,11 +285,7 @@ export function taskChecksetReportPath(
   );
 }
 
-export function taskPolicyReportPath(
-  repoPath: string,
-  runId: string,
-  taskId: string,
-): string {
+export function taskPolicyReportPath(repoPath: string, runId: string, taskId: string): string {
   return path.join(
     repoPath,
     ".mycelium",
@@ -333,9 +319,5 @@ export function workerCodexHomeDir(
   _taskSlug: string,
   paths?: PathsContext,
 ): string {
-  return path.join(
-    taskWorkspaceDir(projectName, runId, taskId, paths),
-    ".mycelium",
-    "codex-home",
-  );
+  return path.join(taskWorkspaceDir(projectName, runId, taskId, paths), ".mycelium", "codex-home");
 }

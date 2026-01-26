@@ -19,7 +19,6 @@ import type { ValidatorRunner } from "../ports.js";
 
 import { ValidationPipeline } from "./validation-pipeline.js";
 
-
 // =============================================================================
 // HELPERS
 // =============================================================================
@@ -44,7 +43,6 @@ function buildTaskSpec(id: string, name: string): TaskSpec {
     slug: name,
   };
 }
-
 
 // =============================================================================
 // TESTS

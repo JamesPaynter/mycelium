@@ -32,8 +32,6 @@ import { resolveTaskManifestPath } from "../../../core/task-layout.js";
 import type { TaskManifest, TaskSpec } from "../../../core/task-manifest.js";
 import { writeJsonFile } from "../../../core/utils.js";
 
-
-
 // =============================================================================
 // TYPES
 // =============================================================================
@@ -98,8 +96,6 @@ export type CompliancePipelineOutcome = {
   rescope: ComplianceRescopeOutcome;
 };
 
-
-
 // =============================================================================
 // COMPLIANCE LOGIC
 // =============================================================================
@@ -141,7 +137,9 @@ function resolveCompliancePolicyForScope(input: {
   return input.scopeMode === "off" ? "off" : input.manifestPolicy;
 }
 
-function resolveComplianceEventType(result: ManifestComplianceResult):
+function resolveComplianceEventType(
+  result: ManifestComplianceResult,
+):
   | "manifest.compliance.skip"
   | "manifest.compliance.pass"
   | "manifest.compliance.block"
@@ -201,8 +199,6 @@ function logComplianceEvents(input: {
     });
   }
 }
-
-
 
 // =============================================================================
 // COMPLIANCE PIPELINE

@@ -15,7 +15,13 @@ import { resolveTasksArchiveDir } from "../core/task-layout.js";
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const FIXTURE_REPO = path.resolve(__dirname, "../../test/fixtures/toy-repo");
 
-const ENV_VARS = ["MYCELIUM_HOME", "MOCK_LLM", "MOCK_LLM_OUTPUT_PATH", "MOCK_LLM_OUTPUT", "MOCK_CODEX_USAGE"] as const;
+const ENV_VARS = [
+  "MYCELIUM_HOME",
+  "MOCK_LLM",
+  "MOCK_LLM_OUTPUT_PATH",
+  "MOCK_LLM_OUTPUT",
+  "MOCK_CODEX_USAGE",
+] as const;
 const originalEnv: Record<(typeof ENV_VARS)[number], string | undefined> = Object.fromEntries(
   ENV_VARS.map((key) => [key, process.env[key]]),
 ) as Record<(typeof ENV_VARS)[number], string | undefined>;
@@ -53,7 +59,10 @@ describe("acceptance: manifest enforcement auto-rescopes and retries", () => {
       // Mock planner output with an empty writes list so the mock worker writes
       // its fallback file (mock-output.txt), triggering compliance violations.
       const plannerOutputPath = path.join(tmpRoot, "mock-planner-output.json");
-      await fs.writeFile(plannerOutputPath, JSON.stringify(mockPlannerOutputWithEmptyWrites(), null, 2));
+      await fs.writeFile(
+        plannerOutputPath,
+        JSON.stringify(mockPlannerOutputWithEmptyWrites(), null, 2),
+      );
 
       const configPath = path.join(tmpRoot, "project.yaml");
       await writeProjectConfig(configPath, repoDir, {
@@ -156,7 +165,7 @@ function mockPlannerOutputWithEmptyWrites(): unknown {
         affected_tests: [],
         test_paths: [],
         tdd_mode: "off",
-        verify: { doctor: "node -e \"process.exit(0)\"" },
+        verify: { doctor: 'node -e "process.exit(0)"' },
         spec: "Write a small marker file used for testing Mycelium manifest rescope.",
       },
     ],
@@ -168,9 +177,9 @@ async function readPlannedManifest(
   outputDir: string,
   runId: string,
 ): Promise<any> {
-  const planIndex = JSON.parse(
-    await fs.readFile(path.join(outputDir, "_plan.json"), "utf8"),
-  ) as { tasks: Array<{ dir: string }> };
+  const planIndex = JSON.parse(await fs.readFile(path.join(outputDir, "_plan.json"), "utf8")) as {
+    tasks: Array<{ dir: string }>;
+  };
   const relDir = planIndex.tasks[0]?.dir;
   if (!relDir) {
     throw new Error("Plan index missing planned task directory");

@@ -4,10 +4,7 @@ import type { RunOptions } from "../core/executor.js";
 // RUN FLAGS
 // =============================================================================
 
-export type RunDebugFlags = Pick<
-  RunOptions,
-  "useLegacyEngine" | "crashAfterContainerStart"
->;
+export type RunDebugFlags = Pick<RunOptions, "useLegacyEngine" | "crashAfterContainerStart">;
 
 export function resolveRunDebugFlags(overrides: RunDebugFlags = {}): RunDebugFlags {
   const useLegacyEngine =

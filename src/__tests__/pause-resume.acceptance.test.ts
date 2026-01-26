@@ -28,8 +28,6 @@ const originalEnv: Record<(typeof ENV_VARS)[number], string | undefined> = Objec
   ENV_VARS.map((key) => [key, process.env[key]]),
 ) as Record<(typeof ENV_VARS)[number], string | undefined>;
 
-
-
 // =============================================================================
 // TESTS
 // =============================================================================
@@ -70,20 +68,22 @@ describe("acceptance: paused runs and blocked dependencies", () => {
       const plannerOutputPath = path.join(tmpRoot, "mock-planner-output.json");
       await fs.writeFile(
         plannerOutputPath,
-        JSON.stringify(buildPlannerOutput({
-          tasks: [
-            buildTask({
-              id: "001",
-              name: "blocked-rescope",
-              writes: ["notes/blocked-rescope.txt"],
-            }),
-            buildTask({
-              id: "002",
-              name: "independent-task",
-              writes: ["src/independent-task.txt"],
-            }),
-          ],
-        })),
+        JSON.stringify(
+          buildPlannerOutput({
+            tasks: [
+              buildTask({
+                id: "001",
+                name: "blocked-rescope",
+                writes: ["notes/blocked-rescope.txt"],
+              }),
+              buildTask({
+                id: "002",
+                name: "independent-task",
+                writes: ["src/independent-task.txt"],
+              }),
+            ],
+          }),
+        ),
       );
 
       process.env.MYCELIUM_HOME = path.join(tmpRoot, "mycelium-home");
@@ -128,32 +128,27 @@ describe("acceptance: paused runs and blocked dependencies", () => {
       expect(runResult.state.tasks["001"]?.status).toBe("rescope_required");
       expect(runResult.state.tasks["002"]?.status).toBe("complete");
 
-      const written = await fs.readFile(
-        path.join(repoDir, "src", "independent-task.txt"),
-        "utf8",
-      );
+      const written = await fs.readFile(path.join(repoDir, "src", "independent-task.txt"), "utf8");
       expect(written).toContain("Mock update");
     },
   );
 
-  it(
-    "pauses when pending tasks are blocked by dependencies",
-    { timeout: 60_000 },
-    async () => {
-      const tmpRoot = await fs.mkdtemp(path.join(os.tmpdir(), "mycelium-blocked-deps-"));
-      tempRoots.push(tmpRoot);
+  it("pauses when pending tasks are blocked by dependencies", { timeout: 60_000 }, async () => {
+    const tmpRoot = await fs.mkdtemp(path.join(os.tmpdir(), "mycelium-blocked-deps-"));
+    tempRoots.push(tmpRoot);
 
-      const repoDir = path.join(tmpRoot, "repo");
-      await fse.copy(FIXTURE_REPO, repoDir);
-      await initGitRepo(repoDir);
+    const repoDir = path.join(tmpRoot, "repo");
+    await fse.copy(FIXTURE_REPO, repoDir);
+    await initGitRepo(repoDir);
 
-      const configPath = path.join(tmpRoot, "project.yaml");
-      await writeProjectConfig(configPath, repoDir);
+    const configPath = path.join(tmpRoot, "project.yaml");
+    await writeProjectConfig(configPath, repoDir);
 
-      const plannerOutputPath = path.join(tmpRoot, "mock-planner-output.json");
-      await fs.writeFile(
-        plannerOutputPath,
-        JSON.stringify(buildPlannerOutput({
+    const plannerOutputPath = path.join(tmpRoot, "mock-planner-output.json");
+    await fs.writeFile(
+      plannerOutputPath,
+      JSON.stringify(
+        buildPlannerOutput({
           tasks: [
             buildTask({
               id: "001",
@@ -167,71 +162,69 @@ describe("acceptance: paused runs and blocked dependencies", () => {
               dependencies: ["001"],
             }),
           ],
-        })),
-      );
+        }),
+      ),
+    );
 
-      process.env.MYCELIUM_HOME = path.join(tmpRoot, "mycelium-home");
-      process.env.MOCK_LLM = "1";
-      process.env.MOCK_LLM_OUTPUT_PATH = plannerOutputPath;
-      delete process.env.MOCK_LLM_OUTPUT;
-      delete process.env.MOCK_CODEX_USAGE;
+    process.env.MYCELIUM_HOME = path.join(tmpRoot, "mycelium-home");
+    process.env.MOCK_LLM = "1";
+    process.env.MOCK_LLM_OUTPUT_PATH = plannerOutputPath;
+    delete process.env.MOCK_LLM_OUTPUT;
+    delete process.env.MOCK_CODEX_USAGE;
 
-      const projectName = "blocked-deps";
-      const runId = `${projectName}-${Date.now()}`;
-      const config = loadProjectConfig(configPath);
+    const projectName = "blocked-deps";
+    const runId = `${projectName}-${Date.now()}`;
+    const config = loadProjectConfig(configPath);
 
-      const planResult = await planProject(projectName, config, {
-        input: "docs/planning/implementation-plan.md",
-      });
-      expect(planResult.tasks).toHaveLength(2);
+    const planResult = await planProject(projectName, config, {
+      input: "docs/planning/implementation-plan.md",
+    });
+    expect(planResult.tasks).toHaveLength(2);
 
-      const state = createRunState({
-        runId,
-        project: projectName,
-        repoPath: repoDir,
-        mainBranch: config.main_branch,
-        taskIds: planResult.tasks.map((task) => task.id),
-      });
-      state.status = "running";
-      state.tasks["001"].status = "rescope_required";
-      state.tasks["001"].last_error = "Rescope required: test fixture";
-      state.tasks["001"].completed_at = new Date().toISOString();
+    const state = createRunState({
+      runId,
+      project: projectName,
+      repoPath: repoDir,
+      mainBranch: config.main_branch,
+      taskIds: planResult.tasks.map((task) => task.id),
+    });
+    state.status = "running";
+    state.tasks["001"].status = "rescope_required";
+    state.tasks["001"].last_error = "Rescope required: test fixture";
+    state.tasks["001"].completed_at = new Date().toISOString();
 
-      const store = new StateStore(projectName, runId);
-      await store.save(state);
+    const store = new StateStore(projectName, runId);
+    await store.save(state);
 
-      const runResult = await runProject(projectName, config, {
-        runId,
-        resume: true,
-        maxParallel: 1,
-        useDocker: false,
-        buildImage: false,
-      });
+    const runResult = await runProject(projectName, config, {
+      runId,
+      resume: true,
+      maxParallel: 1,
+      useDocker: false,
+      buildImage: false,
+    });
 
-      expect(runResult.state.status).toBe("paused");
-      expect(runResult.state.tasks["002"]?.status).toBe("pending");
+    expect(runResult.state.status).toBe("paused");
+    expect(runResult.state.tasks["002"]?.status).toBe("pending");
 
-      const pausedEvents = await readJsonl(orchestratorLogPath(projectName, runId));
-      const pausedEvent = pausedEvents.find((event) => event.type === "run.paused");
-      expect(pausedEvent).toBeDefined();
-      expect(pausedEvent?.reason).toBe("blocked_dependencies");
-      expect(pausedEvent?.blocked_tasks).toEqual([
-        {
-          task_id: "002",
-          unmet_deps: [
-            {
-              dep_id: "001",
-              dep_status: "rescope_required",
-              dep_last_error: "Rescope required: test fixture",
-            },
-          ],
-        },
-      ]);
-    },
-  );
+    const pausedEvents = await readJsonl(orchestratorLogPath(projectName, runId));
+    const pausedEvent = pausedEvents.find((event) => event.type === "run.paused");
+    expect(pausedEvent).toBeDefined();
+    expect(pausedEvent?.reason).toBe("blocked_dependencies");
+    expect(pausedEvent?.blocked_tasks).toEqual([
+      {
+        task_id: "002",
+        unmet_deps: [
+          {
+            dep_id: "001",
+            dep_status: "rescope_required",
+            dep_last_error: "Rescope required: test fixture",
+          },
+        ],
+      },
+    ]);
+  });
 });
-
-
 
 // =============================================================================
 // HELPERS
@@ -275,7 +268,7 @@ function buildTask(input: {
     affected_tests: [],
     test_paths: [],
     tdd_mode: "off",
-    verify: { doctor: "node -e \"process.exit(0)\"" },
+    verify: { doctor: 'node -e "process.exit(0)"' },
     spec: `Update ${input.writes.join(", ")} for pause/resume coverage.`,
   };
 }

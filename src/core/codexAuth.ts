@@ -51,7 +51,7 @@ export async function ensureCodexAuthForHome(codexHome: string): Promise<CodexAu
         "",
         "If you logged in via the CLI but this still fails, ensure your credentials are stored in a file.",
         `This orchestrator looks for auth.json under CODEX_HOME (default: ${defaultAuth}).`,
-      ].join("\n")
+      ].join("\n"),
     );
   }
 

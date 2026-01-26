@@ -24,7 +24,9 @@ export function resolveTestPaths(manifestPaths?: string[], fallbackPaths?: strin
   }
 
   const normalizedFallback = normalizeTestPaths(fallbackPaths ?? DEFAULT_TEST_PATHS);
-  return normalizedFallback.length > 0 ? normalizedFallback : normalizeTestPaths(DEFAULT_TEST_PATHS);
+  return normalizedFallback.length > 0
+    ? normalizedFallback
+    : normalizeTestPaths(DEFAULT_TEST_PATHS);
 }
 
 export function isTestPath(file: string, patterns: string[]): boolean {

@@ -55,15 +55,11 @@ export async function isAncestor(
   ancestorSha: string,
   descendantSha: string,
 ): Promise<boolean> {
-  const res = await execa(
-    "git",
-    ["merge-base", "--is-ancestor", ancestorSha, descendantSha],
-    {
-      cwd: repoPath,
-      stdio: "pipe",
-      reject: false,
-    },
-  );
+  const res = await execa("git", ["merge-base", "--is-ancestor", ancestorSha, descendantSha], {
+    cwd: repoPath,
+    stdio: "pipe",
+    reject: false,
+  });
 
   if (res.exitCode === 0) return true;
   if (res.exitCode === 1) return false;

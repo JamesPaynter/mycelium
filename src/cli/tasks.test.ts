@@ -34,7 +34,6 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
-
 // =============================================================================
 // HELPERS
 // =============================================================================
@@ -48,7 +47,7 @@ function makeTemporaryDirectory(prefix: string): string {
 function makeProjectConfig(repoPath: string): ProjectConfig {
   return ProjectConfigSchema.parse({
     repo_path: repoPath,
-    doctor: "node -e \"process.exit(0)\"",
+    doctor: 'node -e "process.exit(0)"',
     resources: [{ name: "repo", paths: ["**/*"] }],
     planner: { provider: "mock", model: "mock" },
     worker: { model: "mock" },
@@ -61,10 +60,13 @@ async function writeTaskSpec(tasksRoot: string, manifest: TaskManifest): Promise
   const taskDir = path.join(tasksRoot, "active", taskDirName);
   await fse.ensureDir(taskDir);
 
-  await fse.writeFile(path.join(taskDir, "manifest.json"), JSON.stringify(manifest, null, 2), "utf8");
+  await fse.writeFile(
+    path.join(taskDir, "manifest.json"),
+    JSON.stringify(manifest, null, 2),
+    "utf8",
+  );
   await fse.writeFile(path.join(taskDir, "spec.md"), `Spec for ${manifest.id}\n`, "utf8");
 }
-
 
 // =============================================================================
 // TESTS

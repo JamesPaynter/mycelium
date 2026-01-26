@@ -25,7 +25,6 @@ import {
 } from "./lib/normalize.js";
 import type { FileSample } from "./lib/types.js";
 
-
 // =============================================================================
 // TYPES
 // =============================================================================
@@ -52,7 +51,6 @@ export type StyleValidatorArgs = {
   llmClient?: LlmClient;
   paths?: PathsContext;
 };
-
 
 // =============================================================================
 // CONSTANTS
@@ -113,7 +111,6 @@ const FILE_SNIPPET_LIMIT = 3_000;
 const TASK_SPEC_LIMIT = 4_000;
 const DIFF_SUMMARY_LIMIT = 2_000;
 
-
 // =============================================================================
 // PUBLIC API
 // =============================================================================
@@ -128,12 +125,9 @@ export async function runStyleValidator(
 
   const validatorLog =
     args.logger ??
-    new JsonlLogger(
-      validatorLogPath(args.projectName, args.runId, VALIDATOR_NAME, args.paths),
-      {
-        runId: args.runId,
-      },
-    );
+    new JsonlLogger(validatorLogPath(args.projectName, args.runId, VALIDATOR_NAME, args.paths), {
+      runId: args.runId,
+    });
   const shouldCloseLog = !args.logger;
 
   logOrchestratorEvent(args.orchestratorLog, "validator.start", {
@@ -228,7 +222,6 @@ export async function runStyleValidator(
     }
   }
 }
-
 
 // =============================================================================
 // INTERNALS

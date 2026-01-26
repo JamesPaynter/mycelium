@@ -2,8 +2,6 @@ import { describe, expect, it } from "vitest";
 
 import { classifyAutonomyTier } from "../control-plane/policy/tier.js";
 
-
-
 // =============================================================================
 // TESTS
 // =============================================================================

@@ -10,8 +10,6 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import type { ControlPlaneJsonEnvelope } from "../control-plane/cli/output.js";
 
-
-
 // =============================================================================
 // TEST SETUP
 // =============================================================================
@@ -30,8 +28,6 @@ if (!dockerGate.enabled) {
 
 const describeDocker = dockerGate.enabled ? describe : describe.skip;
 
-
-
 // =============================================================================
 // TESTS
 // =============================================================================
@@ -46,49 +42,40 @@ describeDocker("docker-mode control plane smoke", () => {
     tempRoots.length = 0;
   });
 
-  it(
-    "runs control plane commands inside the worker image",
-    async () => {
-      await ensureDockerAvailable();
-      await ensureWorkerImage();
+  it("runs control plane commands inside the worker image", async () => {
+    await ensureDockerAvailable();
+    await ensureWorkerImage();
 
-      const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), "control-plane-smoke-"));
-      tempRoots.push(tempRoot);
+    const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), "control-plane-smoke-"));
+    tempRoots.push(tempRoot);
 
-      const repoDir = path.join(tempRoot, "repo");
-      await fse.copy(FIXTURE_REPO, repoDir);
-      await initGitRepo(repoDir);
+    const repoDir = path.join(tempRoot, "repo");
+    await fse.copy(FIXTURE_REPO, repoDir);
+    await initGitRepo(repoDir);
 
-      const helpResult = await runMyceliumInDocker(["cp", "--help"]);
-      expect(helpResult.stdout).toContain("control-plane");
+    const helpResult = await runMyceliumInDocker(["cp", "--help"]);
+    expect(helpResult.stdout).toContain("control-plane");
 
-      const buildResult = await runMyceliumInDocker(
-        ["cp", "build", "--json", "--repo", REPO_MOUNT_PATH],
-        { repoDir },
-      );
-      const buildEnvelope = parseJsonEnvelope(buildResult.stdout, "cp build");
-      expect(buildEnvelope.ok).toBe(true);
+    const buildResult = await runMyceliumInDocker(
+      ["cp", "build", "--json", "--repo", REPO_MOUNT_PATH],
+      { repoDir },
+    );
+    const buildEnvelope = parseJsonEnvelope(buildResult.stdout, "cp build");
+    expect(buildEnvelope.ok).toBe(true);
 
-      const listResult = await runMyceliumInDocker(
-        ["cp", "components", "list", "--json", "--repo", REPO_MOUNT_PATH],
-        { repoDir },
-      );
-      const listEnvelope = parseJsonEnvelope<unknown[]>(
-        listResult.stdout,
-        "cp components list",
-      );
-      expect(listEnvelope.ok).toBe(true);
-      if (!listEnvelope.ok) {
-        throw new Error(`cp components list failed: ${listEnvelope.error.message}`);
-      }
-      expect(Array.isArray(listEnvelope.result)).toBe(true);
-      expect(listEnvelope.result.length).toBeGreaterThan(0);
-    },
-    180_000,
-  );
+    const listResult = await runMyceliumInDocker(
+      ["cp", "components", "list", "--json", "--repo", REPO_MOUNT_PATH],
+      { repoDir },
+    );
+    const listEnvelope = parseJsonEnvelope<unknown[]>(listResult.stdout, "cp components list");
+    expect(listEnvelope.ok).toBe(true);
+    if (!listEnvelope.ok) {
+      throw new Error(`cp components list failed: ${listEnvelope.error.message}`);
+    }
+    expect(Array.isArray(listEnvelope.result)).toBe(true);
+    expect(listEnvelope.result.length).toBeGreaterThan(0);
+  }, 180_000);
 });
-
-
 
 // =============================================================================
 // HELPERS
@@ -139,10 +126,7 @@ async function ensureWorkerImage(): Promise<void> {
   });
 }
 
-async function runMyceliumInDocker(
-  args: string[],
-  options: { repoDir?: string } = {},
-) {
+async function runMyceliumInDocker(args: string[], options: { repoDir?: string } = {}) {
   const dockerArgs = ["run", "--rm", ...resolveDockerUserArgs(), "--entrypoint", "mycelium"];
 
   if (options.repoDir) {

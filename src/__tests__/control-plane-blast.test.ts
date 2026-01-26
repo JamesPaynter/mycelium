@@ -8,8 +8,6 @@ import type {
   ControlPlaneModel,
 } from "../control-plane/model/schema.js";
 
-
-
 // =============================================================================
 // HELPERS
 // =============================================================================
@@ -69,8 +67,6 @@ function sortComponentIds(components: ControlPlaneComponent[]): string[] {
   return components.map((component) => component.id).sort();
 }
 
-
-
 // =============================================================================
 // TESTS
 // =============================================================================
@@ -96,9 +92,7 @@ describe("control-plane blast radius", () => {
   });
 
   it("marks medium confidence when medium edges are used", () => {
-    const { model } = createModelWithEdges([
-      edge("app", "lib", "ts-import", "medium"),
-    ]);
+    const { model } = createModelWithEdges([edge("app", "lib", "ts-import", "medium")]);
 
     const result = computeBlastRadius({
       changedPaths: ["packages/lib/src/index.ts"],

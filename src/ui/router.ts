@@ -10,7 +10,6 @@ import { loadRunStateForProject, summarizeRunState } from "../core/state-store.j
 
 import { loadCodeGraphSnapshot, type CodeGraphError } from "./code-graph.js";
 
-
 // =============================================================================
 // TYPES
 // =============================================================================
@@ -34,7 +33,13 @@ type ApiRouteMatch =
   | { type: "task_events"; projectName: string; runId: string; taskId: string }
   | { type: "task_doctor"; projectName: string; runId: string; taskId: string }
   | { type: "task_compliance"; projectName: string; runId: string; taskId: string }
-  | { type: "validator_report"; projectName: string; runId: string; validator: string; taskId: string }
+  | {
+      type: "validator_report";
+      projectName: string;
+      runId: string;
+      validator: string;
+      taskId: string;
+    }
   | { type: "bad_request" }
   | { type: "not_found" };
 
@@ -49,7 +54,6 @@ type OptionalNumberParseResult = { ok: true; value: number | null } | { ok: fals
 type JsonFileReadResult =
   | { ok: true; value: unknown }
   | { ok: false; reason: "not_found" | "too_large" };
-
 
 // =============================================================================
 // PUBLIC API
@@ -67,7 +71,6 @@ export function createUiRouter(
     void routeRequest(req, res, resolved);
   };
 }
-
 
 // =============================================================================
 // ROUTING
@@ -224,7 +227,6 @@ async function handleStaticRequest(
 
   sendText(res, 404, "Not found.", method === "HEAD");
 }
-
 
 // =============================================================================
 // API ROUTES
@@ -400,12 +402,7 @@ async function handleTaskEventsRequest(
   }
 
   const readOptions = maxBytesResult.value === null ? {} : { maxBytes: maxBytesResult.value };
-  const result = await readJsonlFromCursor(
-    logPath,
-    cursorResult.value,
-    { typeGlob },
-    readOptions,
-  );
+  const result = await readJsonlFromCursor(logPath, cursorResult.value, { typeGlob }, readOptions);
 
   sendApiOk(
     res,
@@ -457,7 +454,12 @@ async function handleDoctorRequest(
     return;
   }
 
-  const snippet = readDoctorLogSnippet(resolved.dir, route.taskId, attemptResult.value, requestedLimit);
+  const snippet = readDoctorLogSnippet(
+    resolved.dir,
+    route.taskId,
+    attemptResult.value,
+    requestedLimit,
+  );
   if (!snippet) {
     sendApiError(res, 404, "not_found", "Doctor logs not found.", method === "HEAD");
     return;
@@ -696,7 +698,6 @@ function matchApiRoute(pathname: string): ApiRouteMatch {
   return { type: "not_found" };
 }
 
-
 // =============================================================================
 // STATIC ASSETS
 // =============================================================================
@@ -820,7 +821,6 @@ function sendPlaceholder(
   res.end(html);
 }
 
-
 // =============================================================================
 // API RESPONSES
 // =============================================================================
@@ -862,7 +862,6 @@ function sendJson(res: ServerResponse, status: number, payload: unknown, isHead:
 
   res.end(body);
 }
-
 
 // =============================================================================
 // UTILITIES

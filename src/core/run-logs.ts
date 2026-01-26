@@ -242,7 +242,7 @@ export function readDoctorLogSnippet(
 
   const selected =
     attempt !== undefined && attempt !== null
-      ? candidates.find((c) => c.attempt === attempt) ?? candidates[0]
+      ? (candidates.find((c) => c.attempt === attempt) ?? candidates[0])
       : candidates[0];
 
   const fullPath = path.join(taskDir, selected.name);

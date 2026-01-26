@@ -44,8 +44,6 @@ const AD_HOC_COMPILER_OPTIONS: ts.CompilerOptions = {
   noEmit: true,
 };
 
-
-
 // =============================================================================
 // PUBLIC API
 // =============================================================================
@@ -69,8 +67,6 @@ export async function loadTypeScriptProject(
 
   return { project: adHocResult.project, warnings };
 }
-
-
 
 // =============================================================================
 // TSCONFIG RESOLUTION
@@ -115,15 +111,11 @@ function loadProgramFromTsconfig(
   };
 }
 
-
-
 // =============================================================================
 // AD-HOC RESOLUTION
 // =============================================================================
 
-async function loadProgramFromAdHoc(
-  repoRoot: string,
-): Promise<TypeScriptProjectLoadResult> {
+async function loadProgramFromAdHoc(repoRoot: string): Promise<TypeScriptProjectLoadResult> {
   const files = await fg(AD_HOC_FILE_GLOBS, {
     cwd: repoRoot,
     absolute: true,
@@ -153,8 +145,6 @@ async function loadProgramFromAdHoc(
   };
 }
 
-
-
 // =============================================================================
 // DIAGNOSTIC HELPERS
 // =============================================================================
@@ -165,15 +155,11 @@ function formatDiagnostic(diagnostic: ts.Diagnostic, repoRoot: string): string {
     return message;
   }
 
-  const { line, character } = diagnostic.file.getLineAndCharacterOfPosition(
-    diagnostic.start,
-  );
+  const { line, character } = diagnostic.file.getLineAndCharacterOfPosition(diagnostic.start);
   const fileName = toRepoRelativePath(repoRoot, diagnostic.file.fileName);
 
   return `${fileName}:${line + 1}:${character + 1} ${message}`;
 }
-
-
 
 // =============================================================================
 // PATH HELPERS

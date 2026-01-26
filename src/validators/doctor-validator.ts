@@ -20,7 +20,6 @@ import {
   truncate,
 } from "./lib/normalize.js";
 
-
 // =============================================================================
 // TYPES
 // =============================================================================
@@ -76,7 +75,6 @@ export type DoctorValidatorArgs = {
   llmClient?: LlmClient;
   paths?: PathsContext;
 };
-
 
 // =============================================================================
 // CONSTANTS
@@ -160,7 +158,6 @@ const DoctorValidatorJsonSchema = {
   additionalProperties: false,
 } as const;
 
-
 // =============================================================================
 // PUBLIC API
 // =============================================================================
@@ -175,12 +172,9 @@ export async function runDoctorValidator(
 
   const validatorLog =
     args.logger ??
-    new JsonlLogger(
-      validatorLogPath(args.projectName, args.runId, VALIDATOR_NAME, args.paths),
-      {
-        runId: args.runId,
-      },
-    );
+    new JsonlLogger(validatorLogPath(args.projectName, args.runId, VALIDATOR_NAME, args.paths), {
+      runId: args.runId,
+    });
   const shouldCloseLog = !args.logger;
 
   logOrchestratorEvent(args.orchestratorLog, "validator.start", {
@@ -258,7 +252,6 @@ export async function runDoctorValidator(
     }
   }
 }
-
 
 // =============================================================================
 // INTERNALS
@@ -341,7 +334,10 @@ async function readDoctorRuns(runLogs: string): Promise<DoctorRunSample[]> {
 async function readDoctorAttemptStatuses(
   eventsPath: string,
 ): Promise<Map<number, { status: "pass" | "fail"; exitCode?: number; summary?: string }>> {
-  const statuses = new Map<number, { status: "pass" | "fail"; exitCode?: number; summary?: string }>();
+  const statuses = new Map<
+    number,
+    { status: "pass" | "fail"; exitCode?: number; summary?: string }
+  >();
   const exists = await fse.pathExists(eventsPath);
   if (!exists) return statuses;
 
@@ -397,7 +393,15 @@ function formatDoctorRunsForPrompt(runs: DoctorRunSample[]): string {
       const summaryLine = run.summary ? `Summary: ${run.summary}` : null;
       const pathLine = run.logPath ? `Log: ${run.logPath}` : null;
 
-      return [header, summaryLine, pathLine, "```", run.log, "```", run.truncated ? "[truncated]" : ""]
+      return [
+        header,
+        summaryLine,
+        pathLine,
+        "```",
+        run.log,
+        "```",
+        run.truncated ? "[truncated]" : "",
+      ]
         .filter(Boolean)
         .join("\n");
     })
@@ -422,7 +426,11 @@ function buildDoctorExpectations(context: ValidationContext): string {
   return lines.join("\n");
 }
 
-function computeRunStats(runs: DoctorRunSample[]): { total: number; passes: number; failures: number } {
+function computeRunStats(runs: DoctorRunSample[]): {
+  total: number;
+  passes: number;
+  failures: number;
+} {
   return runs.reduce(
     (acc, run) => {
       acc.total += 1;

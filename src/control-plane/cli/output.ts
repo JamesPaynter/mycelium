@@ -9,8 +9,6 @@ export const CONTROL_PLANE_ERROR_CODES = {
 export type ControlPlaneErrorCode =
   (typeof CONTROL_PLANE_ERROR_CODES)[keyof typeof CONTROL_PLANE_ERROR_CODES];
 
-
-
 // =============================================================================
 // JSON SHAPES
 // =============================================================================
@@ -35,8 +33,6 @@ export type ControlPlaneOutputOptions = {
   useJson: boolean;
   prettyJson: boolean;
 };
-
-
 
 // =============================================================================
 // OUTPUT EMITTERS
@@ -98,8 +94,6 @@ export function emitNotImplementedError(
   );
 }
 
-
-
 // =============================================================================
 // INTERNAL HELPERS
 // =============================================================================
@@ -108,9 +102,7 @@ function writeJson(
   envelope: ControlPlaneJsonEnvelope<unknown>,
   output: ControlPlaneOutputOptions,
 ): void {
-  const payload = output.prettyJson
-    ? JSON.stringify(envelope, null, 2)
-    : JSON.stringify(envelope);
+  const payload = output.prettyJson ? JSON.stringify(envelope, null, 2) : JSON.stringify(envelope);
   console.log(payload);
 }
 

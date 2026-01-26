@@ -39,8 +39,6 @@ afterEach(async () => {
   }
 });
 
-
-
 // =============================================================================
 // HELPERS
 // =============================================================================
@@ -80,11 +78,7 @@ function writeRepoFile(repoRoot: string, relativePath: string, contents: string)
   fs.writeFileSync(absolutePath, contents, "utf8");
 }
 
-function writeControlPlaneModel(
-  repoRoot: string,
-  baseSha: string,
-  model: ControlPlaneModel,
-): void {
+function writeControlPlaneModel(repoRoot: string, baseSha: string, model: ControlPlaneModel): void {
   const modelDir = path.join(repoRoot, ".mycelium", "control-plane", "models", baseSha);
   fs.mkdirSync(modelDir, { recursive: true });
   fs.writeFileSync(path.join(modelDir, "model.json"), JSON.stringify(model, null, 2), "utf8");
@@ -127,8 +121,6 @@ function closeServer(server: http.Server): Promise<void> {
     server.close(() => resolve());
   });
 }
-
-
 
 // =============================================================================
 // TESTS

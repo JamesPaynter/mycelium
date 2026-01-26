@@ -6,8 +6,6 @@ import path from "node:path";
 
 import { git } from "../git/git.js";
 
-
-
 // =============================================================================
 // REVISION RESOLUTION
 // =============================================================================
@@ -25,8 +23,6 @@ export async function resolveBaseSha(input: {
   return result.stdout.trim();
 }
 
-
-
 // =============================================================================
 // CHANGE QUERIES
 // =============================================================================
@@ -38,9 +34,7 @@ export type ControlPlaneChangedPathInput = {
   against?: string | null;
 };
 
-export async function listChangedPaths(
-  input: ControlPlaneChangedPathInput,
-): Promise<string[]> {
+export async function listChangedPaths(input: ControlPlaneChangedPathInput): Promise<string[]> {
   const repoRoot = path.resolve(input.repoRoot);
   const changed = normalizeChangedPaths(repoRoot, input.changed ?? null);
   const diff = normalizeOptionalString(input.diff);
@@ -66,8 +60,6 @@ export async function listChangedPaths(
 
   return [];
 }
-
-
 
 // =============================================================================
 // INTERNAL HELPERS
@@ -108,9 +100,7 @@ function normalizeChangedPaths(repoRoot: string, changed: string[] | null): stri
       continue;
     }
 
-    const resolvedPath = path.isAbsolute(trimmed)
-      ? trimmed
-      : path.resolve(repoRoot, trimmed);
+    const resolvedPath = path.isAbsolute(trimmed) ? trimmed : path.resolve(repoRoot, trimmed);
     const relative = path.relative(repoRoot, resolvedPath);
     const normalized = normalizeRepoPath(relative);
     if (normalized.length > 0) {

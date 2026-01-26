@@ -28,7 +28,6 @@ const originalEnv: Record<(typeof ENV_VARS)[number], string | undefined> = Objec
   ENV_VARS.map((key) => [key, process.env[key]]),
 ) as Record<(typeof ENV_VARS)[number], string | undefined>;
 
-
 // =============================================================================
 // TESTS
 // =============================================================================
@@ -130,99 +129,90 @@ describe("acceptance: cross-run ledger dependencies", () => {
       expect(externalSatisfied).toBeDefined();
       expect(externalSatisfied?.task_id).toBe("002");
       expect(externalSatisfied?.deps).toEqual(
-        expect.arrayContaining([
-          expect.objectContaining({ dep_id: "001" }),
-        ]),
+        expect.arrayContaining([expect.objectContaining({ dep_id: "001" })]),
       );
     },
   );
 
-  it(
-    "blocks reuse when dependency fingerprint changes",
-    { timeout: 60_000 },
-    async () => {
-      const tmpRoot = await fs.mkdtemp(path.join(os.tmpdir(), "mycelium-ledger-mismatch-"));
-      tempRoots.push(tmpRoot);
+  it("blocks reuse when dependency fingerprint changes", { timeout: 60_000 }, async () => {
+    const tmpRoot = await fs.mkdtemp(path.join(os.tmpdir(), "mycelium-ledger-mismatch-"));
+    tempRoots.push(tmpRoot);
 
-      const repoDir = path.join(tmpRoot, "repo");
-      await fse.copy(FIXTURE_REPO, repoDir);
-      await initGitRepo(repoDir);
+    const repoDir = path.join(tmpRoot, "repo");
+    await fse.copy(FIXTURE_REPO, repoDir);
+    await initGitRepo(repoDir);
 
-      const configPath = path.join(tmpRoot, "project.yaml");
-      await writeProjectConfig(configPath, repoDir);
+    const configPath = path.join(tmpRoot, "project.yaml");
+    await writeProjectConfig(configPath, repoDir);
 
-      const plannerOutputPath = path.join(tmpRoot, "mock-planner-output.json");
-      await fs.writeFile(
-        plannerOutputPath,
-        JSON.stringify(
-          buildPlannerOutput({
-            tasks: [
-              buildTask({
-                id: "001",
-                name: "seed-ledger",
-                writes: ["notes/seed-ledger.txt"],
-              }),
-              buildTask({
-                id: "002",
-                name: "downstream-task",
-                writes: ["src/downstream-task.txt"],
-                dependencies: ["001"],
-              }),
-            ],
-          }),
-        ),
-      );
+    const plannerOutputPath = path.join(tmpRoot, "mock-planner-output.json");
+    await fs.writeFile(
+      plannerOutputPath,
+      JSON.stringify(
+        buildPlannerOutput({
+          tasks: [
+            buildTask({
+              id: "001",
+              name: "seed-ledger",
+              writes: ["notes/seed-ledger.txt"],
+            }),
+            buildTask({
+              id: "002",
+              name: "downstream-task",
+              writes: ["src/downstream-task.txt"],
+              dependencies: ["001"],
+            }),
+          ],
+        }),
+      ),
+    );
 
-      process.env.MYCELIUM_HOME = path.join(tmpRoot, "mycelium-home");
-      process.env.MOCK_LLM = "1";
-      process.env.MOCK_LLM_OUTPUT_PATH = plannerOutputPath;
-      delete process.env.MOCK_LLM_OUTPUT;
-      delete process.env.MOCK_CODEX_USAGE;
+    process.env.MYCELIUM_HOME = path.join(tmpRoot, "mycelium-home");
+    process.env.MOCK_LLM = "1";
+    process.env.MOCK_LLM_OUTPUT_PATH = plannerOutputPath;
+    delete process.env.MOCK_LLM_OUTPUT;
+    delete process.env.MOCK_CODEX_USAGE;
 
-      const projectName = "cross-run-ledger-mismatch";
-      const config = loadProjectConfig(configPath);
+    const projectName = "cross-run-ledger-mismatch";
+    const config = loadProjectConfig(configPath);
 
-      const planResult = await planProject(projectName, config, {
-        input: "docs/planning/implementation-plan.md",
-        output: ".tasks",
-      });
-      expect(planResult.tasks).toHaveLength(2);
+    const planResult = await planProject(projectName, config, {
+      input: "docs/planning/implementation-plan.md",
+      output: ".tasks",
+    });
+    expect(planResult.tasks).toHaveLength(2);
 
-      const runOne = await runProject(projectName, config, {
-        runId: `${projectName}-run-1-${Date.now()}`,
-        tasks: ["001"],
-        maxParallel: 1,
-        useDocker: false,
-        buildImage: false,
-      });
+    const runOne = await runProject(projectName, config, {
+      runId: `${projectName}-run-1-${Date.now()}`,
+      tasks: ["001"],
+      maxParallel: 1,
+      useDocker: false,
+      buildImage: false,
+    });
 
-      expect(runOne.state.status).toBe("complete");
+    expect(runOne.state.status).toBe("complete");
 
-      const taskPaths = await resolveTaskFiles(repoDir, config.tasks_dir, "001");
-      await fs.appendFile(taskPaths.specPath, "\nFingerprint change for reuse check.\n", "utf8");
+    const taskPaths = await resolveTaskFiles(repoDir, config.tasks_dir, "001");
+    await fs.appendFile(taskPaths.specPath, "\nFingerprint change for reuse check.\n", "utf8");
 
-      const runTwo = await runProject(projectName, config, {
-        runId: `${projectName}-run-2-${Date.now()}`,
-        tasks: ["002"],
-        maxParallel: 1,
-        useDocker: false,
-        buildImage: false,
-      });
+    const runTwo = await runProject(projectName, config, {
+      runId: `${projectName}-run-2-${Date.now()}`,
+      tasks: ["002"],
+      maxParallel: 1,
+      useDocker: false,
+      buildImage: false,
+    });
 
-      expect(runTwo.state.status).toBe("failed");
-      expect(runTwo.state.tasks["002"]?.status).toBe("pending");
+    expect(runTwo.state.status).toBe("failed");
+    expect(runTwo.state.tasks["002"]?.status).toBe("pending");
 
-      const events = await readJsonl(orchestratorLogPath(projectName, runTwo.runId));
-      const blockedEvent = events.find((event) => event.type === "run.blocked");
-      expect(blockedEvent).toBeDefined();
-      expect(blockedEvent?.reason).toBe("missing_dependencies");
-      expect(blockedEvent?.blocked_tasks).toEqual([
-        { task_id: "002", missing_deps: ["001"] },
-      ]);
-    },
-  );
+    const events = await readJsonl(orchestratorLogPath(projectName, runTwo.runId));
+    const blockedEvent = events.find((event) => event.type === "run.blocked");
+    expect(blockedEvent).toBeDefined();
+    expect(blockedEvent?.reason).toBe("missing_dependencies");
+    expect(blockedEvent?.blocked_tasks).toEqual([{ task_id: "002", missing_deps: ["001"] }]);
+  });
 });
-
 
 // =============================================================================
 // HELPERS
@@ -266,7 +256,7 @@ function buildTask(input: {
     affected_tests: [],
     test_paths: [],
     tdd_mode: "off",
-    verify: { doctor: "node -e \"process.exit(0)\"" },
+    verify: { doctor: 'node -e "process.exit(0)"' },
     spec: `Update ${input.writes.join(", ")} for ledger coverage.`,
   };
 }

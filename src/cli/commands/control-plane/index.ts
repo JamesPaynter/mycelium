@@ -31,7 +31,10 @@ import {
   deriveTaskWriteScopeReport,
   type DerivedScopeReport,
 } from "../../../control-plane/integration/derived-scope.js";
-import { buildControlPlaneModel, getControlPlaneModelInfo } from "../../../control-plane/model/build.js";
+import {
+  buildControlPlaneModel,
+  getControlPlaneModelInfo,
+} from "../../../control-plane/model/build.js";
 import type {
   ControlPlaneModel,
   ControlPlaneSymbolDefinition,
@@ -65,8 +68,6 @@ import { registerDependencyCommands } from "./deps.js";
 const MODEL_NOT_BUILT_MESSAGE =
   "Control plane model not built. Run `mycelium cp build` to generate it.";
 
-
-
 // =============================================================================
 // TYPES
 // =============================================================================
@@ -94,8 +95,6 @@ export type ControlPlaneCommandContext = {
   ) => void;
   resolveModelStoreError: (error: unknown) => ControlPlaneJsonError;
 };
-
-
 
 // =============================================================================
 // COMMAND REGISTRATION
@@ -138,9 +137,7 @@ export function registerControlPlaneCommand(program: Command): void {
   registerDependencyCommands(controlPlane, sharedContext);
   registerBlastRadiusCommand(controlPlane, sharedContext);
 
-  const policy = controlPlane
-    .command("policy")
-    .description("Policy evaluation queries");
+  const policy = controlPlane.command("policy").description("Policy evaluation queries");
 
   policy
     .command("eval")
@@ -153,9 +150,7 @@ export function registerControlPlaneCommand(program: Command): void {
       await handlePolicyEval(opts as PolicyEvalOptions, command);
     });
 
-  const symbols = controlPlane
-    .command("symbols")
-    .description("Symbol navigation queries");
+  const symbols = controlPlane.command("symbols").description("Symbol navigation queries");
 
   symbols
     .command("find")
@@ -164,11 +159,7 @@ export function registerControlPlaneCommand(program: Command): void {
     .option("--kind <kind...>", "Filter by symbol kind")
     .option("--component <id>", "Filter by component id")
     .option("--path <glob>", "Filter by file path glob")
-    .option(
-      "--limit <n>",
-      "Limit number of matches (default: 50)",
-      (value) => parseInt(value, 10),
-    )
+    .option("--limit <n>", "Limit number of matches (default: 50)", (value) => parseInt(value, 10))
     .action(async (query, opts, command) => {
       await handleSymbolsFind(query as string[] | string, opts as SymbolFindOptions, command);
     });
@@ -186,10 +177,8 @@ export function registerControlPlaneCommand(program: Command): void {
     .command("refs")
     .description("Show symbol references")
     .argument("<symbol_id>", "Symbol id")
-    .option(
-      "--limit <n>",
-      "Limit number of references (default: 50)",
-      (value) => parseInt(value, 10),
+    .option("--limit <n>", "Limit number of references (default: 50)", (value) =>
+      parseInt(value, 10),
     )
     .option("--include-definition", "Include definition references", false)
     .option("--group-by <mode>", "Group references by component or file")
@@ -197,8 +186,6 @@ export function registerControlPlaneCommand(program: Command): void {
       await handleSymbolsRefs(String(symbolId), opts as SymbolRefsOptions, command);
     });
 }
-
-
 
 // =============================================================================
 // COMMAND CONTEXT
@@ -212,16 +199,11 @@ function resolveCommandContext(command: Command): ControlPlaneCommandRuntimeCont
   };
 }
 
-
-
 // =============================================================================
 // BUILD + INFO ACTIONS
 // =============================================================================
 
-async function handleControlPlaneBuild(
-  opts: { force?: boolean },
-  command: Command,
-): Promise<void> {
+async function handleControlPlaneBuild(opts: { force?: boolean }, command: Command): Promise<void> {
   const { flags, output } = resolveCommandContext(command);
 
   try {
@@ -275,8 +257,6 @@ function resolveModelStoreError(error: unknown): ControlPlaneJsonError {
     details: null,
   };
 }
-
-
 
 // =============================================================================
 // POLICY EVAL
@@ -364,10 +344,7 @@ class PolicyEvalInputError extends Error {
   }
 }
 
-async function handlePolicyEval(
-  options: PolicyEvalOptions,
-  command: Command,
-): Promise<void> {
+async function handlePolicyEval(options: PolicyEvalOptions, command: Command): Promise<void> {
   const { flags, output } = resolveCommandContext(command);
 
   let modelResult: { model: ControlPlaneModel; baseSha: string } | null = null;
@@ -414,9 +391,7 @@ async function buildPolicyEvalOutput(input: {
   const against = normalizeOptionalString(input.options.against);
 
   if (changedInput.length === 0 && !diff && !against) {
-    throw new PolicyEvalInputError(
-      "Provide --changed, --diff, or --against to evaluate policy.",
-    );
+    throw new PolicyEvalInputError("Provide --changed, --diff, or --against to evaluate policy.");
   }
 
   const changedFiles = await listChangedPaths({
@@ -624,9 +599,7 @@ function resolvePolicyEvalConfig(input: {
   repoPath: string;
   explicitConfigPath: string | null;
 }): PolicyEvalResolvedConfig {
-  const explicitPath = input.explicitConfigPath
-    ? path.resolve(input.explicitConfigPath)
-    : null;
+  const explicitPath = input.explicitConfigPath ? path.resolve(input.explicitConfigPath) : null;
   if (explicitPath) {
     if (!fsSync.existsSync(explicitPath)) {
       throw new PolicyEvalInputError("Project config not found.", {
@@ -749,8 +722,6 @@ function sortRecord<T>(record: Record<string, T>): Record<string, T> {
   );
 }
 
-
-
 // =============================================================================
 // SYMBOL QUERIES
 // =============================================================================
@@ -868,8 +839,7 @@ async function handleSymbolsDef(
 
     const normalizedId = symbolId.trim();
     const definitions = modelResult.model.symbols_ts?.definitions ?? [];
-    const definition =
-      definitions.find((entry) => entry.symbol_id === normalizedId) ?? null;
+    const definition = definitions.find((entry) => entry.symbol_id === normalizedId) ?? null;
 
     const context = normalizeContextLines(options.context);
     const snippet =
@@ -916,8 +886,7 @@ async function handleSymbolsRefs(
 
     const normalizedId = symbolId.trim();
     const definitions = modelResult.model.symbols_ts?.definitions ?? [];
-    const definition =
-      definitions.find((entry) => entry.symbol_id === normalizedId) ?? null;
+    const definition = definitions.find((entry) => entry.symbol_id === normalizedId) ?? null;
 
     const limit = normalizeLimit(options.limit, 50);
     const groupBy = normalizeGroupBy(options.groupBy);
@@ -1056,9 +1025,7 @@ function findSymbols(options: {
   let matches = options.definitions;
 
   if (query.length > 0) {
-    matches = matches.filter((definition) =>
-      definition.name.toLowerCase().includes(query),
-    );
+    matches = matches.filter((definition) => definition.name.toLowerCase().includes(query));
   }
 
   if (kindFilter) {
@@ -1066,9 +1033,7 @@ function findSymbols(options: {
   }
 
   if (options.component) {
-    matches = matches.filter(
-      (definition) => definition.component_id === options.component,
-    );
+    matches = matches.filter((definition) => definition.component_id === options.component);
   }
 
   if (options.path) {
@@ -1099,9 +1064,7 @@ function buildSymbolReferencesResult(options: {
   const total = options.references.length;
   const limited = options.references.slice(0, options.limit);
   const truncated = total > options.limit;
-  const groups = options.groupBy
-    ? groupSymbolReferences(limited, options.groupBy)
-    : null;
+  const groups = options.groupBy ? groupSymbolReferences(limited, options.groupBy) : null;
 
   return {
     symbol_id: options.symbolId,
@@ -1176,8 +1139,6 @@ async function loadSymbolSnippet(options: {
     return null;
   }
 }
-
-
 
 // =============================================================================
 // MODEL LOADING

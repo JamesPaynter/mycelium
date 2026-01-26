@@ -25,11 +25,11 @@ type ResumeOptions = Pick<
   | "importRun"
 > &
   RunDebugFlags & {
-  runId?: string;
-  ui?: boolean;
-  uiPort?: number;
-  uiOpen?: boolean;
-};
+    runId?: string;
+    ui?: boolean;
+    uiPort?: number;
+    uiOpen?: boolean;
+  };
 
 export async function resumeCommand(
   projectName: string,

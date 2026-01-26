@@ -11,8 +11,6 @@ import type {
   ControlPlaneModel,
 } from "../control-plane/model/schema.js";
 
-
-
 // =============================================================================
 // HELPERS
 // =============================================================================
@@ -81,8 +79,6 @@ function expectBlastResult(
   expect(result.widening_reasons).toEqual(expected.reasons);
 }
 
-
-
 // =============================================================================
 // TESTS
 // =============================================================================
@@ -135,9 +131,7 @@ describe("control-plane blast radius integration", () => {
   });
 
   it("widens when low-confidence edges are involved", () => {
-    const model = createModelWithEdges([
-      createDependency("component-b", "component-a", "low"),
-    ]);
+    const model = createModelWithEdges([createDependency("component-b", "component-a", "low")]);
 
     const result = computeBlastRadius({
       baseSha: "base-sha",
@@ -147,10 +141,6 @@ describe("control-plane blast radius integration", () => {
 
     expect(result.confidence).toBe("low");
     expect(result.widening_reasons).toEqual(["low_confidence_edges"]);
-    expect(result.impacted_components).toEqual([
-      "component-a",
-      "component-b",
-      "component-c",
-    ]);
+    expect(result.impacted_components).toEqual(["component-a", "component-b", "component-c"]);
   });
 });

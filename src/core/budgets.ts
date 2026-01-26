@@ -176,7 +176,9 @@ function extractUsage(
   if (!usage || typeof usage !== "object" || Array.isArray(usage)) return null;
 
   const inputTokens = numberOrZero((usage as { input_tokens?: unknown }).input_tokens);
-  const cachedTokens = numberOrZero((usage as { cached_input_tokens?: unknown }).cached_input_tokens);
+  const cachedTokens = numberOrZero(
+    (usage as { cached_input_tokens?: unknown }).cached_input_tokens,
+  );
   const outputTokens = numberOrZero((usage as { output_tokens?: unknown }).output_tokens);
 
   return {

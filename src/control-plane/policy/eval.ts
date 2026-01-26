@@ -6,11 +6,7 @@ import { normalizeFiles, normalizeLocks } from "../../core/task-manifest.js";
 import type { DerivedScopeReport } from "../integration/derived-scope.js";
 import type { ControlPlaneModel } from "../model/schema.js";
 import { detectSurfaceChanges } from "./surface-detect.js";
-import type {
-  PolicyDecision,
-  SurfaceChangeDetection,
-  SurfacePatternSet,
-} from "./types.js";
+import type { PolicyDecision, SurfaceChangeDetection, SurfacePatternSet } from "./types.js";
 import {
   computeChecksetDecision,
   computeChecksetImpactFromGraph,
@@ -21,8 +17,6 @@ import {
   type ChecksetWideningReason,
 } from "./checkset.js";
 import { classifyAutonomyTier, shouldForceGlobalChecksForTier } from "./tier.js";
-
-
 
 // =============================================================================
 // PUBLIC TYPES
@@ -58,8 +52,6 @@ export type PolicyEvaluationResult = {
   impactWideningReasons: ChecksetWideningReason[];
   hasRepoRootFallback: boolean;
 };
-
-
 
 // =============================================================================
 // PUBLIC API
@@ -99,8 +91,7 @@ export function evaluateTaskPolicyDecision(input: {
   const impactedComponents = impact?.impactedComponents ?? touchedComponents;
   const impactConfidence = impact?.confidence ?? "low";
   const impactWideningReasons = impact?.wideningReasons ?? [];
-  const fallbackCommand =
-    input.checksConfig.fallbackCommand?.trim() || input.defaultDoctorCommand;
+  const fallbackCommand = input.checksConfig.fallbackCommand?.trim() || input.defaultDoctorCommand;
   const hasRepoRootFallback = resolveRepoRootFallback({
     derivedScopeReport,
     fallbackResource: input.fallbackResource,
@@ -170,8 +161,6 @@ export function evaluateTaskPolicyDecision(input: {
   };
 }
 
-
-
 // =============================================================================
 // INPUT NORMALIZATION
 // =============================================================================
@@ -221,8 +210,6 @@ function extractComponentIdsFromResources(resources: string[], prefix: string): 
   return Array.from(components).sort();
 }
 
-
-
 // =============================================================================
 // POLICY LOCKS
 // =============================================================================
@@ -264,8 +251,6 @@ function resolveRepoRootFallback(input: {
 
   return report.confidence === "low";
 }
-
-
 
 // =============================================================================
 // SURFACE FILTERING
@@ -329,8 +314,7 @@ function filterSurfaceDetectionForTask(input: {
 
   const filteredCategories: SurfaceChangeDetection["categories"] = [];
   const filteredFiles: SurfaceChangeDetection["matched_files"] = {};
-  const filteredComponentsByCategory: SurfaceChangeDetection["matched_components_by_category"] =
-    {};
+  const filteredComponentsByCategory: SurfaceChangeDetection["matched_components_by_category"] = {};
 
   for (const category of input.detection.categories) {
     const categoryComponents = matchedByCategory[category];
@@ -338,9 +322,7 @@ function filterSurfaceDetectionForTask(input: {
       continue;
     }
 
-    const relevantComponents = categoryComponents.filter((component) =>
-      touchedSet.has(component),
-    );
+    const relevantComponents = categoryComponents.filter((component) => touchedSet.has(component));
     if (relevantComponents.length === 0) {
       continue;
     }

@@ -51,7 +51,10 @@ describe("runArchitectureValidator", () => {
     await execa("git", ["config", "user.name", "tester"], { cwd: repoPath });
     await execa("git", ["config", "user.email", "tester@example.com"], { cwd: repoPath });
 
-    await fse.outputFile(path.join(repoPath, "src", "app.ts"), "export const sum = (a, b) => a + b;");
+    await fse.outputFile(
+      path.join(repoPath, "src", "app.ts"),
+      "export const sum = (a, b) => a + b;",
+    );
     await fse.outputFile(
       path.join(repoPath, "docs", "architecture.md"),
       "# Architecture\n\n- Keep math logic in src/app.ts\n",
@@ -62,12 +65,7 @@ describe("runArchitectureValidator", () => {
     await execa("git", ["checkout", "-b", "agent/001-arch-review"], { cwd: repoPath });
     await fse.outputFile(
       path.join(repoPath, "src", "app.ts"),
-      [
-        "export const sum = (first, second) => {",
-        "  return first + second;",
-        "};",
-        "",
-      ].join("\n"),
+      ["export const sum = (first, second) => {", "  return first + second;", "};", ""].join("\n"),
     );
     await execa("git", ["add", "."], { cwd: repoPath });
     await execa("git", ["commit", "-m", "Refactor sum"], { cwd: repoPath });
@@ -160,19 +158,17 @@ describe("runArchitectureValidator", () => {
     await execa("git", ["config", "user.name", "tester"], { cwd: repoPath });
     await execa("git", ["config", "user.email", "tester@example.com"], { cwd: repoPath });
 
-    await fse.outputFile(path.join(repoPath, "src", "app.ts"), "export const sum = (a, b) => a + b;");
+    await fse.outputFile(
+      path.join(repoPath, "src", "app.ts"),
+      "export const sum = (a, b) => a + b;",
+    );
     await execa("git", ["add", "."], { cwd: repoPath });
     await execa("git", ["commit", "-m", "init"], { cwd: repoPath });
 
     await execa("git", ["checkout", "-b", "agent/002-arch-skip"], { cwd: repoPath });
     await fse.outputFile(
       path.join(repoPath, "src", "app.ts"),
-      [
-        "export const sum = (first, second) => {",
-        "  return first + second;",
-        "};",
-        "",
-      ].join("\n"),
+      ["export const sum = (first, second) => {", "  return first + second;", "};", ""].join("\n"),
     );
     await execa("git", ["add", "."], { cwd: repoPath });
     await execa("git", ["commit", "-m", "Refactor sum"], { cwd: repoPath });

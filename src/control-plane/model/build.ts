@@ -47,8 +47,6 @@ const EXTRACTOR_VERSIONS: ControlPlaneExtractorVersions = {
   symbols_ts: "v1",
 };
 
-
-
 // =============================================================================
 // BUILD ORCHESTRATION
 // =============================================================================
@@ -152,8 +150,6 @@ export async function getControlPlaneModelInfo(
     metadata: exists ? metadata : null,
   };
 }
-
-
 
 // =============================================================================
 // INTERNAL HELPERS

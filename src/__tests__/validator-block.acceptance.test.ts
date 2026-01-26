@@ -44,66 +44,62 @@ describe("acceptance: validator mode=block prevents merge and flags human review
     }
   });
 
-  it(
-    "blocks merge when test validator fails (mode=block)",
-    { timeout: 60_000 },
-    async () => {
-      const tmpRoot = await fs.mkdtemp(path.join(os.tmpdir(), "mycelium-validator-"));
-      tempRoots.push(tmpRoot);
+  it("blocks merge when test validator fails (mode=block)", { timeout: 60_000 }, async () => {
+    const tmpRoot = await fs.mkdtemp(path.join(os.tmpdir(), "mycelium-validator-"));
+    tempRoots.push(tmpRoot);
 
-      const repoDir = path.join(tmpRoot, "repo");
-      await fse.copy(FIXTURE_REPO, repoDir);
-      await initGitRepo(repoDir);
+    const repoDir = path.join(tmpRoot, "repo");
+    await fse.copy(FIXTURE_REPO, repoDir);
+    await initGitRepo(repoDir);
 
-      const plannerOutputPath = path.join(tmpRoot, "mock-planner-output.json");
-      await fs.writeFile(plannerOutputPath, JSON.stringify(mockPlannerOutput(), null, 2));
+    const plannerOutputPath = path.join(tmpRoot, "mock-planner-output.json");
+    await fs.writeFile(plannerOutputPath, JSON.stringify(mockPlannerOutput(), null, 2));
 
-      const configPath = path.join(tmpRoot, "project.yaml");
-      await writeProjectConfig(configPath, repoDir, [
-        "test_validator:",
-        "  mode: block",
-        "  provider: mock",
-        "  model: mock",
-      ]);
+    const configPath = path.join(tmpRoot, "project.yaml");
+    await writeProjectConfig(configPath, repoDir, [
+      "test_validator:",
+      "  mode: block",
+      "  provider: mock",
+      "  model: mock",
+    ]);
 
-      process.env.MYCELIUM_HOME = path.join(tmpRoot, "mycelium-home");
-      process.env.MOCK_LLM = "1";
-      // Phase 1: planning (planner consumes MOCK_LLM_OUTPUT_PATH).
-      process.env.MOCK_LLM_OUTPUT_PATH = plannerOutputPath;
-      delete process.env.MOCK_LLM_OUTPUT;
-      delete process.env.MOCK_CODEX_USAGE;
+    process.env.MYCELIUM_HOME = path.join(tmpRoot, "mycelium-home");
+    process.env.MOCK_LLM = "1";
+    // Phase 1: planning (planner consumes MOCK_LLM_OUTPUT_PATH).
+    process.env.MOCK_LLM_OUTPUT_PATH = plannerOutputPath;
+    delete process.env.MOCK_LLM_OUTPUT;
+    delete process.env.MOCK_CODEX_USAGE;
 
-      const config = loadProjectConfig(configPath);
-      const headBefore = await gitHead(repoDir, config.main_branch);
+    const config = loadProjectConfig(configPath);
+    const headBefore = await gitHead(repoDir, config.main_branch);
 
-      const planResult = await planProject("toy-project", config, {
-        input: "docs/planning/implementation-plan.md",
-      });
-      expect(planResult.tasks).toHaveLength(1);
+    const planResult = await planProject("toy-project", config, {
+      input: "docs/planning/implementation-plan.md",
+    });
+    expect(planResult.tasks).toHaveLength(1);
 
-      // Phase 2: execution + validator (validator consumes MOCK_LLM_OUTPUT).
-      delete process.env.MOCK_LLM_OUTPUT_PATH;
-      process.env.MOCK_LLM_OUTPUT = JSON.stringify({
-        pass: false,
-        summary: "Intentionally failing validator for acceptance test",
-        concerns: [],
-        coverage_gaps: [],
-        confidence: "high",
-      });
+    // Phase 2: execution + validator (validator consumes MOCK_LLM_OUTPUT).
+    delete process.env.MOCK_LLM_OUTPUT_PATH;
+    process.env.MOCK_LLM_OUTPUT = JSON.stringify({
+      pass: false,
+      summary: "Intentionally failing validator for acceptance test",
+      concerns: [],
+      coverage_gaps: [],
+      confidence: "high",
+    });
 
-      const runResult = await runProject("toy-project", config, {
-        maxParallel: 1,
-        useDocker: false,
-        buildImage: false,
-      });
+    const runResult = await runProject("toy-project", config, {
+      maxParallel: 1,
+      useDocker: false,
+      buildImage: false,
+    });
 
-      const headAfter = await gitHead(repoDir, config.main_branch);
+    const headAfter = await gitHead(repoDir, config.main_branch);
 
-      expect(runResult.state.status).toBe("paused");
-      expect(runResult.state.tasks["001"]?.status).toBe("needs_human_review");
-      expect(headAfter).toBe(headBefore);
-    },
-  );
+    expect(runResult.state.status).toBe("paused");
+    expect(runResult.state.tasks["001"]?.status).toBe("needs_human_review");
+    expect(headAfter).toBe(headBefore);
+  });
 
   it(
     "blocks merge when architecture validator fails (mode=block)",
@@ -130,7 +126,7 @@ describe("acceptance: validator mode=block prevents merge and flags human review
         "  mode: block",
         "  provider: mock",
         "  model: mock",
-        "  docs_glob: \"docs/architecture*.md\"",
+        '  docs_glob: "docs/architecture*.md"',
         "  fail_if_docs_missing: true",
       ]);
 
@@ -171,23 +167,19 @@ describe("acceptance: validator mode=block prevents merge and flags human review
     },
   );
 
-  it(
-    "respects style validator warn vs block modes",
-    { timeout: 90_000 },
-    async () => {
-      await runStyleValidatorScenario({
-        mode: "warn",
-        expectBlocked: false,
-        tempRoots,
-      });
+  it("respects style validator warn vs block modes", { timeout: 90_000 }, async () => {
+    await runStyleValidatorScenario({
+      mode: "warn",
+      expectBlocked: false,
+      tempRoots,
+    });
 
-      await runStyleValidatorScenario({
-        mode: "block",
-        expectBlocked: true,
-        tempRoots,
-      });
-    },
-  );
+    await runStyleValidatorScenario({
+      mode: "block",
+      expectBlocked: true,
+      tempRoots,
+    });
+  });
 });
 
 async function initGitRepo(repoDir: string): Promise<void> {
@@ -246,7 +238,7 @@ function mockPlannerOutput(): unknown {
         affected_tests: [],
         test_paths: [],
         tdd_mode: "off",
-        verify: { doctor: "node -e \"process.exit(0)\"" },
+        verify: { doctor: 'node -e "process.exit(0)"' },
         spec: "Write a small file change; validator will block merge.",
       },
     ],

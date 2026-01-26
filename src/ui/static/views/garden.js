@@ -104,7 +104,8 @@ export function snapshotDiff(prevById, nextTasks) {
     const workstationChanged = prevTask.workstationId !== nextTask.workstationId;
     const becameTerminal =
       !isTaskTerminalStatus(prevTask.status) && isTaskTerminalStatus(nextTask.status);
-    const becameActive = !isTaskActiveStatus(prevTask.status) && isTaskActiveStatus(nextTask.status);
+    const becameActive =
+      !isTaskActiveStatus(prevTask.status) && isTaskActiveStatus(nextTask.status);
 
     if (statusChanged || roleChanged || workstationChanged || becameTerminal || becameActive) {
       changed.add(taskId);
@@ -127,7 +128,11 @@ export function snapshotDiff(prevById, nextTasks) {
   };
 }
 
-export function selectVisibleTaskIds({ candidates, pinnedTaskIds, maxVisible = MAX_VISIBLE_AGENTS }) {
+export function selectVisibleTaskIds({
+  candidates,
+  pinnedTaskIds,
+  maxVisible = MAX_VISIBLE_AGENTS,
+}) {
   const visible = new Set();
   if (!Array.isArray(candidates) || candidates.length === 0 || maxVisible <= 0) {
     return visible;
@@ -166,7 +171,6 @@ export function selectVisibleTaskIds({ candidates, pinnedTaskIds, maxVisible = M
 
 export function createGardenView({ appState, actions, fetchApi }) {
   const container = document.getElementById("view-garden");
-
 
   // =============================================================================
   // CONFIG
@@ -341,7 +345,6 @@ export function createGardenView({ appState, actions, fetchApi }) {
     setPollingPaused,
   };
 
-
   // =============================================================================
   // INITIALIZATION
   // =============================================================================
@@ -353,7 +356,6 @@ export function createGardenView({ appState, actions, fetchApi }) {
 
     renderEmptyState();
   }
-
 
   // =============================================================================
   // VIEW STATE
@@ -428,7 +430,6 @@ export function createGardenView({ appState, actions, fetchApi }) {
     }
   }
 
-
   // =============================================================================
   // SUMMARY
   // =============================================================================
@@ -447,7 +448,6 @@ export function createGardenView({ appState, actions, fetchApi }) {
     renderGarden(summary);
     startEventsPolling();
   }
-
 
   // =============================================================================
   // RENDERING
@@ -507,7 +507,12 @@ export function createGardenView({ appState, actions, fetchApi }) {
     const emptyStateChanged =
       runningTasks.length === 0 && emptyStateKey !== viewState.lastEmptyStateKey;
 
-    if (!hasActiveTransitions && !hasMeaningfulChanges && !visibleSetChanged && !emptyStateChanged) {
+    if (
+      !hasActiveTransitions &&
+      !hasMeaningfulChanges &&
+      !visibleSetChanged &&
+      !emptyStateChanged
+    ) {
       return;
     }
 
@@ -531,7 +536,6 @@ export function createGardenView({ appState, actions, fetchApi }) {
     syncRunningTaskEventTracking(runningTasks);
     syncInspectorSelection(summary);
   }
-
 
   // =============================================================================
   // DOM FRAME
@@ -808,7 +812,6 @@ export function createGardenView({ appState, actions, fetchApi }) {
     return { element: wrapper, countEl };
   }
 
-
   // =============================================================================
   // TASK NORMALIZATION
   // =============================================================================
@@ -888,7 +891,6 @@ export function createGardenView({ appState, actions, fetchApi }) {
       workstationId: deriveWorkstationId("running", null),
     };
   }
-
 
   // =============================================================================
   // SNAPSHOT DIFF + VISIBILITY
@@ -996,7 +998,6 @@ export function createGardenView({ appState, actions, fetchApi }) {
     viewState.terminalStationByTaskId.clear();
   }
 
-
   // =============================================================================
   // WORKSTATION MAPPING
   // =============================================================================
@@ -1026,7 +1027,6 @@ export function createGardenView({ appState, actions, fetchApi }) {
 
     return tasksByStation;
   }
-
 
   // =============================================================================
   // WORKSTATION STATE
@@ -1107,7 +1107,6 @@ export function createGardenView({ appState, actions, fetchApi }) {
       }
     }
   }
-
 
   // =============================================================================
   // WORKSTATION INTERACTIONS
@@ -1205,8 +1204,7 @@ export function createGardenView({ appState, actions, fetchApi }) {
       if (
         selectedTaskId === null ||
         activityAt > selectedActivityAt ||
-        (activityAt === selectedActivityAt &&
-          normalizedTaskId.localeCompare(selectedTaskId) > 0)
+        (activityAt === selectedActivityAt && normalizedTaskId.localeCompare(selectedTaskId) > 0)
       ) {
         selectedTaskId = normalizedTaskId;
         selectedActivityAt = activityAt;
@@ -1220,7 +1218,6 @@ export function createGardenView({ appState, actions, fetchApi }) {
     const countLabel = mappedCount === 1 ? "1 task" : `${mappedCount} tasks`;
     return `${label} | ${countLabel}`;
   }
-
 
   // =============================================================================
   // WORKSTATION SLOTS
@@ -1468,7 +1465,6 @@ export function createGardenView({ appState, actions, fetchApi }) {
       }
     }
   }
-
 
   // =============================================================================
   // TRANSITIONS
@@ -1825,7 +1821,6 @@ export function createGardenView({ appState, actions, fetchApi }) {
     return steps.slice(0, MOVE_STEP_COUNT);
   }
 
-
   // =============================================================================
   // MUSHROOMS
   // =============================================================================
@@ -2137,7 +2132,6 @@ export function createGardenView({ appState, actions, fetchApi }) {
     scheduleMyceliumOverlayUpdate();
   }
 
-
   // =============================================================================
   // INSPECTOR
   // =============================================================================
@@ -2200,7 +2194,6 @@ export function createGardenView({ appState, actions, fetchApi }) {
 
     viewState.inspector.updateTaskDetail(selectedTask);
   }
-
 
   // =============================================================================
   // EVENTS POLLING
@@ -2317,7 +2310,6 @@ export function createGardenView({ appState, actions, fetchApi }) {
     viewState.lastEventAtByTaskId.clear();
     viewState.pulseUntilByTaskId.clear();
   }
-
 
   // =============================================================================
   // MYCELIUM OVERLAY
@@ -2591,7 +2583,6 @@ export function createGardenView({ appState, actions, fetchApi }) {
     });
     viewState.myceliumResizeObserver.observe(viewState.garden);
   }
-
 
   // =============================================================================
   // UTILITIES

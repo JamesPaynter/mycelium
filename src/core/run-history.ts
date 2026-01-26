@@ -10,7 +10,6 @@ import { stateBaseDir, runHistoryIndexPath } from "./paths.js";
 import { RunStateSchema, RunStatusSchema, type RunState, type RunStatus } from "./state.js";
 import { isoNow } from "./utils.js";
 
-
 // =============================================================================
 // TYPES
 // =============================================================================
@@ -51,7 +50,6 @@ const RunHistoryIndexSchema = z
 
 const RUN_HISTORY_SCHEMA_VERSION = 1;
 
-
 // =============================================================================
 // PUBLIC API
 // =============================================================================
@@ -85,18 +83,23 @@ export async function listRunHistoryEntries(
   const index = await loadRunHistoryIndex(projectName, paths);
   const stateEntries = await loadRunHistoryEntriesFromState(projectName, paths);
 
-  const merged = stateEntries.length > 0
-    ? sortRunHistoryEntries(stateEntries)
-    : sortRunHistoryEntries(mergeRunHistoryLists(index?.runs ?? [], stateEntries));
+  const merged =
+    stateEntries.length > 0
+      ? sortRunHistoryEntries(stateEntries)
+      : sortRunHistoryEntries(mergeRunHistoryLists(index?.runs ?? [], stateEntries));
   const limited = applyLimit(merged, opts.limit);
 
   if (shouldPersistIndex(index, merged)) {
     const updatedAt = merged[0]?.updatedAt ?? isoNow();
-    await writeRunHistoryIndex(projectName, {
-      schemaVersion: RUN_HISTORY_SCHEMA_VERSION,
-      updatedAt,
-      runs: merged,
-    }, paths);
+    await writeRunHistoryIndex(
+      projectName,
+      {
+        schemaVersion: RUN_HISTORY_SCHEMA_VERSION,
+        updatedAt,
+        runs: merged,
+      },
+      paths,
+    );
   }
 
   return limited;
@@ -112,7 +115,6 @@ export function buildRunHistoryEntry(state: RunState): RunHistoryEntry {
     taskCount: Object.keys(state.tasks ?? {}).length,
   };
 }
-
 
 // =============================================================================
 // INDEX LOAD/SAVE
@@ -149,7 +151,6 @@ async function writeRunHistoryIndex(
   const indexPath = runHistoryIndexPath(projectName, paths);
   await writeJsonFileAtomic(indexPath, index);
 }
-
 
 // =============================================================================
 // STATE BACKFILL
@@ -202,12 +203,14 @@ async function readRunStateFile(filePath: string): Promise<RunState | null> {
   }
 }
 
-
 // =============================================================================
 // MERGE + SORT
 // =============================================================================
 
-function mergeRunHistoryEntries(existing: RunHistoryEntry[], entry: RunHistoryEntry): RunHistoryEntry[] {
+function mergeRunHistoryEntries(
+  existing: RunHistoryEntry[],
+  entry: RunHistoryEntry,
+): RunHistoryEntry[] {
   const next = existing.filter((item) => item.runId !== entry.runId);
   next.push(entry);
   return next;
@@ -268,7 +271,6 @@ function applyLimit(entries: RunHistoryEntry[], limit?: number): RunHistoryEntry
 
   return entries.slice(0, limit);
 }
-
 
 // =============================================================================
 // UTILITIES

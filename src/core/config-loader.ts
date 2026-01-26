@@ -119,7 +119,10 @@ export function loadProjectConfig(configPath: string): ProjectConfig {
 // Some configs mistakenly point the Docker build context at <package>/dist while using
 // the Dockerfile under dist/templates. That context is missing bin/, package.json, etc.
 // Detect that pattern and fall back to the package root so COPY steps succeed.
-function coalesceDockerContext(dockerfile: string, buildContext: string): {
+function coalesceDockerContext(
+  dockerfile: string,
+  buildContext: string,
+): {
   dockerfile: string;
   build_context: string;
 } {

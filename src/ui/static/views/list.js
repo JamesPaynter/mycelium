@@ -35,7 +35,6 @@ export function createListView({ appState, actions, fetchApi }) {
     refresh,
   };
 
-
   // =============================================================================
   // INITIALIZATION
   // =============================================================================
@@ -59,7 +58,6 @@ export function createListView({ appState, actions, fetchApi }) {
       selectTask(taskId);
     });
   }
-
 
   // =============================================================================
   // VIEW STATE
@@ -86,7 +84,6 @@ export function createListView({ appState, actions, fetchApi }) {
 
     return inspector.refresh();
   }
-
 
   // =============================================================================
   // SUMMARY + SELECTION
@@ -146,7 +143,6 @@ export function createListView({ appState, actions, fetchApi }) {
   function selectTask(taskId) {
     actions.setSelectedTask(taskId);
   }
-
 
   // =============================================================================
   // RENDERING
@@ -310,7 +306,6 @@ export function createListView({ appState, actions, fetchApi }) {
   }
 }
 
-
 // =============================================================================
 // TASK INSPECTOR
 // =============================================================================
@@ -349,7 +344,6 @@ export function renderTaskInspector(container, appState, options = {}) {
     refresh,
     getLastEventTimestamp,
   };
-
 
   // =============================================================================
   // INITIALIZATION
@@ -400,7 +394,6 @@ export function renderTaskInspector(container, appState, options = {}) {
     }
   }
 
-
   // =============================================================================
   // VIEW STATE
   // =============================================================================
@@ -448,7 +441,6 @@ export function renderTaskInspector(container, appState, options = {}) {
     return viewState.lastEventByTask.get(taskId) ?? null;
   }
 
-
   // =============================================================================
   // SELECTION + FILTERS
   // =============================================================================
@@ -483,7 +475,6 @@ export function renderTaskInspector(container, appState, options = {}) {
     startEventsPolling();
   }
 
-
   // =============================================================================
   // EVENTS POLLING
   // =============================================================================
@@ -509,7 +500,6 @@ export function renderTaskInspector(container, appState, options = {}) {
     }
   }
 
-
   // =============================================================================
   // API REQUESTS
   // =============================================================================
@@ -526,7 +516,9 @@ export function renderTaskInspector(container, appState, options = {}) {
 
     viewState.isEventsLoading = true;
     try {
-      const result = await fetchApi(buildTaskEventsUrl(appState, taskId, cursor, viewState.typeGlob));
+      const result = await fetchApi(
+        buildTaskEventsUrl(appState, taskId, cursor, viewState.typeGlob),
+      );
       const nextCursor = result.nextCursor ?? cursor;
       viewState.cursorByKey.set(key, nextCursor);
       viewState.truncatedByKey.set(key, Boolean(result.truncated));
@@ -622,7 +614,6 @@ export function renderTaskInspector(container, appState, options = {}) {
       setDetailError(toErrorMessage(error));
     }
   }
-
 
   // =============================================================================
   // RENDERING
@@ -724,7 +715,6 @@ export function renderTaskInspector(container, appState, options = {}) {
   function isTailPaused() {
     return appState.pollingPaused || !viewState.isActive;
   }
-
 
   // =============================================================================
   // DOM FRAME
@@ -1064,7 +1054,6 @@ export function renderTaskInspector(container, appState, options = {}) {
     };
   }
 
-
   // =============================================================================
   // UTILITIES
   // =============================================================================
@@ -1179,7 +1168,6 @@ export function renderTaskInspector(container, appState, options = {}) {
     setErrorMessage(elements.detailError, message);
   }
 }
-
 
 // =============================================================================
 // EVENT HELPERS
@@ -1396,7 +1384,6 @@ function hashString(value) {
   }
   return `event-${(hash >>> 0).toString(36)}`;
 }
-
 
 // =============================================================================
 // SHARED UTILITIES

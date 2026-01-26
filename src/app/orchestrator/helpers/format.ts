@@ -6,7 +6,6 @@ Assumes inputs are already validated or normalized.
 import type { DoctorCanarySummary } from "../../../core/state.js";
 import type { DoctorCanaryResult } from "../../../validators/doctor-validator.js";
 
-
 // =============================================================================
 // DOCTOR CANARY HELPERS
 // =============================================================================
@@ -46,7 +45,6 @@ export function buildDoctorCanarySummary(
     exit_code: canary.exitCode,
   };
 }
-
 
 // =============================================================================
 // TEXT UTILITIES

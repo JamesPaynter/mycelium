@@ -16,7 +16,6 @@ import type { ControlPlaneModelMetadata } from "../control-plane/metadata.js";
 
 const execFileAsync = promisify(execFile);
 
-
 // =============================================================================
 // TYPES
 // =============================================================================
@@ -78,7 +77,6 @@ type ModelReadResult =
       modelMtimeMs: number;
     }
   | { ok: false; reason: "not_found" | "invalid_path" };
-
 
 // =============================================================================
 // PUBLIC API
@@ -176,7 +174,6 @@ export async function loadCodeGraphSnapshot(params: {
   };
 }
 
-
 // =============================================================================
 // BASE SHA RESOLUTION
 // =============================================================================
@@ -216,7 +213,6 @@ async function resolveGitSha(repoPath: string, ref: string): Promise<string | nu
   }
 }
 
-
 // =============================================================================
 // MODEL LOADING
 // =============================================================================
@@ -252,7 +248,6 @@ async function readControlPlaneModel(repoPath: string, baseSha: string): Promise
     modelMtimeMs: stat.mtimeMs,
   };
 }
-
 
 // =============================================================================
 // COMPONENT STATS
@@ -353,7 +348,6 @@ async function walkComponentRoot(
   }
 }
 
-
 // =============================================================================
 // FILE SCANNING
 // =============================================================================
@@ -398,7 +392,6 @@ async function safeReadDir(dir: string): Promise<Dirent[] | null> {
   }
 }
 
-
 // =============================================================================
 // RUN QUALITY
 // =============================================================================
@@ -415,7 +408,6 @@ function computeRunQuality(state: RunState): { integration_doctor_passed: boolea
 
   return { integration_doctor_passed: null };
 }
-
 
 // =============================================================================
 // UTILITIES
@@ -569,7 +561,6 @@ function isMissingFile(err: unknown): boolean {
   if (!("code" in err)) return false;
   return (err as { code?: string }).code === "ENOENT";
 }
-
 
 // =============================================================================
 // CONSTANTS

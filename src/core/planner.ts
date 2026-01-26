@@ -108,9 +108,7 @@ const PlannerOutputJsonSchema = {
 } as const;
 
 const PlannerResponseSchema = z.object({
-  tasks: z
-    .array(TaskManifestWithSpecSchema)
-    .min(1, "Planner must return at least one task."),
+  tasks: z.array(TaskManifestWithSpecSchema).min(1, "Planner must return at least one task."),
 });
 
 export async function planFromImplementationPlan(args: {
@@ -156,7 +154,10 @@ export async function planFromImplementationPlan(args: {
 
     log?.log({ type: "planner.llm.complete", payload: { finish_reason: completion.finishReason } });
 
-    const tasks = parsePlannerOutput(completion, config.resources.map((r) => r.name));
+    const tasks = parsePlannerOutput(
+      completion,
+      config.resources.map((r) => r.name),
+    );
 
     log?.log({ type: "planner.validate.complete", payload: { task_count: tasks.length } });
 
@@ -195,7 +196,9 @@ function parsePlannerOutput(
   const parsed = PlannerResponseSchema.safeParse(raw);
 
   if (!parsed.success) {
-    const detail = formatManifestIssues(parsed.error.issues).map((i) => `- ${i}`).join("\n");
+    const detail = formatManifestIssues(parsed.error.issues)
+      .map((i) => `- ${i}`)
+      .join("\n");
     throw new Error(`Planner output failed schema validation:\n${detail}`);
   }
 
@@ -399,7 +402,7 @@ class CodexPlannerClient implements LlmClient {
     if (process.env.OPENAI_API_KEY) env.OPENAI_API_KEY = process.env.OPENAI_API_KEY;
     if (process.env.OPENAI_BASE_URL) env.OPENAI_BASE_URL = process.env.OPENAI_BASE_URL;
     if (process.env.OPENAI_ORGANIZATION) env.OPENAI_ORGANIZATION = process.env.OPENAI_ORGANIZATION;
-  
+
     const codex = new Codex({ env });
     const thread = codex.startThread({ workingDirectory: this.workingDirectory });
 

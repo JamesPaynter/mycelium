@@ -5,8 +5,6 @@ import {
   resolveDoctorCommandForChecksetMode,
 } from "../control-plane/policy/checkset.js";
 
-
-
 // =============================================================================
 // TESTS
 // =============================================================================
@@ -63,9 +61,7 @@ describe("control-plane checkset policy", () => {
 
     expect(decision.is_fallback).toBe(false);
     expect(decision.required_components).toEqual(["component-a", "component-b"]);
-    expect(decision.selected_command).toBe(
-      "npm run test:component-a && npm run test:component-b",
-    );
+    expect(decision.selected_command).toBe("npm run test:component-a && npm run test:component-b");
     expect(decision.rationale).toContain("surface_change:contract");
   });
 

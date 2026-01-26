@@ -21,8 +21,6 @@ export type JsonlCursorReadResult = {
 
 const DEFAULT_JSONL_CURSOR_MAX_BYTES = 512 * 1024;
 
-
-
 // =============================================================================
 // JSONL QUERIES
 // =============================================================================
@@ -162,8 +160,6 @@ export function followJsonlFile(
   return () => clearInterval(timer);
 }
 
-
-
 // =============================================================================
 // TASK LOG PATHS
 // =============================================================================
@@ -190,8 +186,6 @@ export function taskEventsLogPathForId(runLogsDir: string, taskId: string): stri
   const events = path.join(taskDir, "events.jsonl");
   return fs.existsSync(events) ? events : null;
 }
-
-
 
 // =============================================================================
 // LOG SEARCH
@@ -222,8 +216,6 @@ export function searchLogs(
 
   return matches;
 }
-
-
 
 // =============================================================================
 // INTERNAL HELPERS

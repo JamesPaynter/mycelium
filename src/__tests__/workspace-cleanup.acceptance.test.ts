@@ -45,49 +45,45 @@ describe("acceptance: cleanup workspaces on success", () => {
     }
   });
 
-  it(
-    "removes task workspaces after integration doctor passes",
-    { timeout: 60_000 },
-    async () => {
-      const tmpRoot = await fs.mkdtemp(path.join(os.tmpdir(), "mycelium-cleanup-"));
-      tempRoots.push(tmpRoot);
+  it("removes task workspaces after integration doctor passes", { timeout: 60_000 }, async () => {
+    const tmpRoot = await fs.mkdtemp(path.join(os.tmpdir(), "mycelium-cleanup-"));
+    tempRoots.push(tmpRoot);
 
-      const repoDir = path.join(tmpRoot, "repo");
-      await fse.copy(FIXTURE_REPO, repoDir);
-      await initGitRepo(repoDir);
+    const repoDir = path.join(tmpRoot, "repo");
+    await fse.copy(FIXTURE_REPO, repoDir);
+    await initGitRepo(repoDir);
 
-      const plannerOutputPath = path.join(tmpRoot, "mock-planner-output.json");
-      await fs.writeFile(plannerOutputPath, JSON.stringify(mockPlannerOutput(), null, 2));
+    const plannerOutputPath = path.join(tmpRoot, "mock-planner-output.json");
+    await fs.writeFile(plannerOutputPath, JSON.stringify(mockPlannerOutput(), null, 2));
 
-      const configPath = path.join(tmpRoot, "project.yaml");
-      await writeProjectConfig(configPath, repoDir);
+    const configPath = path.join(tmpRoot, "project.yaml");
+    await writeProjectConfig(configPath, repoDir);
 
-      process.env.MYCELIUM_HOME = path.join(tmpRoot, "mycelium-home");
-      process.env.MOCK_LLM = "1";
-      process.env.MOCK_LLM_OUTPUT_PATH = plannerOutputPath;
-      delete process.env.MOCK_LLM_OUTPUT;
-      delete process.env.MOCK_CODEX_USAGE;
+    process.env.MYCELIUM_HOME = path.join(tmpRoot, "mycelium-home");
+    process.env.MOCK_LLM = "1";
+    process.env.MOCK_LLM_OUTPUT_PATH = plannerOutputPath;
+    delete process.env.MOCK_LLM_OUTPUT;
+    delete process.env.MOCK_CODEX_USAGE;
 
-      const config = loadProjectConfig(configPath);
+    const config = loadProjectConfig(configPath);
 
-      const planResult = await planProject("toy-project", config, {
-        input: "docs/planning/implementation-plan.md",
-      });
-      expect(planResult.tasks).toHaveLength(1);
+    const planResult = await planProject("toy-project", config, {
+      input: "docs/planning/implementation-plan.md",
+    });
+    expect(planResult.tasks).toHaveLength(1);
 
-      const runResult = await runProject("toy-project", config, {
-        maxParallel: 1,
-        useDocker: false,
-        buildImage: false,
-      });
+    const runResult = await runProject("toy-project", config, {
+      maxParallel: 1,
+      useDocker: false,
+      buildImage: false,
+    });
 
-      expect(runResult.state.status).toBe("complete");
+    expect(runResult.state.status).toBe("complete");
 
-      const taskId = planResult.tasks[0]?.id ?? "001";
-      const workspacePath = taskWorkspaceDir("toy-project", runResult.runId, taskId);
-      expect(await fse.pathExists(workspacePath)).toBe(false);
-    },
-  );
+    const taskId = planResult.tasks[0]?.id ?? "001";
+    const workspacePath = taskWorkspaceDir("toy-project", runResult.runId, taskId);
+    expect(await fse.pathExists(workspacePath)).toBe(false);
+  });
 });
 
 async function initGitRepo(repoDir: string): Promise<void> {
@@ -144,7 +140,7 @@ function mockPlannerOutput(): unknown {
         affected_tests: [],
         test_paths: [],
         tdd_mode: "off",
-        verify: { doctor: "node -e \"process.exit(0)\"" },
+        verify: { doctor: 'node -e "process.exit(0)"' },
         spec: "Touch a file so the worker produces a change and the task completes.",
       },
     ],

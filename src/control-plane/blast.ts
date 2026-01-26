@@ -39,14 +39,11 @@ type ImpactedComponents = {
 
 export const WARNING_UNMAPPED =
   "Unmapped paths detected; widening impacted components to all components.";
-export const WARNING_MEDIUM =
-  "Medium-confidence dependency edges included in blast radius.";
+export const WARNING_MEDIUM = "Medium-confidence dependency edges included in blast radius.";
 export const WARNING_LOW =
   "Low-confidence dependency edges detected; widening impacted components to all components.";
 export const WARNING_MISSING_DEPS =
   "Dependency graph missing; widening impacted components to all components.";
-
-
 
 // =============================================================================
 // PUBLIC API
@@ -114,8 +111,6 @@ export function computeBlastRadius(input: ControlPlaneBlastInput): ControlPlaneB
   };
 }
 
-
-
 // =============================================================================
 // MAPPING
 // =============================================================================
@@ -129,11 +124,7 @@ function mapChangedPathsToComponents(options: {
   const unmappedPaths: string[] = [];
 
   for (const changedPath of options.changedPaths) {
-    const match = resolveOwnershipForPath(
-      options.ownershipRoots,
-      options.components,
-      changedPath,
-    );
+    const match = resolveOwnershipForPath(options.ownershipRoots, options.components, changedPath);
 
     if (!match.owner) {
       unmappedPaths.push(match.path);
@@ -148,8 +139,6 @@ function mapChangedPathsToComponents(options: {
     unmappedPaths: unmappedPaths.sort(),
   };
 }
-
-
 
 // =============================================================================
 // IMPACTED COMPONENTS
@@ -204,8 +193,6 @@ function buildReverseDependencyIndex(
   return index;
 }
 
-
-
 // =============================================================================
 // CONFIDENCE
 // =============================================================================
@@ -236,8 +223,6 @@ function summarizeEdgeConfidence(edges: ControlPlaneDependencyEdge[]): {
 
   return { level: "high", hasMedium, hasLow };
 }
-
-
 
 // =============================================================================
 // NORMALIZATION

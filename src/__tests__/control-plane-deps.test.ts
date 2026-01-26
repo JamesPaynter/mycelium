@@ -20,8 +20,6 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const FIXTURE_REPO = path.resolve(__dirname, "../../test/fixtures/control-plane-mini-repo");
 const tempDirs: string[] = [];
 
-
-
 // =============================================================================
 // HELPERS
 // =============================================================================
@@ -100,8 +98,6 @@ function edge(
 ): ControlPlaneDependencyEdge {
   return { from_component, to_component, kind, confidence };
 }
-
-
 
 // =============================================================================
 // TESTS

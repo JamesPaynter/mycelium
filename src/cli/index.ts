@@ -71,10 +71,7 @@ export function buildCli(): Command {
     .command("autopilot")
     .option("--project <name>", "Project name (default: repo folder name)")
     .option("--plan-input <path>", "Path to implementation plan markdown")
-    .option(
-      "--plan-output <dir>",
-      "Tasks output directory (default: <repo>/.mycelium/tasks)",
-    )
+    .option("--plan-output <dir>", "Tasks output directory (default: <repo>/.mycelium/tasks)")
     .option("--run-id <id>", "Run/transcript id (default: timestamp)")
     .option("--max-questions <n>", "Max interview questions", (v) => parseInt(v, 10))
     .option("--max-parallel <n>", "Max parallel containers", (v) => parseInt(v, 10))
@@ -94,37 +91,44 @@ export function buildCli(): Command {
     .action(async (opts) => {
       const globals = program.opts();
       const { appContext, config, projectName } = await resolveConfig(opts.project, globals.config);
-      await autopilotCommand(projectName, config, {
-        planInput: opts.planInput,
-        planOutput: opts.planOutput,
-        runId: opts.runId,
-        maxQuestions: opts.maxQuestions,
-        maxParallel: opts.maxParallel,
-        skipRun: opts.skipRun,
-        runDryRun: opts.dryRun,
-        buildImage: opts.buildImage,
-        useDocker: !opts.localWorker,
-        stopContainersOnExit: opts.stopContainersOnExit,
-      }, appContext);
+      await autopilotCommand(
+        projectName,
+        config,
+        {
+          planInput: opts.planInput,
+          planOutput: opts.planOutput,
+          runId: opts.runId,
+          maxQuestions: opts.maxQuestions,
+          maxParallel: opts.maxParallel,
+          skipRun: opts.skipRun,
+          runDryRun: opts.dryRun,
+          buildImage: opts.buildImage,
+          useDocker: !opts.localWorker,
+          stopContainersOnExit: opts.stopContainersOnExit,
+        },
+        appContext,
+      );
     });
 
   program
     .command("plan")
-    .option(
-      "--project <name>",
-      "Project name (default: repo folder name)",
-    )
+    .option("--project <name>", "Project name (default: repo folder name)")
     .requiredOption("--input <path>", "Path to implementation-plan.md")
     .option("--output <dir>", "Tasks output directory (default: <repo>/.mycelium/tasks)")
     .option("--dry-run", "Do not write tasks; just print JSON", false)
     .action(async (opts) => {
       const globals = program.opts();
       const { appContext, config, projectName } = await resolveConfig(opts.project, globals.config);
-      await planProject(projectName, config, {
-        input: opts.input,
-        output: opts.output,
-        dryRun: opts.dryRun,
-      }, appContext);
+      await planProject(
+        projectName,
+        config,
+        {
+          input: opts.input,
+          output: opts.output,
+          dryRun: opts.dryRun,
+        },
+        appContext,
+      );
     });
 
   program
@@ -161,20 +165,25 @@ export function buildCli(): Command {
     .action(async (opts) => {
       const globals = program.opts();
       const { appContext, config, projectName } = await resolveConfig(opts.project, globals.config);
-      await runCommand(projectName, config, {
-        runId: opts.runId,
-        tasks: opts.tasks,
-        maxParallel: opts.maxParallel,
-        dryRun: opts.dryRun,
-        buildImage: opts.buildImage,
-        useDocker: !opts.localWorker,
-        stopContainersOnExit: opts.stopContainersOnExit,
-        reuseCompleted: opts.reuseCompleted,
-        importRun: opts.importRun,
-        ui: opts.ui,
-        uiPort: opts.uiPort,
-        uiOpen: opts.uiOpen,
-      }, appContext);
+      await runCommand(
+        projectName,
+        config,
+        {
+          runId: opts.runId,
+          tasks: opts.tasks,
+          maxParallel: opts.maxParallel,
+          dryRun: opts.dryRun,
+          buildImage: opts.buildImage,
+          useDocker: !opts.localWorker,
+          stopContainersOnExit: opts.stopContainersOnExit,
+          reuseCompleted: opts.reuseCompleted,
+          importRun: opts.importRun,
+          ui: opts.ui,
+          uiPort: opts.uiPort,
+          uiOpen: opts.uiOpen,
+        },
+        appContext,
+      );
     });
 
   program
@@ -205,19 +214,24 @@ export function buildCli(): Command {
     .action(async (opts) => {
       const globals = program.opts();
       const { appContext, config, projectName } = await resolveConfig(opts.project, globals.config);
-      await resumeCommand(projectName, config, {
-        runId: opts.runId,
-        maxParallel: opts.maxParallel,
-        dryRun: opts.dryRun,
-        buildImage: opts.buildImage,
-        useDocker: !opts.localWorker,
-        stopContainersOnExit: opts.stopContainersOnExit,
-        reuseCompleted: opts.reuseCompleted,
-        importRun: opts.importRun,
-        ui: opts.ui,
-        uiPort: opts.uiPort,
-        uiOpen: opts.uiOpen,
-      }, appContext);
+      await resumeCommand(
+        projectName,
+        config,
+        {
+          runId: opts.runId,
+          maxParallel: opts.maxParallel,
+          dryRun: opts.dryRun,
+          buildImage: opts.buildImage,
+          useDocker: !opts.localWorker,
+          stopContainersOnExit: opts.stopContainersOnExit,
+          reuseCompleted: opts.reuseCompleted,
+          importRun: opts.importRun,
+          ui: opts.ui,
+          uiPort: opts.uiPort,
+          uiOpen: opts.uiOpen,
+        },
+        appContext,
+      );
     });
 
   program
@@ -231,11 +245,16 @@ export function buildCli(): Command {
     .action(async (opts) => {
       const globals = program.opts();
       const { appContext, config, projectName } = await resolveConfig(opts.project, globals.config);
-      await uiCommand(projectName, config, {
-        runId: opts.runId,
-        port: opts.port,
-        openBrowser: opts.open,
-      }, appContext);
+      await uiCommand(
+        projectName,
+        config,
+        {
+          runId: opts.runId,
+          port: opts.port,
+          openBrowser: opts.open,
+        },
+        appContext,
+      );
     });
 
   program
@@ -259,13 +278,18 @@ export function buildCli(): Command {
     .action(async (opts) => {
       const globals = program.opts();
       const { appContext, config, projectName } = await resolveConfig(opts.project, globals.config);
-      await cleanCommand(projectName, config, {
-        runId: opts.runId,
-        keepLogs: opts.keepLogs,
-        dryRun: opts.dryRun,
-        force: opts.force,
-        removeContainers: opts.containers,
-      }, appContext);
+      await cleanCommand(
+        projectName,
+        config,
+        {
+          runId: opts.runId,
+          keepLogs: opts.keepLogs,
+          dryRun: opts.dryRun,
+          force: opts.force,
+          removeContainers: opts.containers,
+        },
+        appContext,
+      );
     });
 
   return program;

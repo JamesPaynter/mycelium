@@ -11,26 +11,24 @@ import {
   buildBlastRadiusReport,
   type ControlPlaneBlastRadiusReport,
 } from "../../../control-plane/integration/blast-radius.js";
-import { buildDoctorCanarySummary, formatDoctorCanaryEnvVar, limitText } from "../helpers/format.js";
+import {
+  buildDoctorCanarySummary,
+  formatDoctorCanaryEnvVar,
+  limitText,
+} from "../helpers/format.js";
 import { formatErrorMessage } from "../helpers/errors.js";
 import type { PolicyDecision } from "../../../control-plane/policy/types.js";
 import type { ControlPlaneRunConfig } from "../run-context.js";
 import type { BudgetTracker } from "../budgets/budget-tracker.js";
 import type { CompliancePipeline } from "../compliance/compliance-pipeline.js";
 import type { ValidationPipeline } from "../validation/validation-pipeline.js";
-import type {
-  DoctorValidationOutcome,
-  ValidationOutcome,
-} from "../validation/types.js";
+import type { DoctorValidationOutcome, ValidationOutcome } from "../validation/types.js";
 import type { Vcs } from "../vcs/vcs.js";
 import type { WorkerRunner } from "../workers/worker-runner.js";
 import type { RunMetrics } from "./run-engine.js";
 import type { TaskEngine, TaskRunResult, TaskSuccessResult } from "./task-engine.js";
 import type { JsonObject, JsonlLogger } from "../../../core/logger.js";
-import {
-  logOrchestratorEvent,
-  logTaskReset,
-} from "../../../core/logger.js";
+import { logOrchestratorEvent, logTaskReset } from "../../../core/logger.js";
 import type {
   ControlPlaneScopeMode,
   ManifestEnforcementPolicy,
@@ -61,15 +59,11 @@ import { removeTaskWorkspace } from "../../../core/workspaces.js";
 import type { DoctorCanaryResult } from "../../../validators/doctor-validator.js";
 import type { ControlPlaneModel } from "../../../control-plane/model/schema.js";
 
-
 // =============================================================================
 // TYPES
 // =============================================================================
 
-export type BatchStopReason =
-  | "merge_conflict"
-  | "integration_doctor_failed"
-  | "budget_block";
+export type BatchStopReason = "merge_conflict" | "integration_doctor_failed" | "budget_block";
 
 export type BatchEngineContext = {
   projectName: string;
@@ -111,7 +105,6 @@ export type BatchEngine = {
   }): Promise<BatchStopReason | undefined>;
 };
 
-
 // =============================================================================
 // ENGINE
 // =============================================================================
@@ -135,9 +128,7 @@ export function createBatchEngine(
     outcome: ValidationOutcome,
     blockedTasks: Set<string>,
   ): void => {
-    const blockedByValidator = new Map(
-      outcome.blocked.map((block) => [block.validator, block]),
-    );
+    const blockedByValidator = new Map(outcome.blocked.map((block) => [block.validator, block]));
 
     for (const result of outcome.results) {
       setValidatorResult(context.state, taskId, {
@@ -325,9 +316,7 @@ export function createBatchEngine(
       params.batchTasks,
     );
     const blockedTasks = new Set<string>();
-    const taskSpecsById = new Map(
-      params.batchTasks.map((task) => [task.manifest.id, task]),
-    );
+    const taskSpecsById = new Map(params.batchTasks.map((task) => [task.manifest.id, task]));
 
     if (context.validationPipeline) {
       for (const r of readyForValidation) {
@@ -446,9 +435,7 @@ export function createBatchEngine(
           cwd: context.repoPath,
           shell: true,
           reject: false,
-          timeout: context.config.doctor_timeout
-            ? context.config.doctor_timeout * 1000
-            : undefined,
+          timeout: context.config.doctor_timeout ? context.config.doctor_timeout * 1000 : undefined,
         });
         context.recordDoctorDuration(Date.now() - doctorIntegrationStartedAt);
         lastIntegrationDoctorOutput = `${doctorRes.stdout}\n${doctorRes.stderr}`.trim();
@@ -634,10 +621,7 @@ export function createBatchEngine(
       .map((t) => t.manifest.id)
       .filter((id) => context.state.tasks[id]?.status === "pending");
     const batchStatus: "complete" | "failed" =
-      failedTaskIds.length > 0 ||
-      pendingTaskIds.length > 0 ||
-      hadPendingResets ||
-      stopReason
+      failedTaskIds.length > 0 || pendingTaskIds.length > 0 || hadPendingResets || stopReason
         ? "failed"
         : "complete";
 
@@ -788,7 +772,6 @@ export function createBatchEngine(
   return { finalizeBatch };
 }
 
-
 // =============================================================================
 // BLAST RADIUS
 // =============================================================================
@@ -837,7 +820,6 @@ function recordBlastRadius(metrics: RunMetrics, report: ControlPlaneBlastRadiusR
   metrics.blastRadius.impactedComponentsTotal += report.impacted_components.length;
   metrics.blastRadius.reports += 1;
 }
-
 
 // =============================================================================
 // VALIDATION + DOCTOR

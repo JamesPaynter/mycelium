@@ -71,9 +71,7 @@ function printBudgetSummary(summary: RunStatusSummary): void {
     ...summary.topSpenders.map((r) => formatCost(r.estimatedCost).length),
   );
 
-  console.log(
-    `  ${pad("ID", idWidth)}  ${pad("Tokens", tokenWidth)}  ${pad("Cost", costWidth)}`,
-  );
+  console.log(`  ${pad("ID", idWidth)}  ${pad("Tokens", tokenWidth)}  ${pad("Cost", costWidth)}`);
 
   for (const row of summary.topSpenders) {
     console.log(
@@ -123,10 +121,7 @@ function printHumanReviewQueue(rows: HumanReviewRow[]): void {
   const idWidth = Math.max("ID".length, ...rows.map((r) => r.id.length));
   const validatorWidth = Math.max("Validator".length, ...rows.map((r) => r.validator.length));
   const reasonWidth = Math.max("Reason".length, ...rows.map((r) => r.reason.length));
-  const summaryWidth = Math.max(
-    "Summary".length,
-    ...rows.map((r) => (r.summary ?? "-").length),
-  );
+  const summaryWidth = Math.max("Summary".length, ...rows.map((r) => (r.summary ?? "-").length));
 
   console.log(
     `  ${pad("ID", idWidth)}  ${pad("Validator", validatorWidth)}  ${pad("Reason", reasonWidth)}  ${pad("Summary", summaryWidth)}`,

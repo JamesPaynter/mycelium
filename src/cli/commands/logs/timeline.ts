@@ -5,8 +5,6 @@ import { loadRunStateForProject } from "../../../core/state-store.js";
 
 import type { LogsCommandContext, LogsCommandContextBuilder } from "./index.js";
 
-
-
 // =============================================================================
 // COMMAND REGISTRATION
 // =============================================================================
@@ -27,8 +25,6 @@ export function registerLogsTimelineCommand(
     });
 }
 
-
-
 // =============================================================================
 // COMMANDS
 // =============================================================================
@@ -47,11 +43,7 @@ export async function runLogsTimeline(
     return;
   }
 
-  const stateResolved = await loadRunStateForProject(
-    ctx.projectName,
-    runLogs.runId,
-    ctx.paths,
-  );
+  const stateResolved = await loadRunStateForProject(ctx.projectName, runLogs.runId, ctx.paths);
   const timeline = ctx.logQueryService.buildTimeline(events, stateResolved?.state ?? null);
 
   console.log(`Timeline for run ${runLogs.runId}:`);

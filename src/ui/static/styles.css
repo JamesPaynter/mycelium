@@ -145,7 +145,9 @@ body {
   background: var(--accent);
   color: #fff;
   box-shadow: 0 10px 20px rgba(42, 124, 111, 0.2);
-  transition: transform 0.15s ease, box-shadow 0.15s ease;
+  transition:
+    transform 0.15s ease,
+    box-shadow 0.15s ease;
 }
 
 .btn:hover {
@@ -204,7 +206,10 @@ body {
   cursor: pointer;
   background: var(--panel);
   color: var(--muted);
-  transition: transform 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease;
+  transition:
+    transform 0.15s ease,
+    box-shadow 0.15s ease,
+    border-color 0.15s ease;
 }
 
 .view-tab:hover {
@@ -242,7 +247,6 @@ body {
   color: var(--muted);
   max-width: 520px;
 }
-
 
 /* =============================================================================
    MAP VIEW
@@ -690,7 +694,6 @@ body {
   }
 }
 
-
 /* =============================================================================
    GARDEN VIEW
    ============================================================================= */
@@ -747,7 +750,12 @@ body {
       transparent 2px,
       transparent 10px
     ),
-    linear-gradient(180deg, var(--garden-floor) 0%, var(--garden-floor-deep) 55%, var(--garden-soil) 100%);
+    linear-gradient(
+      180deg,
+      var(--garden-floor) 0%,
+      var(--garden-floor-deep) 55%,
+      var(--garden-soil) 100%
+    );
 }
 
 .garden::after {
@@ -873,7 +881,11 @@ body {
   height: 52px;
   transform: translate(-50%, -50%) translateY(16px);
   border-radius: 999px;
-  background: radial-gradient(ellipse at center, rgba(255, 255, 255, 0.6), rgba(201, 178, 150, 0.18));
+  background: radial-gradient(
+    ellipse at center,
+    rgba(255, 255, 255, 0.6),
+    rgba(201, 178, 150, 0.18)
+  );
   border: 1px dashed rgba(155, 124, 98, 0.35);
   opacity: 0.75;
 }
@@ -1590,7 +1602,10 @@ body {
   font-size: 0.9rem;
   line-height: 1;
   cursor: pointer;
-  transition: transform 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+  transition:
+    transform 0.15s ease,
+    border-color 0.15s ease,
+    color 0.15s ease;
 }
 
 .drawer-close:hover {

@@ -38,8 +38,6 @@ export const DEFAULT_SURFACE_PATTERNS: SurfacePatternSet = {
   "public-entrypoint": ["**/index.ts", "**/package.json"],
 };
 
-
-
 // =============================================================================
 // PUBLIC API
 // =============================================================================
@@ -99,8 +97,6 @@ export function detectSurfaceChanges(
   };
 }
 
-
-
 // =============================================================================
 // COMPONENT ASSOCIATION
 // =============================================================================
@@ -124,11 +120,7 @@ export function associateSurfaceChangesWithComponents(input: {
 
     const categoryComponents = new Set<string>();
     for (const file of files) {
-      const match = resolveOwnershipForPath(
-        input.model.ownership,
-        input.model.components,
-        file,
-      );
+      const match = resolveOwnershipForPath(input.model.ownership, input.model.components, file);
       if (!match.owner) {
         continue;
       }
@@ -154,8 +146,6 @@ export function associateSurfaceChangesWithComponents(input: {
   };
 }
 
-
-
 // =============================================================================
 // INTERNAL HELPERS
 // =============================================================================
@@ -168,10 +158,7 @@ function initializeMatchBuckets(): Map<SurfaceChangeCategory, Set<string>> {
   return buckets;
 }
 
-function normalizePatternList(
-  overrides: string[] | undefined,
-  defaults: string[],
-): string[] {
+function normalizePatternList(overrides: string[] | undefined, defaults: string[]): string[] {
   if (overrides === undefined) {
     return defaults;
   }

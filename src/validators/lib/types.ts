@@ -2,7 +2,6 @@
 // Purpose: define common data shapes for validator inputs and persisted reports.
 // Assumes validator reports are serialized as JSON with stable field names.
 
-
 // =============================================================================
 // TYPES
 // =============================================================================

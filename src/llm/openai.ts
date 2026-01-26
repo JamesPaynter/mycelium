@@ -95,9 +95,11 @@ export class OpenAiClient implements LlmClient {
     };
   }
 
-  private buildRequestBody(prompt: string, options: LlmCompletionOptions): ChatCompletionCreateParams {
-    const temperature =
-      options.temperature ?? this.defaultTemperature ?? 0; // Deterministic by default for validators.
+  private buildRequestBody(
+    prompt: string,
+    options: LlmCompletionOptions,
+  ): ChatCompletionCreateParams {
+    const temperature = options.temperature ?? this.defaultTemperature ?? 0; // Deterministic by default for validators.
 
     const responseFormat =
       options.schema !== undefined

@@ -37,7 +37,9 @@ describe("searchLogs", () => {
 
     fs.writeFileSync(
       path.join(runDir, "orchestrator.jsonl"),
-      ['{"type":"run.start","message":"hello"}', '{"type":"note","message":"needle found"}'].join("\n"),
+      ['{"type":"run.start","message":"hello"}', '{"type":"note","message":"needle found"}'].join(
+        "\n",
+      ),
       "utf8",
     );
     fs.writeFileSync(
@@ -45,7 +47,11 @@ describe("searchLogs", () => {
       ['{"type":"task.log","task_id":"001","payload":{"text":"needle in task"}}'].join("\n"),
       "utf8",
     );
-    fs.writeFileSync(path.join(taskDir, "doctor-001.log"), "doctor output\nneedle doctor line\n", "utf8");
+    fs.writeFileSync(
+      path.join(taskDir, "doctor-001.log"),
+      "doctor output\nneedle doctor line\n",
+      "utf8",
+    );
 
     expect(findTaskLogDir(runDir, "001")).toBe(taskDir);
     expect(taskEventsLogPathForId(runDir, "001")).toBe(path.join(taskDir, "events.jsonl"));

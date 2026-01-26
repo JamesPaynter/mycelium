@@ -367,14 +367,8 @@ describe("runWorker lint step", () => {
 
     await runWorker(config, { log: vi.fn() });
 
-    const lintAttempt1 = await fs.readFile(
-      path.join(runLogsDir, "lint-attempt-001.log"),
-      "utf8",
-    );
-    const lintAttempt2 = await fs.readFile(
-      path.join(runLogsDir, "lint-attempt-002.log"),
-      "utf8",
-    );
+    const lintAttempt1 = await fs.readFile(path.join(runLogsDir, "lint-attempt-001.log"), "utf8");
+    const lintAttempt2 = await fs.readFile(path.join(runLogsDir, "lint-attempt-002.log"), "utf8");
 
     expect(lintAttempt1).toContain("lint failed");
     expect(lintAttempt2).toContain("lint ok");

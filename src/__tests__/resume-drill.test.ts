@@ -11,7 +11,11 @@ import { afterEach, describe, expect, it } from "vitest";
 import { planProject } from "../cli/plan.js";
 import { loadProjectConfig } from "../core/config-loader.js";
 import { orchestratorLogPath } from "../core/paths.js";
-import { detectTasksLayout, resolveTasksActiveDir, resolveTasksBacklogDir } from "../core/task-layout.js";
+import {
+  detectTasksLayout,
+  resolveTasksActiveDir,
+  resolveTasksBacklogDir,
+} from "../core/task-layout.js";
 import { StateStore } from "../core/state-store.js";
 import type { RunState } from "../core/state.js";
 import { dockerClient } from "../docker/docker.js";
@@ -73,102 +77,98 @@ describeDocker("resume acceptance: orchestrator crash + resume reattaches", () =
     }
   });
 
-  it(
-    "reattaches a running container and observes codex.thread.resumed after orchestrator crash",
-    async () => {
-      await ensureDockerAvailable();
+  it("reattaches a running container and observes codex.thread.resumed after orchestrator crash", async () => {
+    await ensureDockerAvailable();
 
-      const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), "resume-"));
-      tempRoots.push(tempRoot);
+    const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), "resume-"));
+    tempRoots.push(tempRoot);
 
-      const repoDir = path.join(tempRoot, "repo");
-      await fse.copy(FIXTURE_REPO, repoDir);
-      await writeBootstrapDelayScript(repoDir);
-      await writeFailOnceDoctor(repoDir);
-      await initGitRepo(repoDir);
+    const repoDir = path.join(tempRoot, "repo");
+    await fse.copy(FIXTURE_REPO, repoDir);
+    await writeBootstrapDelayScript(repoDir);
+    await writeFailOnceDoctor(repoDir);
+    await initGitRepo(repoDir);
 
-      const projectName = "resume-drill";
-      const runId = `${projectName}-${Date.now()}`;
-      runsToCleanup.push({ projectName, runId });
+    const projectName = "resume-drill";
+    const runId = `${projectName}-${Date.now()}`;
+    runsToCleanup.push({ projectName, runId });
 
-      const configPath = path.join(tempRoot, "project.yaml");
-      await writeProjectConfig(configPath, repoDir);
+    const configPath = path.join(tempRoot, "project.yaml");
+    await writeProjectConfig(configPath, repoDir);
 
-      process.env.MYCELIUM_HOME = path.join(tempRoot, ".mycelium");
-      process.env.MOCK_LLM = "1";
-      process.env.MOCK_LLM_OUTPUT_PATH = path.join(repoDir, "mock-planner-output.json");
-      process.env.MYCELIUM_FAKE_CRASH_AFTER_CONTAINER_START = "1";
+    process.env.MYCELIUM_HOME = path.join(tempRoot, ".mycelium");
+    process.env.MOCK_LLM = "1";
+    process.env.MOCK_LLM_OUTPUT_PATH = path.join(repoDir, "mock-planner-output.json");
+    process.env.MYCELIUM_FAKE_CRASH_AFTER_CONTAINER_START = "1";
 
-      await ensureImplementationPlan(repoDir);
-      const config = loadProjectConfig(configPath);
-      await planProject(projectName, config, {
-        input: ".mycelium/planning/implementation-plan.md",
-      });
-      await overrideTaskDoctor(repoDir, "001", "node resume-doctor.js");
+    await ensureImplementationPlan(repoDir);
+    const config = loadProjectConfig(configPath);
+    await planProject(projectName, config, {
+      input: ".mycelium/planning/implementation-plan.md",
+    });
+    await overrideTaskDoctor(repoDir, "001", "node resume-doctor.js");
 
-      const orchestratorLog = orchestratorLogPath(projectName, runId);
-      const cliBin = path.join(process.cwd(), "node_modules", ".bin", "tsx");
-      const runArgs = [
-        "src/main.ts",
-        "--config",
-        configPath,
-        "run",
-        "--project",
-        projectName,
-        "--run-id",
-        runId,
-        "--max-parallel",
-        "1",
-        "--tasks",
-        "001",
-      ];
-      const runProc = execa(cliBin, runArgs, {
-        cwd: process.cwd(),
-        env: process.env,
-      });
-      runProc.catch(() => undefined);
-      processes.push(runProc);
+    const orchestratorLog = orchestratorLogPath(projectName, runId);
+    const cliBin = path.join(process.cwd(), "node_modules", ".bin", "tsx");
+    const runArgs = [
+      "src/main.ts",
+      "--config",
+      configPath,
+      "run",
+      "--project",
+      projectName,
+      "--run-id",
+      runId,
+      "--max-parallel",
+      "1",
+      "--tasks",
+      "001",
+    ];
+    const runProc = execa(cliBin, runArgs, {
+      cwd: process.cwd(),
+      env: process.env,
+    });
+    runProc.catch(() => undefined);
+    processes.push(runProc);
 
-      await waitForOrchestratorEvent(orchestratorLog, "container.start");
-      runProc.kill("SIGKILL");
-      await runProc.catch(() => undefined);
+    await waitForOrchestratorEvent(orchestratorLog, "container.start");
+    runProc.kill("SIGKILL");
+    await runProc.catch(() => undefined);
 
-      const containersBeforeResume = await findRunContainers(projectName, runId);
-      expect(containersBeforeResume.length).toBeGreaterThan(0);
+    const containersBeforeResume = await findRunContainers(projectName, runId);
+    expect(containersBeforeResume.length).toBeGreaterThan(0);
 
-      const resumeArgs = [
-        "src/main.ts",
-        "--config",
-        configPath,
-        "resume",
-        "--project",
-        projectName,
-        "--run-id",
-        runId,
-        "--max-parallel",
-        "1",
-        "--no-build-image",
-      ];
-      delete process.env.MYCELIUM_FAKE_CRASH_AFTER_CONTAINER_START;
-      const resumeResult = await execa(cliBin, resumeArgs, {
-        cwd: process.cwd(),
-        env: process.env,
-      });
-      expect(resumeResult.exitCode).toBe(0);
+    const resumeArgs = [
+      "src/main.ts",
+      "--config",
+      configPath,
+      "resume",
+      "--project",
+      projectName,
+      "--run-id",
+      runId,
+      "--max-parallel",
+      "1",
+      "--no-build-image",
+    ];
+    delete process.env.MYCELIUM_FAKE_CRASH_AFTER_CONTAINER_START;
+    const resumeResult = await execa(cliBin, resumeArgs, {
+      cwd: process.cwd(),
+      env: process.env,
+    });
+    expect(resumeResult.exitCode).toBe(0);
 
-      const stateStore = new StateStore(projectName, runId);
-      const state = await stateStore.load();
-      expect(state.status).toBe("complete");
-      expect(Object.values(state.tasks).every((task) => task.status === "complete")).toBe(true);
+    const stateStore = new StateStore(projectName, runId);
+    const state = await stateStore.load();
+    expect(state.status).toBe("complete");
+    expect(Object.values(state.tasks).every((task) => task.status === "complete")).toBe(true);
 
-      const orchestratorEvents = await readJsonl(orchestratorLog);
-      expect(orchestratorEvents.some((event) => event.type === "container.reattach")).toBe(true);
+    const orchestratorEvents = await readJsonl(orchestratorLog);
+    expect(orchestratorEvents.some((event) => event.type === "container.reattach")).toBe(true);
 
-      const threadResumed = await hasThreadResumeEvent(state);
-      expect(threadResumed).toBe(true);
-    },
-    240_000,
-  );
+    const threadResumed = await hasThreadResumeEvent(state);
+    expect(threadResumed).toBe(true);
+  }, 240_000);
 });
 
 type JsonlEvent = { type?: string; [key: string]: unknown };
@@ -226,12 +226,12 @@ async function writeProjectConfig(configPath: string, repoDir: string): Promise<
     `repo_path: ${repoDir}`,
     "main_branch: main",
     "tasks_dir: .mycelium/tasks",
-    "doctor: node -e \"process.exit(0)\"",
+    'doctor: node -e "process.exit(0)"',
     "max_parallel: 1",
     "resources:",
-    '  - name: docs',
+    "  - name: docs",
     '    paths: ["notes/**"]',
-    '  - name: code',
+    "  - name: code",
     '    paths: ["src/**"]',
     "planner:",
     "  provider: mock",

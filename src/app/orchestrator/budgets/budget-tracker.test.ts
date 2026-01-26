@@ -17,7 +17,6 @@ import type { TaskSpec } from "../../../core/task-manifest.js";
 
 import { BudgetTracker } from "./budget-tracker.js";
 
-
 // =============================================================================
 // HELPERS
 // =============================================================================
@@ -60,7 +59,6 @@ function buildUsageEvents(): string {
 
   return lines.map((line) => JSON.stringify(line)).join("\n");
 }
-
 
 // =============================================================================
 // TESTS

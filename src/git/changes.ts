@@ -29,7 +29,11 @@ export async function listChangedFiles(cwd: string, baseRef: string): Promise<st
     .filter((line) => line.length > 0)
     .forEach((file) => files.add(normalizePath(file)));
 
-  const status = await execa("git", ["status", "--porcelain"], { cwd, reject: false, stdio: "pipe" });
+  const status = await execa("git", ["status", "--porcelain"], {
+    cwd,
+    reject: false,
+    stdio: "pipe",
+  });
   status.stdout
     .split("\n")
     .map(parseStatusPath)

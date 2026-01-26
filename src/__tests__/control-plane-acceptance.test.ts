@@ -45,8 +45,6 @@ const EXPECTED_COMPONENTS: ControlPlaneComponent[] = [
   },
 ];
 
-
-
 // =============================================================================
 // HELPERS
 // =============================================================================
@@ -124,24 +122,14 @@ function createControlPlaneRunner(
 
   return async function runJson<T>(args: string[]): Promise<JsonEnvelope<T>> {
     logSpy.mockClear();
-    await runCli([
-      "node",
-      "mycelium",
-      "cp",
-      ...args,
-      "--json",
-      "--repo",
-      repoDir,
-      "--no-build",
-    ]);
+    await runCli(["node", "mycelium", "cp", ...args, "--json", "--repo", repoDir, "--no-build"]);
 
     return parseLastJsonLine<JsonEnvelope<T>>(logSpy);
   };
 }
 
 function parseLastJsonLine<T>(logSpy: ReturnType<typeof vi.spyOn>): T {
-  const line =
-    logSpy.mock.calls.map((call: unknown[]) => call.join(" ")).pop() ?? "";
+  const line = logSpy.mock.calls.map((call: unknown[]) => call.join(" ")).pop() ?? "";
   return JSON.parse(line) as T;
 }
 
@@ -154,9 +142,7 @@ function expectOk<T>(payload: JsonEnvelope<T>): T {
 }
 
 function expectedComponentById(componentId: string): ControlPlaneComponent {
-  const match = EXPECTED_COMPONENTS.find(
-    (component) => component.id === componentId,
-  );
+  const match = EXPECTED_COMPONENTS.find((component) => component.id === componentId);
   if (!match) {
     throw new Error(`Missing expected component: ${componentId}`);
   }
@@ -171,8 +157,6 @@ function edge(
 ): ControlPlaneDependencyEdge {
   return { from_component, to_component, kind, confidence };
 }
-
-
 
 // =============================================================================
 // TESTS
@@ -201,11 +185,7 @@ describe("control-plane acceptance", () => {
     expect(components).toEqual(EXPECTED_COMPONENTS);
 
     const webComponent = expectOk<ControlPlaneComponent | null>(
-      await runJson<ControlPlaneComponent | null>([
-        "components",
-        "show",
-        "acme-web-app",
-      ]),
+      await runJson<ControlPlaneComponent | null>(["components", "show", "acme-web-app"]),
     );
     expect(webComponent).toEqual(expectedComponentById("acme-web-app"));
 
@@ -385,11 +365,7 @@ describe("control-plane acceptance", () => {
     });
 
     const refsResult = expectOk<SymbolReferencesResult>(
-      await runJson<SymbolReferencesResult>([
-        "symbols",
-        "refs",
-        formatMatch.symbol_id,
-      ]),
+      await runJson<SymbolReferencesResult>(["symbols", "refs", formatMatch.symbol_id]),
     );
 
     expect(refsResult.symbol_id).toBe(formatMatch.symbol_id);
@@ -410,13 +386,7 @@ describe("control-plane acceptance", () => {
       "acme-web-app",
       "acme-utils",
     ]);
-    expect(refsResult.references.map((ref) => ref.range.start.line)).toEqual([
-      2,
-      8,
-      20,
-    ]);
-    expect(refsResult.references.every((ref) => ref.is_definition === false)).toBe(
-      true,
-    );
+    expect(refsResult.references.map((ref) => ref.range.start.line)).toEqual([2, 8, 20]);
+    expect(refsResult.references.every((ref) => ref.is_definition === false)).toBe(true);
   });
 });

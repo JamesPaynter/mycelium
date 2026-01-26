@@ -13,8 +13,10 @@ import type {
 } from "../../../core/manifest-compliance.js";
 import type { TaskManifest } from "../../../core/task-manifest.js";
 
-import { buildComplianceRescopePlan, resolveCompliancePolicyForTier } from "./compliance-pipeline.js";
-
+import {
+  buildComplianceRescopePlan,
+  resolveCompliancePolicyForTier,
+} from "./compliance-pipeline.js";
 
 // =============================================================================
 // HELPERS
@@ -55,7 +57,6 @@ function buildComplianceResult(
     },
   };
 }
-
 
 // =============================================================================
 // TESTS

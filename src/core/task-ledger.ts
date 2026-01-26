@@ -12,7 +12,6 @@ import { resolveTaskManifestPath, resolveTaskSpecPath } from "./task-layout.js";
 import type { RunState } from "./state.js";
 import { isoNow } from "./utils.js";
 
-
 // =============================================================================
 // TYPES
 // =============================================================================
@@ -45,7 +44,6 @@ export type TaskLedgerImportResult = {
   skippedDetails: TaskLedgerImportSkip[];
 };
 
-
 // =============================================================================
 // SCHEMA
 // =============================================================================
@@ -72,7 +70,6 @@ const TaskLedgerSchema = z
   .strict();
 
 const TASK_LEDGER_SCHEMA_VERSION = 1;
-
 
 // =============================================================================
 // PUBLIC API
@@ -222,14 +219,14 @@ export async function importLedgerFromRunState(opts: {
       await upsertLedgerEntry(
         opts.projectName,
         {
-        taskId,
-        status: taskState.status,
-        fingerprint,
-        mergeCommit: batch.merge_commit,
-        integrationDoctorPassed: true,
-        completedAt: taskState.completed_at ?? isoNow(),
-        runId: opts.runId,
-        source: "import-run",
+          taskId,
+          status: taskState.status,
+          fingerprint,
+          mergeCommit: batch.merge_commit,
+          integrationDoctorPassed: true,
+          completedAt: taskState.completed_at ?? isoNow(),
+          runId: opts.runId,
+          source: "import-run",
         },
         opts.paths,
       );
@@ -275,7 +272,6 @@ export async function computeTaskFingerprint(options: {
   return `sha256:${digest}`;
 }
 
-
 // =============================================================================
 // FINGERPRINTING
 // =============================================================================
@@ -313,7 +309,6 @@ function sortJsonValue(value: unknown): unknown {
 
   return value;
 }
-
 
 // =============================================================================
 // IO HELPERS

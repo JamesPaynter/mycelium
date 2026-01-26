@@ -42,8 +42,6 @@ export type DerivedScopeSnapshot = {
 
 const SURFACE_LOCK_PREFIX = "surface:";
 
-
-
 // =============================================================================
 // PUBLIC API
 // =============================================================================
@@ -116,8 +114,6 @@ export async function deriveTaskWriteScopeReport(input: {
     },
   };
 }
-
-
 
 // =============================================================================
 // INTERNALS
@@ -277,8 +273,6 @@ function resolveComponentResourcesForFiles(input: {
 
   return { resources: Array.from(resources).sort(), missingOwners };
 }
-
-
 
 // =============================================================================
 // SURFACE LOCKS

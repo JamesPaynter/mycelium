@@ -15,8 +15,6 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const FIXTURE_REPO = path.resolve(__dirname, "../../test/fixtures/control-plane-mini-repo");
 const tempDirs: string[] = [];
 
-
-
 // =============================================================================
 // HELPERS
 // =============================================================================
@@ -109,8 +107,6 @@ async function commitPolicyEvalChange(repoDir: string): Promise<void> {
   await execa("git", ["commit", "-m", "policy eval change"], { cwd: repoDir });
 }
 
-
-
 // =============================================================================
 // TESTS
 // =============================================================================
@@ -152,7 +148,10 @@ describe("control-plane CLI", () => {
     ]);
 
     const jsonLine = logSpy.mock.calls.map((call) => call.join(" ")).pop() ?? "";
-    const payload = JSON.parse(jsonLine) as { ok: boolean; error?: { code?: string; message?: string } };
+    const payload = JSON.parse(jsonLine) as {
+      ok: boolean;
+      error?: { code?: string; message?: string };
+    };
 
     expect(payload.ok).toBe(false);
     expect(payload.error?.code).toBe("MODEL_NOT_BUILT");
@@ -244,9 +243,7 @@ describe("control-plane CLI", () => {
     expect(payload.result?.lock_derivation?.derived_write_resources).toContain(
       "component:acme-web-app",
     );
-    expect(payload.result?.blast_radius?.changed_files).toContain(
-      "apps/web/src/index.ts",
-    );
+    expect(payload.result?.blast_radius?.changed_files).toContain("apps/web/src/index.ts");
     expect(payload.result?.blast_radius?.touched_components).toContain("acme-web-app");
     expect(payload.result?.surface_detection?.is_surface_change).toBe(true);
     expect(payload.result?.surface_detection?.categories).toContain("public-entrypoint");

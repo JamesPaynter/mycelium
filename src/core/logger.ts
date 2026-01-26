@@ -36,7 +36,10 @@ export class JsonlLogger {
   private fileDescriptor: number;
   private closed = false;
 
-  constructor(public readonly filePath: string, private readonly defaults: EventDefaults = {}) {
+  constructor(
+    public readonly filePath: string,
+    private readonly defaults: EventDefaults = {},
+  ) {
     fse.ensureDirSync(path.dirname(filePath));
     this.fileDescriptor = fs.openSync(filePath, "a");
   }

@@ -19,8 +19,6 @@ const gitEnv = {
   GIT_COMMITTER_EMAIL: "control-plane@example.com",
 };
 
-
-
 // =============================================================================
 // HELPERS
 // =============================================================================
@@ -37,8 +35,6 @@ async function createTestRepo(): Promise<{ repoRoot: string; headSha: string }> 
   const head = await execa("git", ["rev-parse", "HEAD"], { cwd: repoRoot });
   return { repoRoot, headSha: head.stdout.trim() };
 }
-
-
 
 // =============================================================================
 // TESTS

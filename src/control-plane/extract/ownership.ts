@@ -27,8 +27,6 @@ type OwnershipMatchCandidate = {
   depth: number;
 };
 
-
-
 // =============================================================================
 // INDEX BUILD
 // =============================================================================
@@ -53,8 +51,6 @@ export function buildOwnershipIndex(components: ControlPlaneComponent[]): Contro
   roots.sort(compareOwnershipRoots);
   return { roots };
 }
-
-
 
 // =============================================================================
 // OWNER RESOLUTION
@@ -115,8 +111,6 @@ export function resolveOwnershipForPath(
   };
 }
 
-
-
 // =============================================================================
 // INTERNAL HELPERS
 // =============================================================================
@@ -128,7 +122,10 @@ function compareOwnershipRoots(a: ControlPlaneOwnershipRoot, b: ControlPlaneOwne
   return a.component_id.localeCompare(b.component_id);
 }
 
-function compareOwnershipCandidates(a: OwnershipMatchCandidate, b: OwnershipMatchCandidate): number {
+function compareOwnershipCandidates(
+  a: OwnershipMatchCandidate,
+  b: OwnershipMatchCandidate,
+): number {
   if (a.component.id !== b.component.id) {
     return a.component.id.localeCompare(b.component.id);
   }

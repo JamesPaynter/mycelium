@@ -51,7 +51,10 @@ describe("runTestValidator", () => {
     await execa("git", ["config", "user.name", "tester"], { cwd: repoPath });
     await execa("git", ["config", "user.email", "tester@example.com"], { cwd: repoPath });
 
-    await fse.outputFile(path.join(repoPath, "src", "app.ts"), "export const add = (a, b) => a + b;");
+    await fse.outputFile(
+      path.join(repoPath, "src", "app.ts"),
+      "export const add = (a, b) => a + b;",
+    );
     await fse.outputFile(
       path.join(repoPath, "tests", "app.test.ts"),
       "describe('add', () => { it('works', () => {}); });",

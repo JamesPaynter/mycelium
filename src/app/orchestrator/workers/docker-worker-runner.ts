@@ -25,7 +25,6 @@ import type {
   WorkerStopResult,
 } from "./worker-runner.js";
 
-
 // =============================================================================
 // TYPES & CONSTANTS
 // =============================================================================
@@ -49,7 +48,6 @@ const CONTAINER_NAME_LIMIT = 120;
 const CONTAINER_WORKDIR = "/workspace";
 const CONTAINER_LOGS_DIR = "/run-logs";
 const CONTAINER_CODEX_HOME = "/workspace/.mycelium/codex-home";
-
 
 // =============================================================================
 // RUNNER
@@ -339,8 +337,7 @@ export class DockerWorkerRunner implements WorkerRunner {
 
     if (containerIdHint) {
       const byId = containers.find(
-        (container) =>
-          container.id === containerIdHint || container.id.startsWith(containerIdHint),
+        (container) => container.id === containerIdHint || container.id.startsWith(containerIdHint),
       );
       if (byId) {
         return { id: byId.id, name: firstContainerName(byId.names) };
@@ -362,7 +359,6 @@ export class DockerWorkerRunner implements WorkerRunner {
     return null;
   }
 }
-
 
 // =============================================================================
 // HELPERS
@@ -434,9 +430,7 @@ function buildContainerEnv(args: {
     TASK_SPEC_PATH: specPath,
     TASK_BRANCH: args.input.taskBranch,
     LINT_CMD: args.input.lintCommand,
-    LINT_TIMEOUT: args.input.lintTimeoutSeconds
-      ? String(args.input.lintTimeoutSeconds)
-      : undefined,
+    LINT_TIMEOUT: args.input.lintTimeoutSeconds ? String(args.input.lintTimeoutSeconds) : undefined,
     DOCTOR_CMD: args.input.doctorCommand,
     DOCTOR_TIMEOUT: args.input.doctorTimeoutSeconds
       ? String(args.input.doctorTimeoutSeconds)

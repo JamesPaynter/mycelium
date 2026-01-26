@@ -149,11 +149,7 @@ function ensurePlanningDirs(repoRoot: string, opts: { force: boolean }): void {
   }
 }
 
-function ensureLocalGitignore(
-  repoRoot: string,
-  configDir: string,
-  opts: { force: boolean },
-): void {
+function ensureLocalGitignore(repoRoot: string, configDir: string, opts: { force: boolean }): void {
   const ignorePath = path.join(configDir, ".gitignore");
   if (fs.existsSync(ignorePath) && !opts.force) return;
 
@@ -191,11 +187,7 @@ function writeDefaultConfig(configPath: string): void {
   const dockerfile = path.join(myceliumRoot, "templates", "Dockerfile");
   const buildContext = myceliumRoot;
 
-  fs.writeFileSync(
-    configPath,
-    defaultRepoConfigYaml({ dockerfile, buildContext }),
-    "utf8",
-  );
+  fs.writeFileSync(configPath, defaultRepoConfigYaml({ dockerfile, buildContext }), "utf8");
 }
 
 function resolveMyceliumPackageRoot(): string {
@@ -277,7 +269,7 @@ function defaultRepoConfigYaml(args: { dockerfile: string; buildContext: string 
     "  - name: repo",
     "    description: All repo files (broad default)",
     "    paths:",
-    "      - \"**/*\"",
+    '      - "**/*"',
     "",
     "planner:",
     "  provider: codex",
@@ -301,7 +293,7 @@ function defaultRepoConfigYaml(args: { dockerfile: string; buildContext: string 
     "#   mode: warn",
     "#   provider: openai",
     "#   model: o3",
-    "#   docs_glob: \".mycelium/planning/**/architecture*.md\"",
+    '#   docs_glob: ".mycelium/planning/**/architecture*.md"',
     "#   fail_if_docs_missing: false",
     "# doctor_validator:",
     "#   mode: warn",
@@ -340,7 +332,7 @@ function defaultImplementationPlanStub(): string {
     "- Budget / time / dependencies / systems / regulatory constraints",
     "",
     "## Acceptance Criteria (system-level)",
-    "Write these as: \"This is what I expect to happen\".",
+    'Write these as: "This is what I expect to happen".',
     "",
     "## Risks",
     "- ...",

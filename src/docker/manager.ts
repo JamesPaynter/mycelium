@@ -217,8 +217,7 @@ export class DockerManager {
     const containers = await this.docker.listContainers({ all: true });
     const matches = containers.filter(
       (c) =>
-        c.Labels?.["mycelium.project"] === projectName &&
-        c.Labels?.["mycelium.run_id"] === runId,
+        c.Labels?.["mycelium.project"] === projectName && c.Labels?.["mycelium.run_id"] === runId,
     );
 
     return matches.map((c) => ({

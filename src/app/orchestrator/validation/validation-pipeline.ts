@@ -12,7 +12,12 @@ import fse from "fs-extra";
 import type { ProjectConfig } from "../../../core/config.js";
 import { JsonlLogger, logOrchestratorEvent } from "../../../core/logger.js";
 import type { PathsContext } from "../../../core/paths.js";
-import { runLogsDir, validatorLogPath, validatorReportPath, validatorsLogsDir } from "../../../core/paths.js";
+import {
+  runLogsDir,
+  validatorLogPath,
+  validatorReportPath,
+  validatorsLogsDir,
+} from "../../../core/paths.js";
 import type { ValidatorStatus } from "../../../core/state.js";
 import type { TaskSpec } from "../../../core/task-manifest.js";
 import {
@@ -51,8 +56,12 @@ import {
 import type { ValidatorRunner } from "../ports.js";
 import type { RunValidatorConfig } from "../run-context.js";
 
-import type { DoctorValidationOutcome, ValidationBlock, ValidationOutcome, ValidationResult } from "./types.js";
-
+import type {
+  DoctorValidationOutcome,
+  ValidationBlock,
+  ValidationOutcome,
+  ValidationResult,
+} from "./types.js";
 
 // =============================================================================
 // TYPES
@@ -104,7 +113,6 @@ type ValidatorRunSummary = {
   trigger?: string;
 };
 
-
 // =============================================================================
 // CONSTANTS
 // =============================================================================
@@ -122,7 +130,6 @@ const DEFAULT_RUNNER: ValidatorRunner = {
   runStyleValidator,
   runArchitectureValidator,
 };
-
 
 // =============================================================================
 // VALIDATION PIPELINE
@@ -463,7 +470,6 @@ export class ValidationPipeline {
   }
 }
 
-
 // =============================================================================
 // NORMALIZATION HELPERS
 // =============================================================================
@@ -475,8 +481,7 @@ async function summarizeTestValidatorResult(
 ): Promise<ValidatorRunSummary> {
   const reportFromDisk = await readValidatorReport<TestValidationReport>(reportPath);
   const resolved = result ?? reportFromDisk;
-  const status: ValidatorStatus =
-    resolved === null ? "error" : resolved.pass ? "pass" : "fail";
+  const status: ValidatorStatus = resolved === null ? "error" : resolved.pass ? "pass" : "fail";
   let summary: string | null = resolved ? summarizeTestReport(resolved) : null;
 
   if (!summary && error) {
@@ -501,8 +506,7 @@ async function summarizeStyleValidatorResult(
 ): Promise<ValidatorRunSummary> {
   const reportFromDisk = await readValidatorReport<StyleValidationReport>(reportPath);
   const resolved = result ?? reportFromDisk;
-  const status: ValidatorStatus =
-    resolved === null ? "error" : resolved.pass ? "pass" : "fail";
+  const status: ValidatorStatus = resolved === null ? "error" : resolved.pass ? "pass" : "fail";
   let summary: string | null = resolved ? summarizeStyleReport(resolved) : null;
 
   if (!summary && error) {
@@ -527,8 +531,7 @@ async function summarizeArchitectureValidatorResult(
 ): Promise<ValidatorRunSummary> {
   const reportFromDisk = await readValidatorReport<ArchitectureValidationReport>(reportPath);
   const resolved = result ?? reportFromDisk;
-  const status: ValidatorStatus =
-    resolved === null ? "error" : resolved.pass ? "pass" : "fail";
+  const status: ValidatorStatus = resolved === null ? "error" : resolved.pass ? "pass" : "fail";
   let summary: string | null = resolved ? summarizeArchitectureReport(resolved) : null;
 
   if (!summary && error) {
@@ -545,7 +548,6 @@ async function summarizeArchitectureValidatorResult(
     reportPath: exists ? reportPath : null,
   };
 }
-
 
 // =============================================================================
 // FILE HELPERS
@@ -576,7 +578,9 @@ async function findLatestReport(reportDir: string, before: string[]): Promise<st
   const exists = await fse.pathExists(reportDir);
   if (!exists) return null;
 
-  const entries = (await fse.readdir(reportDir)).filter((name) => name.toLowerCase().endsWith(".json"));
+  const entries = (await fse.readdir(reportDir)).filter((name) =>
+    name.toLowerCase().endsWith(".json"),
+  );
   if (entries.length === 0) return null;
 
   const candidates = await Promise.all(
@@ -591,7 +595,6 @@ async function findLatestReport(reportDir: string, before: string[]): Promise<st
   const newest = candidates.find((c) => c.isNew) ?? candidates[0];
   return newest?.fullPath ?? null;
 }
-
 
 // =============================================================================
 // RESULT HELPERS
@@ -615,7 +618,10 @@ function shouldBlockValidator(mode: ValidationResult["mode"], status: ValidatorS
   return status === "fail" || status === "error";
 }
 
-function buildBlockReason(validator: ValidationResult["validator"], summary: string | null): string {
+function buildBlockReason(
+  validator: ValidationResult["validator"],
+  summary: string | null,
+): string {
   const label = VALIDATOR_LABELS[validator] ?? "Validator";
   if (summary && summary.trim().length > 0) {
     return `${label} validator blocked merge: ${summary}`;

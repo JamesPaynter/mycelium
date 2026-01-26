@@ -16,9 +16,7 @@ export type ChecksetFallbackReason =
   | "missing_command_mapping"
   | "tier_high_risk";
 
-export type ChecksetWideningReason =
-  | "missing_dependency_graph"
-  | "low_confidence_edges";
+export type ChecksetWideningReason = "missing_dependency_graph" | "low_confidence_edges";
 
 export type ChecksetImpactAssessment = {
   impactedComponents: string[];
@@ -50,8 +48,6 @@ export type ChecksetDecisionInput = {
     rationale?: string[];
   };
 };
-
-
 
 // =============================================================================
 // PUBLIC API
@@ -101,9 +97,7 @@ export function computeChecksetImpactFromGraph(input: {
 
 export function computeChecksetDecision(input: ChecksetDecisionInput): ChecksetDecision {
   const touchedComponents = normalizeComponentIds(input.touchedComponents);
-  const requiredComponents = normalizeComponentIds(
-    input.impactedComponents ?? touchedComponents,
-  );
+  const requiredComponents = normalizeComponentIds(input.impactedComponents ?? touchedComponents);
   const normalizedCommandMap = normalizeCommandMapping(input.commandsByComponent);
   const rationale: string[] = [];
 
@@ -199,8 +193,6 @@ export function resolveDoctorCommandForChecksetMode(input: {
   return input.decision.selected_command;
 }
 
-
-
 // =============================================================================
 // INTERNAL HELPERS
 // =============================================================================
@@ -278,9 +270,11 @@ function summarizeEdgeConfidence(edges: ControlPlaneDependencyEdge[]): {
 }
 
 function normalizeComponentIds(components: string[]): string[] {
-  const normalized = components.map((component) => component.trim()).filter((component) => {
-    return component.length > 0;
-  });
+  const normalized = components
+    .map((component) => component.trim())
+    .filter((component) => {
+      return component.length > 0;
+    });
 
   return Array.from(new Set(normalized)).sort();
 }
@@ -309,9 +303,11 @@ function normalizeSurfaceCategories(categories?: SurfaceChangeCategory[]): strin
     return [];
   }
 
-  const normalized = categories.map((category) => category.trim()).filter((category) => {
-    return category.length > 0;
-  });
+  const normalized = categories
+    .map((category) => category.trim())
+    .filter((category) => {
+      return category.length > 0;
+    });
 
   return Array.from(new Set(normalized)).sort();
 }

@@ -44,53 +44,49 @@ describe("acceptance: budget mode=block stops run without merging", () => {
     }
   });
 
-  it(
-    "exceeds max_tokens_per_task and blocks before merge",
-    { timeout: 60_000 },
-    async () => {
-      const tmpRoot = await fs.mkdtemp(path.join(os.tmpdir(), "mycelium-budget-"));
-      tempRoots.push(tmpRoot);
+  it("exceeds max_tokens_per_task and blocks before merge", { timeout: 60_000 }, async () => {
+    const tmpRoot = await fs.mkdtemp(path.join(os.tmpdir(), "mycelium-budget-"));
+    tempRoots.push(tmpRoot);
 
-      const repoDir = path.join(tmpRoot, "repo");
-      await fse.copy(FIXTURE_REPO, repoDir);
-      await initGitRepo(repoDir);
+    const repoDir = path.join(tmpRoot, "repo");
+    await fse.copy(FIXTURE_REPO, repoDir);
+    await initGitRepo(repoDir);
 
-      const plannerOutputPath = path.join(tmpRoot, "mock-planner-output.json");
-      await fs.writeFile(plannerOutputPath, JSON.stringify(mockPlannerOutput(), null, 2));
+    const plannerOutputPath = path.join(tmpRoot, "mock-planner-output.json");
+    await fs.writeFile(plannerOutputPath, JSON.stringify(mockPlannerOutput(), null, 2));
 
-      const configPath = path.join(tmpRoot, "project.yaml");
-      await writeProjectConfig(configPath, repoDir);
+    const configPath = path.join(tmpRoot, "project.yaml");
+    await writeProjectConfig(configPath, repoDir);
 
-      process.env.MYCELIUM_HOME = path.join(tmpRoot, "mycelium-home");
-      process.env.MOCK_LLM = "1";
-      process.env.MOCK_LLM_OUTPUT_PATH = plannerOutputPath;
-      process.env.MOCK_CODEX_USAGE = JSON.stringify({
-        input_tokens: 10,
-        cached_input_tokens: 0,
-        output_tokens: 10,
-      });
-      delete process.env.MOCK_LLM_OUTPUT;
+    process.env.MYCELIUM_HOME = path.join(tmpRoot, "mycelium-home");
+    process.env.MOCK_LLM = "1";
+    process.env.MOCK_LLM_OUTPUT_PATH = plannerOutputPath;
+    process.env.MOCK_CODEX_USAGE = JSON.stringify({
+      input_tokens: 10,
+      cached_input_tokens: 0,
+      output_tokens: 10,
+    });
+    delete process.env.MOCK_LLM_OUTPUT;
 
-      const config = loadProjectConfig(configPath);
-      const headBefore = await gitHead(repoDir, config.main_branch);
+    const config = loadProjectConfig(configPath);
+    const headBefore = await gitHead(repoDir, config.main_branch);
 
-      const planResult = await planProject("toy-project", config, {
-        input: "docs/planning/implementation-plan.md",
-      });
-      expect(planResult.tasks).toHaveLength(1);
+    const planResult = await planProject("toy-project", config, {
+      input: "docs/planning/implementation-plan.md",
+    });
+    expect(planResult.tasks).toHaveLength(1);
 
-      const runResult = await runProject("toy-project", config, {
-        maxParallel: 1,
-        useDocker: false,
-        buildImage: false,
-      });
+    const runResult = await runProject("toy-project", config, {
+      maxParallel: 1,
+      useDocker: false,
+      buildImage: false,
+    });
 
-      const headAfter = await gitHead(repoDir, config.main_branch);
+    const headAfter = await gitHead(repoDir, config.main_branch);
 
-      expect(runResult.state.status).toBe("failed");
-      expect(headAfter).toBe(headBefore);
-    },
-  );
+    expect(runResult.state.status).toBe("failed");
+    expect(headAfter).toBe(headBefore);
+  });
 });
 
 async function initGitRepo(repoDir: string): Promise<void> {

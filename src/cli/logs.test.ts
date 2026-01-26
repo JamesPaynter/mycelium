@@ -41,7 +41,11 @@ describe("buildTimeline", () => {
         type: "batch.complete",
         payload: { batch_id: 1 },
       }),
-      makeEvent({ ts: "2024-01-01T00:10:00Z", type: "run.complete", payload: { status: "failed" } }),
+      makeEvent({
+        ts: "2024-01-01T00:10:00Z",
+        type: "run.complete",
+        payload: { status: "failed" },
+      }),
     ];
 
     const state: RunState = {
@@ -98,7 +102,11 @@ describe("buildFailureGroups", () => {
     const runLogsDir = path.join(tmpDir, "run-123");
     const taskDir = path.join(runLogsDir, "tasks", "001-alpha");
     fs.mkdirSync(taskDir, { recursive: true });
-    fs.writeFileSync(path.join(taskDir, "doctor-001.log"), "doctor stack trace\nline two\n", "utf8");
+    fs.writeFileSync(
+      path.join(taskDir, "doctor-001.log"),
+      "doctor stack trace\nline two\n",
+      "utf8",
+    );
 
     const events: RunLogEvent[] = [
       makeEvent({

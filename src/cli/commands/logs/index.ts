@@ -16,8 +16,6 @@ import { registerLogsQueryCommand, runLogsFollow, runLogsQuery } from "./query.j
 import { registerLogsSearchCommand } from "./search.js";
 import { registerLogsTimelineCommand } from "./timeline.js";
 
-
-
 // =============================================================================
 // TYPES
 // =============================================================================
@@ -33,8 +31,6 @@ export type LogsCommandContext = {
 };
 
 export type LogsCommandContextBuilder = (command: Command) => Promise<LogsCommandContext>;
-
-
 
 // =============================================================================
 // COMMAND REGISTRATION
@@ -107,8 +103,6 @@ export function registerLogsCommand(program: Command): void {
     });
   });
 }
-
-
 
 // =============================================================================
 // COMMANDS
@@ -252,7 +246,9 @@ async function logsSummarizeCommand(
   }
 
   if (doctorLog) {
-    console.log(`- Last doctor log (${ctx.logQueryService.relativeToRun(runLogs.dir, doctorLog.path)}):`);
+    console.log(
+      `- Last doctor log (${ctx.logQueryService.relativeToRun(runLogs.dir, doctorLog.path)}):`,
+    );
     console.log(indentMultiline(doctorLog.content));
   } else {
     console.log("- Last doctor log: not found");
@@ -309,8 +305,6 @@ async function logsSummarizeCommand(
     }
   }
 }
-
-
 
 // =============================================================================
 // INTERNAL HELPERS

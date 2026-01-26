@@ -250,7 +250,11 @@ export async function runWorker(config: WorkerConfig, logger?: WorkerLogger): Pr
           lastAttemptSummary,
           declaredWriteGlobs,
           strictTddContext: strictTddEnabled
-            ? { stage: "implementation", testPaths, fastFailureOutput: fastFailureOutput ?? undefined }
+            ? {
+                stage: "implementation",
+                testPaths,
+                fastFailureOutput: fastFailureOutput ?? undefined,
+              }
             : undefined,
         })
       : buildRetryPrompt({
@@ -697,9 +701,7 @@ function buildRetryPrompt(args: {
           ? "Codex run"
           : "command";
   const outputText =
-    failureOutput.length > 0
-      ? failureOutput
-      : `<no ${args.lastFailure.type} output captured>`;
+    failureOutput.length > 0 ? failureOutput : `<no ${args.lastFailure.type} output captured>`;
   const guidance = (() => {
     if (args.lastFailure.type === "lint") {
       return "Fix the lint issues. Then re-run lint and doctor until they pass.";
@@ -747,7 +749,10 @@ function buildWriteScopeSection(globs: string[]): string {
 // EXECUTION HELPERS
 // =============================================================================
 
-async function loadTaskInputs(specPath: string, manifestPath: string): Promise<{
+async function loadTaskInputs(
+  specPath: string,
+  manifestPath: string,
+): Promise<{
   spec: string;
   manifest: TaskManifest;
 }> {
@@ -907,7 +912,11 @@ async function runStrictTddStageA(args: {
   const afterChanges = await listChangedPaths(args.workingDirectory);
   const newChanges = diffChangedPaths(beforeChanges, afterChanges);
   const filteredChanges = filterInternalChanges(newChanges, args.workingDirectory, args.runLogsDir);
-  const currentChanges = filterInternalChanges(afterChanges, args.workingDirectory, args.runLogsDir);
+  const currentChanges = filterInternalChanges(
+    afterChanges,
+    args.workingDirectory,
+    args.runLogsDir,
+  );
   const nonTestChanges = currentChanges.filter((file) => !isTestPath(file, args.testPaths));
 
   if (nonTestChanges.length > 0) {
@@ -1333,7 +1342,10 @@ async function recordAttemptSummary(args: {
   return { summary, promptSummary: persisted.promptSummary };
 }
 
-async function listFilteredChanges(workingDirectory: string, runLogsDir: string): Promise<string[]> {
+async function listFilteredChanges(
+  workingDirectory: string,
+  runLogsDir: string,
+): Promise<string[]> {
   const changes = await listChangedPaths(workingDirectory);
   return filterInternalChanges(changes, workingDirectory, runLogsDir);
 }
@@ -1387,7 +1399,7 @@ async function listChangedEntries(cwd: string): Promise<GitStatusEntry[]> {
       const statusCode = line.length >= 2 ? line.slice(0, 2) : line;
       const pathText = line.length > 3 ? line.slice(3).trim() : "";
       const target = pathText.includes(" -> ")
-        ? pathText.split(" -> ").pop() ?? pathText
+        ? (pathText.split(" -> ").pop() ?? pathText)
         : pathText;
       return { status: statusCode, path: normalizeToPosix(target) };
     })
@@ -1407,7 +1419,7 @@ async function listChangedPaths(cwd: string): Promise<string[]> {
     .map((line) => {
       const pathText = line.length > 3 ? line.slice(3).trim() : line;
       const target = pathText.includes(" -> ")
-        ? pathText.split(" -> ").pop() ?? pathText
+        ? (pathText.split(" -> ").pop() ?? pathText)
         : pathText;
       return normalizeToPosix(target);
     })
@@ -1473,7 +1485,11 @@ function diffChangedPaths(before: string[], after: string[]): string[] {
   return after.filter((file) => !beforeSet.has(file)).sort();
 }
 
-function filterInternalChanges(files: string[], workingDirectory: string, runLogsDir: string): string[] {
+function filterInternalChanges(
+  files: string[],
+  workingDirectory: string,
+  runLogsDir: string,
+): string[] {
   const logsRelative = normalizeToPosix(path.relative(workingDirectory, runLogsDir));
   return files.filter((file) => {
     if (file === ".mycelium/worker-state.json") return false;
@@ -1491,9 +1507,7 @@ function normalizeToPosix(input: string): string {
 }
 
 function normalizeWriteGlobs(globs?: string[]): string[] {
-  const normalized = (globs ?? [])
-    .map((glob) => glob.trim())
-    .filter((glob) => glob.length > 0);
+  const normalized = (globs ?? []).map((glob) => glob.trim()).filter((glob) => glob.length > 0);
   return Array.from(new Set(normalized)).sort();
 }
 
@@ -1660,7 +1674,9 @@ function buildCheckpointCommitMessage(taskId: string, attempt: number): string {
 function isCheckpointCommitMessage(message: string | null, taskId: string): boolean {
   if (!message) return false;
   const firstLine = message.split("\n")[0]?.trim() ?? "";
-  return firstLine.startsWith(`WIP(Task ${taskId})`) && firstLine.toLowerCase().includes("checkpoint");
+  return (
+    firstLine.startsWith(`WIP(Task ${taskId})`) && firstLine.toLowerCase().includes("checkpoint")
+  );
 }
 
 // =============================================================================

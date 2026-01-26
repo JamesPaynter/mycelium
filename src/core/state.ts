@@ -251,11 +251,7 @@ export function markTaskValidated(state: RunState, taskId: string): void {
   task.status = "validated";
 }
 
-export function markTaskComplete(
-  state: RunState,
-  taskId: string,
-  now: string = isoNow(),
-): void {
+export function markTaskComplete(state: RunState, taskId: string, now: string = isoNow()): void {
   const task = requireTask(state, taskId);
   if (task.status !== "validated") {
     throw new Error(`Cannot mark task ${taskId} complete from status ${task.status}`);
@@ -425,12 +421,7 @@ export function applyTaskStatusOverride(
   task.human_review = undefined;
 }
 
-function applyResetToPending(
-  state: RunState,
-  task: TaskState,
-  reason: string,
-  now: string,
-): void {
+function applyResetToPending(state: RunState, task: TaskState, reason: string, now: string): void {
   task.status = "pending";
   task.batch_id = undefined;
   task.branch = undefined;

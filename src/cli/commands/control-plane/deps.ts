@@ -7,8 +7,6 @@ import {
 
 import type { ControlPlaneCommandContext } from "./index.js";
 
-
-
 // =============================================================================
 // TYPES
 // =============================================================================
@@ -17,8 +15,6 @@ type DependencyQueryOptions = {
   transitive?: boolean;
   limit?: number;
 };
-
-
 
 // =============================================================================
 // COMMAND REGISTRATION
@@ -60,8 +56,6 @@ export function registerDependencyCommands(
       );
     });
 }
-
-
 
 // =============================================================================
 // COMMANDS

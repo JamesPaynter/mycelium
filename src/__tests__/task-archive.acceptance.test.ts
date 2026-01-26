@@ -20,7 +20,13 @@ import {
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const FIXTURE_REPO = path.resolve(__dirname, "../../test/fixtures/toy-repo");
 
-const ENV_VARS = ["MYCELIUM_HOME", "MOCK_LLM", "MOCK_LLM_OUTPUT_PATH", "MOCK_LLM_OUTPUT", "MOCK_CODEX_USAGE"] as const;
+const ENV_VARS = [
+  "MYCELIUM_HOME",
+  "MOCK_LLM",
+  "MOCK_LLM_OUTPUT_PATH",
+  "MOCK_LLM_OUTPUT",
+  "MOCK_CODEX_USAGE",
+] as const;
 const originalEnv: Record<(typeof ENV_VARS)[number], string | undefined> = Object.fromEntries(
   ENV_VARS.map((key) => [key, process.env[key]]),
 ) as Record<(typeof ENV_VARS)[number], string | undefined>;
@@ -92,12 +98,12 @@ describe("acceptance: archive tasks after successful run", () => {
       );
 
       expect(await fse.pathExists(archivedManifestPath)).toBe(true);
-      expect(
-        await fse.pathExists(path.join(resolveTasksBacklogDir(tasksRoot), taskDirName)),
-      ).toBe(false);
-      expect(
-        await fse.pathExists(path.join(resolveTasksActiveDir(tasksRoot), taskDirName)),
-      ).toBe(false);
+      expect(await fse.pathExists(path.join(resolveTasksBacklogDir(tasksRoot), taskDirName))).toBe(
+        false,
+      );
+      expect(await fse.pathExists(path.join(resolveTasksActiveDir(tasksRoot), taskDirName))).toBe(
+        false,
+      );
     },
   );
 });
@@ -154,7 +160,7 @@ function mockPlannerOutput(): unknown {
         affected_tests: [],
         test_paths: [],
         tdd_mode: "off",
-        verify: { doctor: "node -e \"process.exit(0)\"" },
+        verify: { doctor: 'node -e "process.exit(0)"' },
         spec: "Touch a file so the worker produces a change and the task completes.",
       },
     ],

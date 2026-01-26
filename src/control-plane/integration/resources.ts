@@ -26,8 +26,6 @@ export type DeriveComponentResourcesInput = {
   componentResourcePrefix: string;
 };
 
-
-
 // =============================================================================
 // PUBLIC API
 // =============================================================================
@@ -87,8 +85,6 @@ export function createComponentOwnershipResolver(options: {
     }));
   };
 }
-
-
 
 // =============================================================================
 // INTERNAL HELPERS

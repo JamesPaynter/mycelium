@@ -14,9 +14,7 @@ export type WorkerImageBuildOptions = {
   context: string;
 };
 
-export async function buildWorkerImageFromTemplate(
-  opts: WorkerImageBuildOptions,
-): Promise<void> {
+export async function buildWorkerImageFromTemplate(opts: WorkerImageBuildOptions): Promise<void> {
   const dockerfilePath = await ensureDockerfile(opts.dockerfile);
 
   await buildWorkerImage({

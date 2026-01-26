@@ -12,7 +12,6 @@ import type { PathsContext } from "../core/paths.js";
 
 import { setDefaultAppPathsContext } from "./paths.js";
 
-
 // =============================================================================
 // TYPES
 // =============================================================================
@@ -32,7 +31,6 @@ export type CreateAppContextInput = {
   config: ProjectConfig;
   myceliumHome?: string;
 };
-
 
 // =============================================================================
 // PUBLIC API

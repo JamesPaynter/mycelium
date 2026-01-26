@@ -13,8 +13,6 @@ import { listTaskEventLogs } from "../../../core/run-logs.js";
 
 import type { LogsCommandContext, LogsCommandContextBuilder } from "./index.js";
 
-
-
 // =============================================================================
 // COMMAND REGISTRATION
 // =============================================================================
@@ -40,8 +38,6 @@ export function registerLogsQueryCommand(
       });
     });
 }
-
-
 
 // =============================================================================
 // COMMANDS
@@ -178,8 +174,6 @@ export async function runLogsFollow(
   console.log(`Following run ${runLogs.runId} logs (Ctrl+C to stop)...`);
   await waitIndefinitely();
 }
-
-
 
 // =============================================================================
 // INTERNAL HELPERS

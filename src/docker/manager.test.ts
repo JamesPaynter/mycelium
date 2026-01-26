@@ -132,7 +132,10 @@ class FakeContainer {
 class ExecContainer extends FakeContainer {
   readonly execCalls: any[] = [];
 
-  constructor(private readonly chunks: string[], private readonly exitCode: number) {
+  constructor(
+    private readonly chunks: string[],
+    private readonly exitCode: number,
+  ) {
     super();
   }
 

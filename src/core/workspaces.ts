@@ -28,12 +28,7 @@ export type PrepareTaskWorkspaceResult = {
 export async function prepareTaskWorkspace(
   opts: PrepareTaskWorkspaceOptions,
 ): Promise<PrepareTaskWorkspaceResult> {
-  const workspacePath = taskWorkspaceDir(
-    opts.projectName,
-    opts.runId,
-    opts.taskId,
-    opts.paths,
-  );
+  const workspacePath = taskWorkspaceDir(opts.projectName, opts.runId, opts.taskId, opts.paths);
   const exists = await pathExists(workspacePath);
 
   if (exists) {

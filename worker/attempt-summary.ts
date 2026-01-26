@@ -106,7 +106,9 @@ export function formatAttemptSummaryForPrompt(summary: AttemptSummary): string {
   lines.push(`Attempt ${summary.attempt} (${phaseLabel}, ${summary.prompt_kind}).`);
 
   if (summary.retry) {
-    lines.push(`Retry reason: ${summary.retry.reason_code} — ${summary.retry.human_readable_reason}`);
+    lines.push(
+      `Retry reason: ${summary.retry.reason_code} — ${summary.retry.human_readable_reason}`,
+    );
   } else {
     lines.push("Result: completed this phase.");
   }
@@ -184,7 +186,8 @@ async function updateSummaryMarkdown(runLogsDir: string, summary: AttemptSummary
 function formatSummaryLine(summary: AttemptSummary): string {
   if (summary.retry) {
     const outOfScope = summary.scope_divergence?.out_of_scope_files ?? [];
-    const changedPreview = summary.changed_files.length > 0 ? `; changed: ${formatList(summary.changed_files)}` : "";
+    const changedPreview =
+      summary.changed_files.length > 0 ? `; changed: ${formatList(summary.changed_files)}` : "";
     const scopePreview = outOfScope.length > 0 ? `; scope drift: ${formatList(outOfScope)}` : "";
     return `${summary.retry.reason_code}${changedPreview}${scopePreview}`;
   }
@@ -199,7 +202,9 @@ function formatList(items: string[], limit = 6): string {
 }
 
 function normalizeFiles(files: string[]): string[] {
-  const normalized = files.map((file) => toPosixPath(file.trim())).filter((file) => file.length > 0);
+  const normalized = files
+    .map((file) => toPosixPath(file.trim()))
+    .filter((file) => file.length > 0);
   return Array.from(new Set(normalized)).sort();
 }
 

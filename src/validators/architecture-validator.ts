@@ -28,7 +28,6 @@ import {
 } from "./lib/normalize.js";
 import type { FileSample } from "./lib/types.js";
 
-
 // =============================================================================
 // TYPES
 // =============================================================================
@@ -64,7 +63,6 @@ export type ArchitectureValidatorArgs = {
   llmClient?: LlmClient;
   paths?: PathsContext;
 };
-
 
 // =============================================================================
 // CONSTANTS
@@ -153,7 +151,6 @@ const ArchitectureValidatorJsonSchema = {
   additionalProperties: false,
 } as const;
 
-
 // =============================================================================
 // PUBLIC API
 // =============================================================================
@@ -168,12 +165,9 @@ export async function runArchitectureValidator(
 
   const validatorLog =
     args.logger ??
-    new JsonlLogger(
-      validatorLogPath(args.projectName, args.runId, VALIDATOR_NAME, args.paths),
-      {
-        runId: args.runId,
-      },
-    );
+    new JsonlLogger(validatorLogPath(args.projectName, args.runId, VALIDATOR_NAME, args.paths), {
+      runId: args.runId,
+    });
   const shouldCloseLog = !args.logger;
 
   logOrchestratorEvent(args.orchestratorLog, "validator.start", {
@@ -340,7 +334,6 @@ export async function runArchitectureValidator(
   }
 }
 
-
 // =============================================================================
 // INTERNALS
 // =============================================================================
@@ -409,10 +402,7 @@ async function readChangedFileSamples(
   return readFileSamples(workspacePath, changedFiles, FILE_SNIPPET_LIMIT, MAX_CHANGED_FILES);
 }
 
-async function readArchitectureDocs(
-  repoPath: string,
-  docsGlob: string,
-): Promise<FileSample[]> {
+async function readArchitectureDocs(repoPath: string, docsGlob: string): Promise<FileSample[]> {
   const matches = await fg(docsGlob, {
     cwd: repoPath,
     dot: true,
@@ -441,10 +431,9 @@ async function readControlPlaneImpact(
     typeof (raw as { confidence?: unknown }).confidence === "string"
       ? (raw as { confidence?: string }).confidence
       : undefined;
-  const widening =
-    Array.isArray((raw as { widening_reasons?: unknown }).widening_reasons)
-      ? ((raw as { widening_reasons?: string[] }).widening_reasons ?? [])
-      : [];
+  const widening = Array.isArray((raw as { widening_reasons?: unknown }).widening_reasons)
+    ? ((raw as { widening_reasons?: string[] }).widening_reasons ?? [])
+    : [];
 
   return {
     touched_components: touched,
@@ -460,13 +449,9 @@ function formatControlPlaneImpactForPrompt(impact: ControlPlaneImpact | null): s
   }
 
   const touched =
-    impact.touched_components.length > 0
-      ? impact.touched_components.join(", ")
-      : "None";
+    impact.touched_components.length > 0 ? impact.touched_components.join(", ") : "None";
   const impacted =
-    impact.impacted_components.length > 0
-      ? impact.impacted_components.join(", ")
-      : "None";
+    impact.impacted_components.length > 0 ? impact.impacted_components.join(", ") : "None";
   const parts = [
     `Touched components (${impact.touched_components.length}): ${touched}`,
     `Impacted components (${impact.impacted_components.length}): ${impacted}`,

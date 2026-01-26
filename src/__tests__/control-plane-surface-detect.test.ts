@@ -14,8 +14,6 @@ import { createEmptyModel, type ControlPlaneModel } from "../control-plane/model
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const FIXTURE_REPO = path.resolve(__dirname, "../../test/fixtures/control-plane-mini-repo");
 
-
-
 // =============================================================================
 // HELPERS
 // =============================================================================
@@ -28,8 +26,6 @@ async function buildControlPlaneModel(repoRoot: string): Promise<ControlPlaneMod
   model.ownership = ownership;
   return model;
 }
-
-
 
 // =============================================================================
 // TESTS
@@ -51,17 +47,9 @@ describe("control-plane surface detection", () => {
     ]);
 
     expect(result.is_surface_change).toBe(true);
-    expect(result.categories).toEqual([
-      "contract",
-      "config",
-      "migration",
-      "public-entrypoint",
-    ]);
+    expect(result.categories).toEqual(["contract", "config", "migration", "public-entrypoint"]);
 
-    expect(result.matched_files.contract).toEqual([
-      "api/openapi.yaml",
-      "proto/service.proto",
-    ]);
+    expect(result.matched_files.contract).toEqual(["api/openapi.yaml", "proto/service.proto"]);
     expect(result.matched_files.config).toEqual([
       ".env.local",
       "config/app.yaml",
@@ -71,10 +59,7 @@ describe("control-plane surface detection", () => {
       "db/migrations/20240101_init.sql",
       "src/migration/001/step.sql",
     ]);
-    expect(result.matched_files["public-entrypoint"]).toEqual([
-      "package.json",
-      "src/index.ts",
-    ]);
+    expect(result.matched_files["public-entrypoint"]).toEqual(["package.json", "src/index.ts"]);
   });
 
   it("returns an empty detection when no files match", () => {

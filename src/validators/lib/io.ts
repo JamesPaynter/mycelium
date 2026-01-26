@@ -13,7 +13,6 @@ import { readJsonFile, writeJsonFile } from "../../core/utils.js";
 import { truncate, uniq } from "./normalize.js";
 import type { FileSample, RunValidatorReport, TaskValidatorReport } from "./types.js";
 
-
 // =============================================================================
 // TYPES
 // =============================================================================
@@ -48,7 +47,6 @@ export type RunValidatorReportInput<
   meta: TMeta;
   label?: string;
 };
-
 
 // =============================================================================
 // READ HELPERS
@@ -110,7 +108,6 @@ export async function readFileSamples(
 export async function readValidatorReport<TReport = unknown>(reportPath: string): Promise<TReport> {
   return readJsonFile<TReport>(reportPath);
 }
-
 
 // =============================================================================
 // WRITE HELPERS

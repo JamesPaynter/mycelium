@@ -22,8 +22,6 @@ import {
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const FIXTURE_REPO = path.resolve(__dirname, "../../test/fixtures/control-plane-mini-repo");
 
-
-
 // =============================================================================
 // HELPERS
 // =============================================================================
@@ -97,8 +95,6 @@ function buildDerivedLockMap(
 ): Map<string, NormalizedLocks> {
   return new Map(reports.map((entry) => [entry.taskId, entry.locks]));
 }
-
-
 
 // =============================================================================
 // TESTS
@@ -177,18 +173,14 @@ describe("scheduler lock mode", () => {
         taskId: taskOne.manifest.id,
         locks: normalizeLocks({
           reads: [],
-          writes: reportOne.derived_locks.writes.filter((lock) =>
-            lock.startsWith("surface:"),
-          ),
+          writes: reportOne.derived_locks.writes.filter((lock) => lock.startsWith("surface:")),
         }),
       },
       {
         taskId: taskTwo.manifest.id,
         locks: normalizeLocks({
           reads: [],
-          writes: reportTwo.derived_locks.writes.filter((lock) =>
-            lock.startsWith("surface:"),
-          ),
+          writes: reportTwo.derived_locks.writes.filter((lock) => lock.startsWith("surface:")),
         }),
       },
     ]);

@@ -6,8 +6,6 @@ import { resolveOwnershipForPath } from "../../../control-plane/extract/ownershi
 
 import type { ControlPlaneCommandContext } from "./index.js";
 
-
-
 // =============================================================================
 // COMMAND REGISTRATION
 // =============================================================================
@@ -16,9 +14,7 @@ export function registerComponentsCommands(
   controlPlane: Command,
   ctx: ControlPlaneCommandContext,
 ): void {
-  const components = controlPlane
-    .command("components")
-    .description("Component catalog queries");
+  const components = controlPlane.command("components").description("Component catalog queries");
 
   components
     .command("list")
@@ -43,8 +39,6 @@ export function registerComponentsCommands(
       await handleOwnerLookup(ctx, String(targetPath), resolveCommandFromArgs(rest));
     });
 }
-
-
 
 // =============================================================================
 // COMMANDS
@@ -136,8 +130,6 @@ async function handleOwnerLookup(
     ctx.emitControlPlaneError(ctx.resolveModelStoreError(error), output);
   }
 }
-
-
 
 // =============================================================================
 // INTERNAL HELPERS

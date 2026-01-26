@@ -21,7 +21,6 @@ import type {
   WorkerStopResult,
 } from "./worker-runner.js";
 
-
 // =============================================================================
 // RUNNER
 // =============================================================================
@@ -95,7 +94,6 @@ export class LocalWorkerRunner implements WorkerRunner {
     // No-op for local execution.
   }
 }
-
 
 // =============================================================================
 // LOGGING

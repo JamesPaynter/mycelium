@@ -84,7 +84,10 @@ export async function cleanCommand(
   }
 }
 
-function printPlan(plan: CleanupPlan, opts: { keepLogs: boolean; includeContainers: boolean }): void {
+function printPlan(
+  plan: CleanupPlan,
+  opts: { keepLogs: boolean; includeContainers: boolean },
+): void {
   console.log(`Cleaning run ${plan.runId} for project ${plan.projectName}:`);
 
   for (const target of plan.targets) {

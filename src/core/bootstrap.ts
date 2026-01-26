@@ -56,11 +56,9 @@ export async function runBootstrap(opts: BootstrapOptions): Promise<BootstrapRes
   for (const cmd of commands) {
     opts.logger?.log({ type: "bootstrap.cmd.start", payload: { cmd } });
 
-    const result = await opts.docker.execInContainer(
-      opts.container,
-      ["sh", "-c", cmd],
-      { workdir },
-    );
+    const result = await opts.docker.execInContainer(opts.container, ["sh", "-c", cmd], {
+      workdir,
+    });
 
     const record: BootstrapCommandResult = {
       command: cmd,

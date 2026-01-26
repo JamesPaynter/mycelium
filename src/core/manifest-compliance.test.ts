@@ -14,10 +14,7 @@ import {
 } from "../control-plane/integration/resources.js";
 import { createEmptyModel, type ControlPlaneModel } from "../control-plane/model/schema.js";
 import type { ResourceConfig } from "./config.js";
-import {
-  resolveResourcesForFile,
-  runManifestCompliance,
-} from "./manifest-compliance.js";
+import { resolveResourcesForFile, runManifestCompliance } from "./manifest-compliance.js";
 import type { TaskManifest } from "./task-manifest.js";
 
 // =============================================================================
@@ -29,7 +26,6 @@ const CONTROL_PLANE_FIXTURE_REPO = path.resolve(
   __dirname,
   "../../test/fixtures/control-plane-mini-repo",
 );
-
 
 // =============================================================================
 // TESTS
@@ -173,9 +169,7 @@ describe("runManifestCompliance", () => {
       verify: { doctor: "npm test" },
     };
 
-    const resources: ResourceConfig[] = [
-      { name: "repo", description: "Repo", paths: ["**/*"] },
-    ];
+    const resources: ResourceConfig[] = [{ name: "repo", description: "Repo", paths: ["**/*"] }];
 
     const result = await runManifestCompliance({
       workspacePath: repo,
@@ -297,7 +291,6 @@ describe("resolveResourcesForFile", () => {
     expect(resources).toEqual([fallbackResource]);
   });
 });
-
 
 // =============================================================================
 // HELPERS

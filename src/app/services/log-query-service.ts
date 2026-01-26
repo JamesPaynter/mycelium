@@ -25,8 +25,6 @@ import {
   summarizeTestReport,
 } from "../orchestrator/validation/summaries.js";
 
-
-
 // =============================================================================
 // TYPES
 // =============================================================================
@@ -111,8 +109,6 @@ export type LlmSummaryResult =
   | { status: "disabled"; message: string }
   | { status: "error"; message: string };
 
-
-
 // =============================================================================
 // SERVICE
 // =============================================================================
@@ -195,15 +191,10 @@ export class LogQueryService {
     return relativeToRun(baseDir, targetPath);
   }
 
-  pickDoctorLog(
-    files: string[],
-    attempt?: number,
-  ): { attempt: number; fileName: string } | null {
+  pickDoctorLog(files: string[], attempt?: number): { attempt: number; fileName: string } | null {
     return pickDoctorLog(files, attempt);
   }
 }
-
-
 
 // =============================================================================
 // INDEX QUERIES
@@ -263,8 +254,6 @@ function searchLogsFromIndex(
   }
 }
 
-
-
 // =============================================================================
 // TIMELINE + FAILURE HELPERS
 // =============================================================================
@@ -283,8 +272,8 @@ export function buildTimeline(events: RunLogEvent[], state: RunState | null): Ti
 
   const runDurationMs =
     state?.started_at && state?.updated_at
-      ? parseDurationMs(state.started_at, state.updated_at) ?? undefined
-      : parseDurationMs(events[0]?.ts, events[events.length - 1]?.ts) ?? undefined;
+      ? (parseDurationMs(state.started_at, state.updated_at) ?? undefined)
+      : (parseDurationMs(events[0]?.ts, events[events.length - 1]?.ts) ?? undefined);
 
   const taskCounts = state ? buildTaskCounts(state) : null;
   return { entries, runDurationMs, taskCounts };
@@ -370,11 +359,7 @@ function describeTimelineEvent(
       const summary = stringFrom(payload.summary);
       return {
         label: `Task ${taskId ?? "?"} doctor failed`,
-        details: compact([
-          baseDetails,
-          exitCode !== null ? `exit ${exitCode}` : null,
-          summary,
-        ]),
+        details: compact([baseDetails, exitCode !== null ? `exit ${exitCode}` : null, summary]),
       };
     }
     case "task.complete": {
@@ -645,8 +630,6 @@ function classifyFailure(
   }
 }
 
-
-
 // =============================================================================
 // SUMMARY HELPERS
 // =============================================================================
@@ -714,12 +697,14 @@ function findLastCodexTurn(events: RunLogEvent[]): CodexTurnInfo | null {
 
   for (const event of events) {
     if (event.type === "turn.start") {
-      const attempt = event.attempt ?? numberFrom((event.payload as { attempt?: unknown })?.attempt);
+      const attempt =
+        event.attempt ?? numberFrom((event.payload as { attempt?: unknown })?.attempt);
       startByAttempt.set(attempt ?? null, event.ts);
     }
 
     if (event.type === "turn.complete") {
-      const attempt = event.attempt ?? numberFrom((event.payload as { attempt?: unknown })?.attempt);
+      const attempt =
+        event.attempt ?? numberFrom((event.payload as { attempt?: unknown })?.attempt);
       const startedAt = startByAttempt.get(attempt ?? null);
       last = {
         attempt: attempt ?? null,
@@ -829,7 +814,7 @@ function buildLogSummaryPrompt(input: LogSummaryInput): string {
           .join("\n");
 
   const codexLine = input.codex
-    ? compact([
+    ? (compact([
         input.codex.completedAt
           ? `completed ${formatTimestamp(input.codex.completedAt)}`
           : input.codex.startedAt
@@ -837,7 +822,7 @@ function buildLogSummaryPrompt(input: LogSummaryInput): string {
             : null,
         input.codex.attempt ? `attempt ${input.codex.attempt}` : null,
         input.codex.durationMs ? `turn duration ${formatDuration(input.codex.durationMs)}` : null,
-      ]) ?? "unknown"
+      ]) ?? "unknown")
     : "unknown";
 
   return [
@@ -898,8 +883,6 @@ function formatError(err: unknown): string {
   return String(err);
 }
 
-
-
 // =============================================================================
 // FORMAT + PATH HELPERS
 // =============================================================================
@@ -907,7 +890,10 @@ function formatError(err: unknown): string {
 export function formatTimestamp(ts: string): string {
   const parsed = new Date(ts);
   if (Number.isNaN(parsed.getTime())) return ts;
-  return parsed.toISOString().replace("T", " ").replace(/\.\d+Z$/, "Z");
+  return parsed
+    .toISOString()
+    .replace("T", " ")
+    .replace(/\.\d+Z$/, "Z");
 }
 
 export function formatDuration(ms?: number | null): string {
@@ -984,8 +970,6 @@ export function pickDoctorLog(
 
   return parsed.sort((a, b) => b.attempt - a.attempt)[0];
 }
-
-
 
 // =============================================================================
 // VALIDATOR REPORT LOOKUP

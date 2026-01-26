@@ -10,7 +10,6 @@ import { LlmError, type LlmCompletionResult } from "../../llm/client.js";
 
 import type { FileSample, TruncateResult } from "./types.js";
 
-
 // =============================================================================
 // COMPLETION NORMALIZATION
 // =============================================================================
@@ -51,7 +50,6 @@ export function safeParseJson(raw: string): Record<string, unknown> | null {
   }
 }
 
-
 // =============================================================================
 // TEXT NORMALIZATION
 // =============================================================================
@@ -76,7 +74,6 @@ export function secondsToMs(value?: number): number | undefined {
   return value * 1000;
 }
 
-
 // =============================================================================
 // FORMAT HELPERS
 // =============================================================================
@@ -93,7 +90,6 @@ export function formatFilesForPrompt(files: FileSample[]): string {
     })
     .join("\n\n");
 }
-
 
 // =============================================================================
 // ERROR HANDLING

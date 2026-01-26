@@ -34,8 +34,6 @@ const KIND_ORDER: Record<ControlPlaneDependencyEdge["kind"], number> = {
   "ts-import": 1,
 };
 
-
-
 // =============================================================================
 // BUILD HELPERS
 // =============================================================================
@@ -59,8 +57,6 @@ export async function buildControlPlaneDependencies(options: {
   return { edges };
 }
 
-
-
 // =============================================================================
 // QUERY HELPERS
 // =============================================================================
@@ -77,7 +73,7 @@ export function resolveComponentDependencies(options: {
 
   const edges = transitive
     ? collectTransitiveEdges(index, options.componentId, "forward")
-    : index.forward.get(options.componentId) ?? [];
+    : (index.forward.get(options.componentId) ?? []);
 
   return finalizeQueryResult(options.componentId, edges, transitive, limit);
 }
@@ -94,12 +90,10 @@ export function resolveComponentReverseDependencies(options: {
 
   const edges = transitive
     ? collectTransitiveEdges(index, options.componentId, "reverse")
-    : index.reverse.get(options.componentId) ?? [];
+    : (index.reverse.get(options.componentId) ?? []);
 
   return finalizeQueryResult(options.componentId, edges, transitive, limit);
 }
-
-
 
 // =============================================================================
 // INDEX + TRAVERSAL
@@ -141,8 +135,8 @@ function collectTransitiveEdges(
     const current = queue[cursor];
     const edges =
       direction === "forward"
-        ? index.forward.get(current) ?? []
-        : index.reverse.get(current) ?? [];
+        ? (index.forward.get(current) ?? [])
+        : (index.reverse.get(current) ?? []);
 
     for (const edge of edges) {
       const key = `${edge.from_component}::${edge.to_component}::${edge.kind}::${edge.confidence}`;
@@ -150,8 +144,7 @@ function collectTransitiveEdges(
         collected.set(key, edge);
       }
 
-      const nextComponent =
-        direction === "forward" ? edge.to_component : edge.from_component;
+      const nextComponent = direction === "forward" ? edge.to_component : edge.from_component;
       if (!visited.has(nextComponent)) {
         visited.add(nextComponent);
         queue.push(nextComponent);
@@ -161,8 +154,6 @@ function collectTransitiveEdges(
 
   return Array.from(collected.values());
 }
-
-
 
 // =============================================================================
 // MERGE + SORT
@@ -187,9 +178,7 @@ function mergeDependencyEdges(edges: ControlPlaneDependencyEdge[]): ControlPlane
   return sortDependencyEdges(Array.from(merged.values()));
 }
 
-function sortDependencyEdges(
-  edges: ControlPlaneDependencyEdge[],
-): ControlPlaneDependencyEdge[] {
+function sortDependencyEdges(edges: ControlPlaneDependencyEdge[]): ControlPlaneDependencyEdge[] {
   return [...edges].sort(compareDependencyEdges);
 }
 
@@ -220,13 +209,9 @@ function kindRank(kind: ControlPlaneDependencyEdge["kind"]): number {
   return KIND_ORDER[kind] ?? 99;
 }
 
-function confidenceRank(
-  confidence: ControlPlaneDependencyEdge["confidence"],
-): number {
+function confidenceRank(confidence: ControlPlaneDependencyEdge["confidence"]): number {
   return CONFIDENCE_ORDER[confidence] ?? 99;
 }
-
-
 
 // =============================================================================
 // QUERY OUTPUT

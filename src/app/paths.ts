@@ -5,7 +5,6 @@ import {
   type PathsContext,
 } from "../core/paths.js";
 
-
 // =============================================================================
 // TYPES
 // =============================================================================
@@ -15,7 +14,6 @@ export type AppPathsInput = {
   repoPath?: string;
   env?: NodeJS.ProcessEnv;
 };
-
 
 // =============================================================================
 // HELPERS
@@ -27,7 +25,6 @@ export function resolveMyceliumHomeFromEnv(input: AppPathsInput = {}): string {
 
   return resolveMyceliumHome({ myceliumHome: override, repoPath: input.repoPath });
 }
-
 
 // =============================================================================
 // PUBLIC API

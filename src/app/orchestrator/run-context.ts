@@ -25,7 +25,11 @@ import type { PathsContext } from "../../core/paths.js";
 import { orchestratorLogPath } from "../../core/paths.js";
 import { StateStore, findLatestRunId } from "../../core/state-store.js";
 import { isoNow, readJsonFile } from "../../core/utils.js";
-import { removeRunWorkspace, removeTaskWorkspace, prepareTaskWorkspace } from "../../core/workspaces.js";
+import {
+  removeRunWorkspace,
+  removeTaskWorkspace,
+  prepareTaskWorkspace,
+} from "../../core/workspaces.js";
 import type { ContainerSpec } from "../../docker/docker.js";
 import { runArchitectureValidator } from "../../validators/architecture-validator.js";
 import { runDoctorValidator } from "../../validators/doctor-validator.js";
@@ -35,13 +39,16 @@ import { runTestValidator } from "../../validators/test-validator.js";
 import type { OrchestratorPorts } from "./ports.js";
 import { createGitVcs } from "./vcs/git-vcs.js";
 
-
 // =============================================================================
 // TYPES
 // =============================================================================
 
 export type LegacyExecutor<RunOptions, RunResult> = {
-  runProject: (projectName: string, config: ProjectConfig, options: RunOptions) => Promise<RunResult>;
+  runProject: (
+    projectName: string,
+    config: ProjectConfig,
+    options: RunOptions,
+  ) => Promise<RunResult>;
 };
 
 export type RunContextOptions = {
@@ -141,22 +148,17 @@ export type RunContext<RunOptions = unknown, RunResult = unknown> = {
   legacy: LegacyExecutor<RunOptions, RunResult>;
 } & RunContextBase<RunOptions>;
 
-
 // =============================================================================
 // DEFAULT ADAPTERS
 // =============================================================================
 
-export function createDefaultPorts(
-  config: ProjectConfig,
-  paths?: PathsContext,
-): OrchestratorPorts {
+export function createDefaultPorts(config: ProjectConfig, paths?: PathsContext): OrchestratorPorts {
   return {
     workspaceStore: {
       prepareTaskWorkspace: (opts) => prepareTaskWorkspace({ ...opts, paths }),
       removeTaskWorkspace: (projectName, runId, taskId) =>
         removeTaskWorkspace(projectName, runId, taskId, paths),
-      removeRunWorkspace: (projectName, runId) =>
-        removeRunWorkspace(projectName, runId, paths),
+      removeRunWorkspace: (projectName, runId) => removeRunWorkspace(projectName, runId, paths),
     },
     vcs: createGitVcs({ taskBranchPrefix: config.task_branch_prefix }),
     workerRunner: {

@@ -42,8 +42,6 @@ export type ControlPlaneBlastRadiusReport = {
   unmapped_paths: string[];
 };
 
-
-
 // =============================================================================
 // PUBLIC API
 // =============================================================================
@@ -88,15 +86,11 @@ export function buildBlastRadiusReport(input: {
   };
 }
 
-
-
 // =============================================================================
 // INTERNAL HELPERS
 // =============================================================================
 
-function mapWarningsToReasons(
-  warnings: string[],
-): ControlPlaneBlastWideningReason[] {
+function mapWarningsToReasons(warnings: string[]): ControlPlaneBlastWideningReason[] {
   const reasons = new Set<ControlPlaneBlastWideningReason>();
 
   for (const warning of warnings) {

@@ -14,7 +14,6 @@ import { startUiServer, type UiServerHandle } from "../ui/server.js";
 
 import { createRunStopSignalHandler } from "./signal-handlers.js";
 
-
 // =============================================================================
 // TYPES
 // =============================================================================
@@ -41,7 +40,6 @@ export type UiCommandOptions = {
   port?: number;
   openBrowser?: boolean;
 };
-
 
 // =============================================================================
 // UI COMMAND
@@ -106,7 +104,6 @@ export async function uiCommand(
   }
 }
 
-
 // =============================================================================
 // UI RUNTIME
 // =============================================================================
@@ -166,7 +163,6 @@ export async function launchUiServer(args: {
   }
 }
 
-
 // =============================================================================
 // UI BROWSER OPEN
 // =============================================================================
@@ -183,7 +179,6 @@ export async function maybeOpenUiBrowser(url: string, openBrowser: boolean): Pro
   }
 }
 
-
 // =============================================================================
 // UI SHUTDOWN
 // =============================================================================
@@ -199,7 +194,6 @@ export async function closeUiServer(handle: UiServerHandle | null): Promise<void
     console.warn(`Warning: failed to close UI server.${suffix}`);
   }
 }
-
 
 // =============================================================================
 // INTERNALS

@@ -11,7 +11,11 @@ import {
   type AutopilotIo,
   type AutopilotArtifacts,
 } from "./autopilot.js";
-import { type LlmClient, type LlmCompletionResult, type LlmCompletionOptions } from "../llm/client.js";
+import {
+  type LlmClient,
+  type LlmCompletionResult,
+  type LlmCompletionOptions,
+} from "../llm/client.js";
 
 class StubLlmClient implements LlmClient {
   constructor(private readonly responses: Array<LlmCompletionResult<any>>) {}
@@ -71,7 +75,11 @@ describe("runAutopilotSession", () => {
 
     const responses: Array<LlmCompletionResult<any>> = [
       { text: "", parsed: { action: "ask", prompt: "What is the goal?" }, finishReason: "stop" },
-      { text: "", parsed: { action: "synthesize", prompt: "Ready to plan." }, finishReason: "stop" },
+      {
+        text: "",
+        parsed: { action: "synthesize", prompt: "Ready to plan." },
+        finishReason: "stop",
+      },
       {
         text: "",
         parsed: { artifacts, readySummary: "done" },
@@ -122,7 +130,13 @@ describe("writePlanningArtifacts + transcript formatting", () => {
       summary: "overall summary",
     };
 
-    const planInputPath = path.join(repo, "docs", "planning", "002-implementation", "implementation-plan.md");
+    const planInputPath = path.join(
+      repo,
+      "docs",
+      "planning",
+      "002-implementation",
+      "implementation-plan.md",
+    );
     const paths = await writePlanningArtifacts({
       repoPath: repo,
       sessionId: "20250101-000000",

@@ -59,8 +59,6 @@ describe("summarizeRunState", () => {
         reportPath: "validators/test-validator/002-task.json",
       },
     ]);
-    expect(summary.topSpenders).toEqual([
-      { id: "001", tokensUsed: 500, estimatedCost: 1.25 },
-    ]);
+    expect(summary.topSpenders).toEqual([{ id: "001", tokensUsed: 500, estimatedCost: 1.25 }]);
   });
 });

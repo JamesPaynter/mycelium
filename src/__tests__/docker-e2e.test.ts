@@ -48,78 +48,72 @@ describeDocker("docker-mode end-to-end smoke (mock LLM)", () => {
     }
   });
 
-  it(
-    "runs worker tasks inside Docker and merges the results",
-    async () => {
-      await ensureDockerAvailable();
+  it("runs worker tasks inside Docker and merges the results", async () => {
+    await ensureDockerAvailable();
 
-      const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), "docker-e2e-"));
-      tempRoots.push(tempRoot);
+    const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), "docker-e2e-"));
+    tempRoots.push(tempRoot);
 
-      const repoDir = path.join(tempRoot, "repo");
-      await fse.copy(FIXTURE_REPO, repoDir);
-      await initGitRepo(repoDir);
+    const repoDir = path.join(tempRoot, "repo");
+    await fse.copy(FIXTURE_REPO, repoDir);
+    await initGitRepo(repoDir);
 
-      const projectName = "docker-smoke";
-      const runId = `${projectName}-${Date.now()}`;
-      const configPath = path.join(tempRoot, "project.yaml");
-      await writeProjectConfig(configPath, repoDir);
+    const projectName = "docker-smoke";
+    const runId = `${projectName}-${Date.now()}`;
+    const configPath = path.join(tempRoot, "project.yaml");
+    await writeProjectConfig(configPath, repoDir);
 
-      process.env.MYCELIUM_HOME = path.join(tempRoot, ".mycelium");
-      process.env.MOCK_LLM = "1";
-      process.env.MOCK_LLM_OUTPUT_PATH = path.join(repoDir, "mock-planner-output.json");
+    process.env.MYCELIUM_HOME = path.join(tempRoot, ".mycelium");
+    process.env.MOCK_LLM = "1";
+    process.env.MOCK_LLM_OUTPUT_PATH = path.join(repoDir, "mock-planner-output.json");
 
-      await ensureImplementationPlan(repoDir);
-      const config = loadProjectConfig(configPath);
-      const headBefore = await gitHead(repoDir, config.main_branch);
-      const commitsBefore = await commitCount(repoDir, config.main_branch);
+    await ensureImplementationPlan(repoDir);
+    const config = loadProjectConfig(configPath);
+    const headBefore = await gitHead(repoDir, config.main_branch);
+    const commitsBefore = await commitCount(repoDir, config.main_branch);
 
-      const planResult = await planProject(projectName, config, {
-        input: ".mycelium/planning/implementation-plan.md",
-      });
-      expect(planResult.tasks).toHaveLength(2);
+    const planResult = await planProject(projectName, config, {
+      input: ".mycelium/planning/implementation-plan.md",
+    });
+    expect(planResult.tasks).toHaveLength(2);
 
-      const runResult = await runProject(projectName, config, {
-        runId,
-        maxParallel: 2,
-        useDocker: true,
-        cleanupOnSuccess: true,
-        buildImage: true,
-      });
+    const runResult = await runProject(projectName, config, {
+      runId,
+      maxParallel: 2,
+      useDocker: true,
+      cleanupOnSuccess: true,
+      buildImage: true,
+    });
 
-      const headAfter = await gitHead(repoDir, config.main_branch);
-      const commitsAfter = await commitCount(repoDir, config.main_branch);
-      const releaseNotes = await fs.readFile(path.join(repoDir, "notes/release-notes.txt"), "utf8");
-      const featureNotes = await fs.readFile(path.join(repoDir, "src/feature.txt"), "utf8");
+    const headAfter = await gitHead(repoDir, config.main_branch);
+    const commitsAfter = await commitCount(repoDir, config.main_branch);
+    const releaseNotes = await fs.readFile(path.join(repoDir, "notes/release-notes.txt"), "utf8");
+    const featureNotes = await fs.readFile(path.join(repoDir, "src/feature.txt"), "utf8");
 
-      const orchestratorEvents = await readJsonl(
-        orchestratorLogPath(projectName, runResult.runId),
-      );
+    const orchestratorEvents = await readJsonl(orchestratorLogPath(projectName, runResult.runId));
 
-      const firstTaskId = planResult.tasks[0]?.id ?? "001";
-      const firstTaskLogs = runResult.state.tasks[firstTaskId]?.logs_dir;
-      expect(firstTaskLogs).toBeTruthy();
-      const taskEvents = await readJsonl(path.join(firstTaskLogs as string, "events.jsonl"));
+    const firstTaskId = planResult.tasks[0]?.id ?? "001";
+    const firstTaskLogs = runResult.state.tasks[firstTaskId]?.logs_dir;
+    expect(firstTaskLogs).toBeTruthy();
+    const taskEvents = await readJsonl(path.join(firstTaskLogs as string, "events.jsonl"));
 
-      expect(runResult.state.status).toBe("complete");
-      expect(Object.values(runResult.state.tasks).every((t) => t.status === "complete")).toBe(true);
-      expect(headAfter).not.toBe(headBefore);
-      expect(commitsAfter).toBeGreaterThan(commitsBefore);
-      expect(releaseNotes).toContain("Mock update");
-      expect(featureNotes).toContain("Mock update");
-      expect(orchestratorEvents.some((event) => event.type === "container.start")).toBe(true);
-      expect(orchestratorEvents.some((event) => event.type === "container.exit")).toBe(true);
-      expect(taskEvents.length).toBeGreaterThan(0);
-      expect(
-        taskEvents.some(
-          (event) =>
-            event.type !== undefined &&
-            ["worker.start", "task.complete", "doctor.pass"].includes(event.type),
-        ),
-      ).toBe(true);
-    },
-    240_000,
-  );
+    expect(runResult.state.status).toBe("complete");
+    expect(Object.values(runResult.state.tasks).every((t) => t.status === "complete")).toBe(true);
+    expect(headAfter).not.toBe(headBefore);
+    expect(commitsAfter).toBeGreaterThan(commitsBefore);
+    expect(releaseNotes).toContain("Mock update");
+    expect(featureNotes).toContain("Mock update");
+    expect(orchestratorEvents.some((event) => event.type === "container.start")).toBe(true);
+    expect(orchestratorEvents.some((event) => event.type === "container.exit")).toBe(true);
+    expect(taskEvents.length).toBeGreaterThan(0);
+    expect(
+      taskEvents.some(
+        (event) =>
+          event.type !== undefined &&
+          ["worker.start", "task.complete", "doctor.pass"].includes(event.type),
+      ),
+    ).toBe(true);
+  }, 240_000);
 });
 
 type JsonlEvent = { type?: string; [key: string]: unknown };
@@ -166,9 +160,9 @@ async function writeProjectConfig(configPath: string, repoDir: string): Promise<
     "doctor: npm test",
     "max_parallel: 2",
     "resources:",
-    '  - name: docs',
+    "  - name: docs",
     '    paths: ["notes/**"]',
-    '  - name: code',
+    "  - name: code",
     '    paths: ["src/**"]',
     "planner:",
     "  provider: mock",

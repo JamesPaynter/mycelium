@@ -41,8 +41,6 @@ const IGNORED_ROOTS = new Set([
   "vendor",
 ]);
 
-
-
 // =============================================================================
 // PUBLIC API
 // =============================================================================
@@ -103,13 +101,13 @@ export async function extractTypeScriptSymbolDefinitions(options: {
   }
 }
 
-
-
 // =============================================================================
 // DEFINITION EXTRACTION
 // =============================================================================
 
-function extractDefinitionsFromSourceFile(context: SourceFileContext): ControlPlaneSymbolDefinition[] {
+function extractDefinitionsFromSourceFile(
+  context: SourceFileContext,
+): ControlPlaneSymbolDefinition[] {
   const definitions: ControlPlaneSymbolDefinition[] = [];
 
   for (const statement of context.sourceFile.statements) {
@@ -227,10 +225,8 @@ function createSymbolDefinition(options: {
   const name = options.nameNode.text;
   const startOffset = options.nameNode.getStart(options.sourceFile);
   const endOffset = options.nameNode.getEnd();
-  const startLocation =
-    options.sourceFile.getLineAndCharacterOfPosition(startOffset);
-  const endLocation =
-    options.sourceFile.getLineAndCharacterOfPosition(endOffset);
+  const startLocation = options.sourceFile.getLineAndCharacterOfPosition(startOffset);
+  const endLocation = options.sourceFile.getLineAndCharacterOfPosition(endOffset);
 
   return {
     symbol_id: buildSymbolId({
@@ -258,8 +254,6 @@ function createSymbolDefinition(options: {
   };
 }
 
-
-
 // =============================================================================
 // COMPONENT RESOLUTION
 // =============================================================================
@@ -280,8 +274,6 @@ function resolveComponentId(
   cache.set(repoPath, componentId);
   return componentId;
 }
-
-
 
 // =============================================================================
 // SORTING
@@ -316,8 +308,6 @@ function compareSymbolDefinitions(
   return left.symbol_id.localeCompare(right.symbol_id);
 }
 
-
-
 // =============================================================================
 // IDENTIFIERS
 // =============================================================================
@@ -330,8 +320,6 @@ function buildSymbolId(options: {
 }): string {
   return `ts:${options.componentId}/${options.name}@${options.filePath}:${options.startOffset}`;
 }
-
-
 
 // =============================================================================
 // PATH HELPERS
@@ -366,8 +354,6 @@ function shouldIgnoreRepoPath(repoPath: string): boolean {
   const root = normalized.split("/")[0] ?? "";
   return IGNORED_ROOTS.has(root);
 }
-
-
 
 // =============================================================================
 // ERROR HANDLING

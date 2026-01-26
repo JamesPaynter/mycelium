@@ -20,7 +20,6 @@ import { mergeTaskBranches } from "../../../git/merge.js";
 
 import { createGitVcs } from "./git-vcs.js";
 
-
 // =============================================================================
 // TESTS
 // =============================================================================
@@ -37,8 +36,6 @@ describe("createGitVcs", () => {
     expect(vcs.isAncestor).toBe(isAncestor);
     expect(vcs.mergeTaskBranches).toBe(mergeTaskBranches);
     expect(vcs.listChangedFiles).toBe(listChangedFiles);
-    expect(vcs.buildTaskBranchName("001", "Fix Login Button")).toBe(
-      "agent/001-fix-login-button",
-    );
+    expect(vcs.buildTaskBranchName("001", "Fix Login Button")).toBe("agent/001-fix-login-button");
   });
 });

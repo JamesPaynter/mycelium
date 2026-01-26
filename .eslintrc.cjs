@@ -33,11 +33,7 @@ module.exports = {
       },
     },
     {
-      files: [
-        "src/cli/logs.ts",
-        "src/cli/control-plane.ts",
-        "src/ui/router.ts",
-      ],
+      files: ["src/cli/logs.ts", "src/cli/control-plane.ts", "src/ui/router.ts"],
       rules: {
         "max-lines": "off",
         complexity: "off",

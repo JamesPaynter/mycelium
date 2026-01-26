@@ -33,7 +33,11 @@ describe("LogIndex", () => {
     ]);
 
     writeJsonl(path.join(runLogsDir, "validators", "test-validator.jsonl"), [
-      { ts: "2024-01-01T00:00:03Z", type: "validator.note", payload: { task_id: "001", status: "ok" } },
+      {
+        ts: "2024-01-01T00:00:03Z",
+        type: "validator.note",
+        payload: { task_id: "001", status: "ok" },
+      },
     ]);
 
     const dbPath = logIndexPath(runLogsDir);

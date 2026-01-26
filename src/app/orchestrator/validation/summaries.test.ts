@@ -1,7 +1,10 @@
 import { describe, expect, it } from "vitest";
 
 import type { ArchitectureValidationReport } from "../../../validators/architecture-validator.js";
-import type { DoctorCanaryResult, DoctorValidationReport } from "../../../validators/doctor-validator.js";
+import type {
+  DoctorCanaryResult,
+  DoctorValidationReport,
+} from "../../../validators/doctor-validator.js";
 import type { StyleValidationReport } from "../../../validators/style-validator.js";
 import type { TestValidationReport } from "../../../validators/test-validator.js";
 

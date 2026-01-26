@@ -1,7 +1,6 @@
 // Shared control plane policy types.
 // Purpose: keep policy payload shapes consistent across detectors and decisions.
 
-
 // =============================================================================
 // SURFACE CHANGE DETECTION
 // =============================================================================
@@ -19,7 +18,6 @@ export type SurfaceChangeDetection = {
 export type SurfacePatternConfig = Partial<Record<SurfaceChangeCategory, string[]>>;
 
 export type SurfacePatternSet = Record<SurfaceChangeCategory, string[]>;
-
 
 // =============================================================================
 // AUTONOMY TIERS

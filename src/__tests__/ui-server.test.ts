@@ -24,10 +24,7 @@ afterEach(async () => {
     fs.rmSync(dir, { recursive: true, force: true });
   }
   tempDirs.length = 0;
-
 });
-
-
 
 // =============================================================================
 // HELPERS
@@ -39,12 +36,7 @@ function makeTempDir(): string {
   return dir;
 }
 
-function writeRunState(
-  root: string,
-  projectName: string,
-  runId: string,
-  taskIds: string[],
-): void {
+function writeRunState(root: string, projectName: string, runId: string, taskIds: string[]): void {
   const stateDir = path.join(root, "state", projectName);
   fs.mkdirSync(stateDir, { recursive: true });
 
@@ -119,10 +111,7 @@ function buildSummaryUrl(baseUrl: string, projectName: string, runId: string): U
 }
 
 function buildRunsUrl(baseUrl: string, projectName: string): URL {
-  return new URL(
-    `/api/projects/${encodeURIComponent(projectName)}/runs`,
-    baseUrl,
-  );
+  return new URL(`/api/projects/${encodeURIComponent(projectName)}/runs`, baseUrl);
 }
 
 function buildOrchestratorEventsUrl(baseUrl: string, projectName: string, runId: string): URL {
@@ -147,8 +136,6 @@ function buildTaskEventsUrl(
     baseUrl,
   );
 }
-
-
 
 // =============================================================================
 // TESTS

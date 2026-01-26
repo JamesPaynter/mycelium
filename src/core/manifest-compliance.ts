@@ -182,7 +182,10 @@ async function collectChangedFiles(input: {
   });
 }
 
-function findViolations(files: FileResource[], manifest: TaskManifest): ManifestComplianceViolation[] {
+function findViolations(
+  files: FileResource[],
+  manifest: TaskManifest,
+): ManifestComplianceViolation[] {
   const declaredLocks = new Set(manifest.locks.writes ?? []);
   const declaredFiles = manifest.files.writes ?? [];
   const violations: ManifestComplianceViolation[] = [];
@@ -284,9 +287,7 @@ function buildViolationGuidance(
   }
 
   const ownerSummary = formatComponentOwners(componentOwners);
-  const resourceList = Array.from(
-    new Set(componentOwners.map((owner) => owner.resource)),
-  ).sort();
+  const resourceList = Array.from(new Set(componentOwners.map((owner) => owner.resource))).sort();
   const resourcesLabel = resourceList.join(", ");
 
   return [
@@ -298,15 +299,14 @@ function buildViolationGuidance(
     },
     {
       action: "split_task",
-      detail: "Split the task by component if changes should remain within a single ownership boundary.",
+      detail:
+        "Split the task by component if changes should remain within a single ownership boundary.",
     },
   ];
 }
 
 function formatComponentOwners(owners: ResourceOwnershipDetail[]): string {
-  return owners
-    .map((owner) => `${owner.resource} (root: ${owner.root})`)
-    .join(", ");
+  return owners.map((owner) => `${owner.resource} (root: ${owner.root})`).join(", ");
 }
 
 function isFileDeclared(file: string, patterns: string[]): boolean {

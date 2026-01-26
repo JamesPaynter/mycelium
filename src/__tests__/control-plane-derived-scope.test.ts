@@ -15,8 +15,6 @@ import type { TaskManifest } from "../core/task-manifest.js";
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const FIXTURE_REPO = path.resolve(__dirname, "../../test/fixtures/control-plane-mini-repo");
 
-
-
 // =============================================================================
 // HELPERS
 // =============================================================================
@@ -67,8 +65,6 @@ function expectReport(
   });
   expect(report.confidence).toBe(expected.confidence);
 }
-
-
 
 // =============================================================================
 // TESTS

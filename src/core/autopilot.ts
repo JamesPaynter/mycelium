@@ -164,8 +164,7 @@ export async function writePlanningArtifacts(args: {
   planInputPath: string;
   artifacts: AutopilotArtifacts;
 }): Promise<AutopilotArtifactPaths> {
-  const planningRoot =
-    args.planningRoot ?? path.join(args.repoPath, ".mycelium", "planning");
+  const planningRoot = args.planningRoot ?? path.join(args.repoPath, ".mycelium", "planning");
   const discoveryDir = path.join(planningRoot, "000-discovery");
   const architectureDir = path.join(planningRoot, "001-architecture");
   const implementationDir = path.join(planningRoot, "002-implementation");
@@ -179,11 +178,36 @@ export async function writePlanningArtifacts(args: {
   const implementationPlanPath = args.planInputPath;
   const riskAssessmentPath = path.join(implementationDir, "risk-assessment.md");
 
-  await appendSection(requirementsPath, "Requirements", args.sessionId, args.artifacts.discovery.requirements);
-  await appendSection(researchNotesPath, "Research Notes", args.sessionId, args.artifacts.discovery.researchNotes);
-  await appendSection(apiFindingsPath, "API Findings", args.sessionId, args.artifacts.discovery.apiFindings);
-  await appendSection(architecturePath, "Architecture", args.sessionId, args.artifacts.architecture.architecture);
-  await appendSection(decisionsPath, "Decisions", args.sessionId, args.artifacts.architecture.decisions);
+  await appendSection(
+    requirementsPath,
+    "Requirements",
+    args.sessionId,
+    args.artifacts.discovery.requirements,
+  );
+  await appendSection(
+    researchNotesPath,
+    "Research Notes",
+    args.sessionId,
+    args.artifacts.discovery.researchNotes,
+  );
+  await appendSection(
+    apiFindingsPath,
+    "API Findings",
+    args.sessionId,
+    args.artifacts.discovery.apiFindings,
+  );
+  await appendSection(
+    architecturePath,
+    "Architecture",
+    args.sessionId,
+    args.artifacts.architecture.architecture,
+  );
+  await appendSection(
+    decisionsPath,
+    "Decisions",
+    args.sessionId,
+    args.artifacts.architecture.decisions,
+  );
   await appendSection(
     infrastructurePath,
     "Infrastructure",
@@ -251,10 +275,10 @@ export function formatAutopilotTranscript(data: AutopilotTranscriptData): string
     lines.push(`- Discovery → API findings: ${relative(data.artifactPaths.apiFindingsPath)}`);
     lines.push(`- Architecture → architecture: ${relative(data.artifactPaths.architecturePath)}`);
     lines.push(`- Architecture → decisions: ${relative(data.artifactPaths.decisionsPath)}`);
-    lines.push(`- Architecture → infrastructure: ${relative(data.artifactPaths.infrastructurePath)}`);
     lines.push(
-      `- Implementation → plan: ${relative(data.artifactPaths.implementationPlanPath)}`,
+      `- Architecture → infrastructure: ${relative(data.artifactPaths.infrastructurePath)}`,
     );
+    lines.push(`- Implementation → plan: ${relative(data.artifactPaths.implementationPlanPath)}`);
     lines.push(`- Implementation → risks: ${relative(data.artifactPaths.riskAssessmentPath)}`);
     lines.push("");
     lines.push("### Draft summary");

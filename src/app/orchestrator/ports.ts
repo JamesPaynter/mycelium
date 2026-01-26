@@ -7,7 +7,10 @@
 
 import type { WorkerLogger } from "../../../worker/logging.js";
 import type { WorkerConfig } from "../../../worker/loop.js";
-import type { ControlPlaneBuildOptions, ControlPlaneBuildResult } from "../../control-plane/model/build.js";
+import type {
+  ControlPlaneBuildOptions,
+  ControlPlaneBuildResult,
+} from "../../control-plane/model/build.js";
 import type { ControlPlaneModel } from "../../control-plane/model/schema.js";
 import type { ControlPlaneStore } from "../../control-plane/storage.js";
 import type { JsonObject, JsonlLogger } from "../../core/logger.js";
@@ -16,22 +19,28 @@ import type {
   PrepareTaskWorkspaceOptions,
   PrepareTaskWorkspaceResult,
 } from "../../core/workspaces.js";
-import type { ArchitectureValidationReport, ArchitectureValidatorArgs } from "../../validators/architecture-validator.js";
-import type { DoctorValidationReport, DoctorValidatorArgs } from "../../validators/doctor-validator.js";
-import type { StyleValidationReport, StyleValidatorArgs } from "../../validators/style-validator.js";
+import type {
+  ArchitectureValidationReport,
+  ArchitectureValidatorArgs,
+} from "../../validators/architecture-validator.js";
+import type {
+  DoctorValidationReport,
+  DoctorValidatorArgs,
+} from "../../validators/doctor-validator.js";
+import type {
+  StyleValidationReport,
+  StyleValidatorArgs,
+} from "../../validators/style-validator.js";
 import type { TestValidationReport, TestValidatorArgs } from "../../validators/test-validator.js";
 
 import type { Vcs } from "./vcs/vcs.js";
-
 
 // =============================================================================
 // PORTS
 // =============================================================================
 
 export interface WorkspaceStore {
-  prepareTaskWorkspace(
-    options: PrepareTaskWorkspaceOptions,
-  ): Promise<PrepareTaskWorkspaceResult>;
+  prepareTaskWorkspace(options: PrepareTaskWorkspaceOptions): Promise<PrepareTaskWorkspaceResult>;
   removeTaskWorkspace(projectName: string, runId: string, taskId: string): Promise<void>;
   removeRunWorkspace(projectName: string, runId: string): Promise<void>;
 }

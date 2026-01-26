@@ -60,8 +60,6 @@ const KIND_RULES: Array<{ kind: ComponentKind; tokens: string[] }> = [
   },
 ];
 
-
-
 // =============================================================================
 // PUBLIC API
 // =============================================================================
@@ -78,8 +76,6 @@ export async function extractComponents(repoRoot: string): Promise<ComponentDisc
   const components = await discoverDirectoryComponents(repoRoot);
   return { components, source: "directories" };
 }
-
-
 
 // =============================================================================
 // WORKSPACE DISCOVERY
@@ -126,8 +122,6 @@ async function buildWorkspaceCandidate(
   };
 }
 
-
-
 // =============================================================================
 // DIRECTORY FALLBACK
 // =============================================================================
@@ -149,7 +143,10 @@ async function discoverDirectoryComponents(repoRoot: string): Promise<ControlPla
   return assignComponentIds(candidates);
 }
 
-async function buildDirectoryCandidate(repoRoot: string, dirName: string): Promise<ComponentCandidate> {
+async function buildDirectoryCandidate(
+  repoRoot: string,
+  dirName: string,
+): Promise<ComponentCandidate> {
   const rootPath = path.join(repoRoot, dirName);
   const root = normalizeRepoPath(dirName);
   const kind = inferKind(dirName, [root]);
@@ -162,8 +159,6 @@ async function buildDirectoryCandidate(repoRoot: string, dirName: string): Promi
     language_hints: languageHints,
   };
 }
-
-
 
 // =============================================================================
 // COMPONENT HELPERS
@@ -254,8 +249,6 @@ async function hasAnyFile(rootPath: string, fileNames: string[]): Promise<boolea
 
   return false;
 }
-
-
 
 // =============================================================================
 // PACKAGE JSON

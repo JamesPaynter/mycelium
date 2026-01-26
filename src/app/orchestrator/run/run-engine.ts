@@ -90,7 +90,6 @@ import type { ContainerSpec } from "../../../docker/docker.js";
 import { createBatchEngine } from "./batch-engine.js";
 import { createTaskEngine } from "./task-engine.js";
 
-
 // =============================================================================
 // PUBLIC TYPES
 // =============================================================================
@@ -125,14 +124,11 @@ export type RunResult = {
   stopped?: RunStopInfo;
 };
 
-
 // =============================================================================
 // RUN ENGINE
 // =============================================================================
 
-export async function runEngine(
-  context: RunContext<RunOptions, RunResult>,
-): Promise<RunResult> {
+export async function runEngine(context: RunContext<RunOptions, RunResult>): Promise<RunResult> {
   if (context.options.useLegacyEngine === true) {
     return context.legacy.runProject(context.projectName, context.config, context.options);
   }
@@ -146,9 +142,7 @@ export async function runLegacyEngine(
   return runEngineImpl(context);
 }
 
-async function runEngineImpl(
-  context: RunContext<RunOptions, RunResult>,
-): Promise<RunResult> {
+async function runEngineImpl(context: RunContext<RunOptions, RunResult>): Promise<RunResult> {
   const stopController = buildStopController(context.options.stopSignal);
 
   try {
@@ -222,7 +216,9 @@ async function runEngineImpl(
     // Prepare directories
     await ensureDir(orchestratorHome(pathsContext));
     const stateStore = new StateStore(projectName, runId, pathsContext);
-    const orchLog = new JsonlLogger(orchestratorLogPath(projectName, runId, pathsContext), { runId });
+    const orchLog = new JsonlLogger(orchestratorLogPath(projectName, runId, pathsContext), {
+      runId,
+    });
     let validationPipeline: ValidationPipeline | null = null;
     const closeValidationPipeline = (): void => {
       validationPipeline?.close();
@@ -242,8 +238,7 @@ async function runEngineImpl(
     if (hadExistingState) {
       state = await stateStore.load();
 
-      const canResume =
-        state.status === "running" || (isResume && state.status === "paused");
+      const canResume = state.status === "running" || (isResume && state.status === "paused");
       if (!canResume) {
         logRunResume(orchLog, { status: state.status, reason: runResumeReason });
         logOrchestratorEvent(orchLog, "run.resume.blocked", { reason: "state_not_running" });
@@ -596,9 +591,7 @@ async function runEngineImpl(
         stopContainersOnExit,
         orchestratorLogger: orchLog,
       });
-      const containerAction: RunStopInfo["containers"] = stopSummary
-        ? "stopped"
-        : "left_running";
+      const containerAction: RunStopInfo["containers"] = stopSummary ? "stopped" : "left_running";
       state.status = "running";
 
       const payload: JsonObject = {
@@ -701,9 +694,7 @@ async function runEngineImpl(
       const activeBatch = state.batches.find((b) => b.status === "running");
       if (activeBatch) return activeBatch;
 
-      const runningTaskEntry = Object.entries(state.tasks).find(
-        ([, t]) => t.status === "running",
-      );
+      const runningTaskEntry = Object.entries(state.tasks).find(([, t]) => t.status === "running");
       if (!runningTaskEntry) return null;
 
       const batchId = state.tasks[runningTaskEntry[0]].batch_id;
@@ -751,9 +742,7 @@ async function runEngineImpl(
         continue;
       }
 
-      const pendingTasks = tasks.filter(
-        (t) => state.tasks[t.manifest.id]?.status === "pending",
-      );
+      const pendingTasks = tasks.filter((t) => state.tasks[t.manifest.id]?.status === "pending");
       if (pendingTasks.length === 0) break;
 
       let externalCompletedDeps = new Set<string>();
@@ -791,11 +780,7 @@ async function runEngineImpl(
       const effectiveCompleted = new Set([...completed, ...externalCompletedDeps]);
       const ready = topologicalReady(pendingTasks, effectiveCompleted);
       if (ready.length === 0) {
-        const dependencyIssues = collectDependencyIssues(
-          pendingTasks,
-          state,
-          effectiveCompleted,
-        );
+        const dependencyIssues = collectDependencyIssues(pendingTasks, state, effectiveCompleted);
         if (
           dependencyIssues.blocked.length > 0 &&
           dependencyIssues.missing.length === 0 &&
@@ -970,7 +955,6 @@ async function runEngineImpl(
   }
 }
 
-
 // =============================================================================
 // RUN STOP TYPES
 // =============================================================================
@@ -987,7 +971,6 @@ type RunStopInfo = {
 type StopRequest = { kind: "signal"; signal?: string };
 
 type StopController = { readonly reason: StopRequest | null; cleanup: () => void };
-
 
 // =============================================================================
 // CONTROL PLANE SNAPSHOT
@@ -1045,7 +1028,6 @@ function shouldBuildControlPlaneSnapshot(
     !snapshot.extractor_versions
   );
 }
-
 
 // =============================================================================
 // RESOURCE RESOLUTION
@@ -1293,7 +1275,6 @@ function buildTaskLockResolver(input: {
   };
 }
 
-
 // =============================================================================
 // BLAST RADIUS
 // =============================================================================
@@ -1318,7 +1299,6 @@ async function loadBlastRadiusContext(input: {
 
   return { baseSha: loadedModel.baseSha, model: loadedModel.model };
 }
-
 
 // =============================================================================
 // RUN METRICS
@@ -1414,10 +1394,7 @@ function buildRunSummary(input: {
   controlPlaneEnabled: boolean;
   metrics: RunMetrics;
 }): RunSummary {
-  const totalBatchTasks = input.state.batches.reduce(
-    (sum, batch) => sum + batch.tasks.length,
-    0,
-  );
+  const totalBatchTasks = input.state.batches.reduce((sum, batch) => sum + batch.tasks.length, 0);
   const avgBatchSize = averageRounded(totalBatchTasks, input.state.batches.length, 2);
   const avgImpacted = averageRounded(
     input.metrics.blastRadius.impactedComponentsTotal,
@@ -1451,7 +1428,6 @@ function buildRunSummary(input: {
   };
 }
 
-
 // =============================================================================
 // STOP CONTROLLER
 // =============================================================================
@@ -1483,7 +1459,6 @@ function buildStopController(signal?: AbortSignal): StopController {
     },
   };
 }
-
 
 // =============================================================================
 // LEDGER REUSE HELPERS
@@ -1807,7 +1782,6 @@ async function resolveExternalCompletedDeps(args: {
   return { externalCompleted, satisfiedByTask };
 }
 
-
 // =============================================================================
 // STATUS HELPERS
 // =============================================================================
@@ -1920,7 +1894,9 @@ function summarizeBlockedTasks(tasks: RunState["tasks"]): BlockedTaskSummary[] {
 function buildStatusSets(state: RunState): { completed: Set<string>; failed: Set<string> } {
   const completed = new Set<string>(
     Object.entries(state.tasks)
-      .filter(([, s]) => s.status === "complete" || s.status === "validated" || s.status === "skipped")
+      .filter(
+        ([, s]) => s.status === "complete" || s.status === "validated" || s.status === "skipped",
+      )
       .map(([id]) => id),
   );
   const failed = new Set<string>(
@@ -1930,7 +1906,6 @@ function buildStatusSets(state: RunState): { completed: Set<string>; failed: Set
   );
   return { completed, failed };
 }
-
 
 // =============================================================================
 // WORKER RUNNER

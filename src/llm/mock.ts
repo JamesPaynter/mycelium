@@ -1,7 +1,12 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 
-import { LlmError, type LlmClient, type LlmCompletionOptions, type LlmCompletionResult } from "./client.js";
+import {
+  LlmError,
+  type LlmClient,
+  type LlmCompletionOptions,
+  type LlmCompletionResult,
+} from "./client.js";
 
 const TRUE_VALUES = new Set(["1", "true", "yes", "on"]);
 

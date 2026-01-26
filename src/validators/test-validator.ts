@@ -30,7 +30,6 @@ import {
 } from "./lib/normalize.js";
 import type { FileSample } from "./lib/types.js";
 
-
 // =============================================================================
 // TYPES
 // =============================================================================
@@ -60,7 +59,6 @@ export type TestValidatorArgs = {
   llmClient?: LlmClient;
   paths?: PathsContext;
 };
-
 
 // =============================================================================
 // CONSTANTS
@@ -125,7 +123,6 @@ const TASK_SPEC_LIMIT = 4_000;
 const DIFF_SUMMARY_LIMIT = 2_000;
 const TEST_OUTPUT_LIMIT = 4_000;
 
-
 // =============================================================================
 // PUBLIC API
 // =============================================================================
@@ -140,12 +137,9 @@ export async function runTestValidator(
 
   const validatorLog =
     args.logger ??
-    new JsonlLogger(
-      validatorLogPath(args.projectName, args.runId, VALIDATOR_NAME, args.paths),
-      {
-        runId: args.runId,
-      },
-    );
+    new JsonlLogger(validatorLogPath(args.projectName, args.runId, VALIDATOR_NAME, args.paths), {
+      runId: args.runId,
+    });
   const shouldCloseLog = !args.logger;
 
   logOrchestratorEvent(args.orchestratorLog, "validator.start", {
@@ -244,7 +238,6 @@ export async function runTestValidator(
     }
   }
 }
-
 
 // =============================================================================
 // INTERNALS

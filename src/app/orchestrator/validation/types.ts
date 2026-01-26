@@ -8,7 +8,6 @@
 import type { ValidatorMode } from "../../../core/config.js";
 import type { ValidatorId, ValidatorStatus } from "../../../core/state.js";
 
-
 // =============================================================================
 // RESULTS
 // =============================================================================

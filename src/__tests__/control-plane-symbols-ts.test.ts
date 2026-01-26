@@ -15,13 +15,8 @@ import { extractTypeScriptSymbolDefinitions } from "../control-plane/extract/sym
 
 const HELP_ERROR_CODE = "commander.helpDisplayed";
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const FIXTURE_REPO = path.resolve(
-  __dirname,
-  "../../test/fixtures/control-plane-symbols-ts-repo",
-);
+const FIXTURE_REPO = path.resolve(__dirname, "../../test/fixtures/control-plane-symbols-ts-repo");
 const tempDirs: string[] = [];
-
-
 
 // =============================================================================
 // HELPERS
@@ -80,8 +75,6 @@ function findByName(definitions: { name: string }[], name: string): number {
   return definitions.findIndex((definition) => definition.name === name);
 }
 
-
-
 // =============================================================================
 // TESTS
 // =============================================================================
@@ -123,9 +116,7 @@ describe("control-plane TypeScript symbols", () => {
     expect(buildCli?.file).toBe("src/index.ts");
     expect(buildCli?.component_id).toBe("src");
     expect(buildCli?.range.start.line).toBe(16);
-    expect(buildCli?.symbol_id).toMatch(
-      /^ts:src\/buildCli@src\/index\.ts:\d+$/,
-    );
+    expect(buildCli?.symbol_id).toMatch(/^ts:src\/buildCli@src\/index\.ts:\d+$/);
 
     expect(findByName(result.definitions, "User")).toBe(0);
     expect(findByName(result.definitions, "Widget")).toBe(6);

@@ -78,7 +78,9 @@ function demuxDockerStream(
   cleaners.push(pipeLines(stdout, (l) => onLine(l, "stdout")));
   cleaners.push(pipeLines(stderr, (l) => onLine(l, "stderr")));
 
-  const completed = Promise.all([waitForStreamEnd(stdout), waitForStreamEnd(stderr)]).then(() => undefined);
+  const completed = Promise.all([waitForStreamEnd(stdout), waitForStreamEnd(stderr)]).then(
+    () => undefined,
+  );
 
   return {
     detach: () => {

@@ -23,7 +23,6 @@ import type { TaskSpec } from "../core/task-manifest.js";
 
 import { loadConfigForCli } from "./config.js";
 
-
 // =============================================================================
 // TYPES
 // =============================================================================
@@ -46,7 +45,6 @@ type TaskLedgerListRow = {
   mergeCommit: string;
   completedAt: string;
 };
-
 
 // =============================================================================
 // COMMAND REGISTRATION
@@ -82,12 +80,17 @@ export function registerTasksCommand(program: Command): void {
         return;
       }
 
-      await tasksSetStatusCommand(projectName, config, {
-        runId: opts.runId,
-        taskId,
-        status: parsedStatus,
-        force: opts.force ?? false,
-      }, paths);
+      await tasksSetStatusCommand(
+        projectName,
+        config,
+        {
+          runId: opts.runId,
+          taskId,
+          status: parsedStatus,
+          force: opts.force ?? false,
+        },
+        paths,
+      );
     });
 
   const ledger = tasks
@@ -119,7 +122,6 @@ export function registerTasksCommand(program: Command): void {
     await tasksLedgerListCommand(projectName, config, paths);
   });
 }
-
 
 // =============================================================================
 // COMMANDS
@@ -241,7 +243,6 @@ export async function tasksLedgerGetCommand(
   console.log(JSON.stringify(entry, null, 2));
 }
 
-
 // =============================================================================
 // OUTPUT
 // =============================================================================
@@ -294,11 +295,26 @@ function printLedgerRows(projectName: string, rows: TaskLedgerListRow[]): void {
   };
 
   const widths = {
-    taskId: columnWidth(rows.map((row) => row.taskId), headers.taskId),
-    status: columnWidth(rows.map((row) => row.status), headers.status),
-    runId: columnWidth(rows.map((row) => row.runId), headers.runId),
-    mergeCommit: columnWidth(rows.map((row) => row.mergeCommit), headers.mergeCommit),
-    completedAt: columnWidth(rows.map((row) => row.completedAt), headers.completedAt),
+    taskId: columnWidth(
+      rows.map((row) => row.taskId),
+      headers.taskId,
+    ),
+    status: columnWidth(
+      rows.map((row) => row.status),
+      headers.status,
+    ),
+    runId: columnWidth(
+      rows.map((row) => row.runId),
+      headers.runId,
+    ),
+    mergeCommit: columnWidth(
+      rows.map((row) => row.mergeCommit),
+      headers.mergeCommit,
+    ),
+    completedAt: columnWidth(
+      rows.map((row) => row.completedAt),
+      headers.completedAt,
+    ),
   };
 
   console.log(`Ledger entries for project ${projectName}:`);
@@ -317,14 +333,10 @@ function printLedgerRows(projectName: string, rows: TaskLedgerListRow[]): void {
       `${pad(row.taskId, widths.taskId)}  ${pad(row.status, widths.status)}  ${pad(
         row.runId,
         widths.runId,
-      )}  ${pad(row.mergeCommit, widths.mergeCommit)}  ${pad(
-        row.completedAt,
-        widths.completedAt,
-      )}`,
+      )}  ${pad(row.mergeCommit, widths.mergeCommit)}  ${pad(row.completedAt, widths.completedAt)}`,
     );
   }
 }
-
 
 // =============================================================================
 // UTILITIES
@@ -384,7 +396,10 @@ function pad(value: string, width: number): string {
 function formatTimestamp(ts: string): string {
   const parsed = new Date(ts);
   if (Number.isNaN(parsed.getTime())) return ts;
-  return parsed.toISOString().replace("T", " ").replace(/\.\d+Z$/, "Z");
+  return parsed
+    .toISOString()
+    .replace("T", " ")
+    .replace(/\.\d+Z$/, "Z");
 }
 
 async function loadTaskCatalogOrExit(config: ProjectConfig): Promise<TaskSpec[] | null> {

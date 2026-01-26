@@ -12,7 +12,6 @@ import { loadProjectConfig } from "../../core/config-loader.js";
 import { createAppContext, type AppContext } from "../context.js";
 import { setDefaultAppPathsContext } from "../paths.js";
 
-
 // =============================================================================
 // TYPES
 // =============================================================================
@@ -29,7 +28,6 @@ export type LoadAppContextResult = {
   appContext: AppContext;
   created: boolean;
 };
-
 
 // =============================================================================
 // PUBLIC API

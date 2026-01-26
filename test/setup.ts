@@ -3,7 +3,6 @@ import { afterEach, beforeEach } from "vitest";
 import { setDefaultAppPathsContext } from "../src/app/paths.js";
 import { clearDefaultPathsContext } from "../src/core/paths.js";
 
-
 // =============================================================================
 // MYCELIUM_HOME SYNC
 // =============================================================================

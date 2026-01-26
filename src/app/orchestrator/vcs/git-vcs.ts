@@ -19,7 +19,6 @@ import { mergeTaskBranches } from "../../../git/merge.js";
 
 import type { Vcs } from "./vcs.js";
 
-
 // =============================================================================
 // TYPES
 // =============================================================================
@@ -27,7 +26,6 @@ import type { Vcs } from "./vcs.js";
 export type GitVcsOptions = {
   taskBranchPrefix: string;
 };
-
 
 // =============================================================================
 // PUBLIC API

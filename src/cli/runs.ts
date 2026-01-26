@@ -7,7 +7,6 @@ import { listRunHistoryEntries, type RunHistoryEntry } from "../core/run-history
 
 import { loadConfigForCli } from "./config.js";
 
-
 // =============================================================================
 // TYPES
 // =============================================================================
@@ -18,15 +17,12 @@ type RunsListOptions = {
   json?: boolean;
 };
 
-
 // =============================================================================
 // COMMAND REGISTRATION
 // =============================================================================
 
 export function registerRunsCommand(program: Command): void {
-  const runs = program
-    .command("runs")
-    .description("List runs recorded for a project");
+  const runs = program.command("runs").description("List runs recorded for a project");
 
   runs
     .command("list")
@@ -48,13 +44,17 @@ export function registerRunsCommand(program: Command): void {
         return;
       }
 
-      await runsListCommand(projectName, config, {
-        limit: limit.value,
-        json: opts.json ?? false,
-      }, appContext);
+      await runsListCommand(
+        projectName,
+        config,
+        {
+          limit: limit.value,
+          json: opts.json ?? false,
+        },
+        appContext,
+      );
     });
 }
-
 
 // =============================================================================
 // COMMANDS
@@ -82,7 +82,6 @@ export async function runsListCommand(
   printRunList(projectName, runs);
 }
 
-
 // =============================================================================
 // OUTPUT
 // =============================================================================
@@ -105,11 +104,26 @@ function printRunList(projectName: string, runs: RunHistoryEntry[]): void {
   };
 
   const widths = {
-    runId: columnWidth(rows.map((row) => row.runId), headers.runId),
-    status: columnWidth(rows.map((row) => row.status), headers.status),
-    startedAt: columnWidth(rows.map((row) => row.startedAt), headers.startedAt),
-    updatedAt: columnWidth(rows.map((row) => row.updatedAt), headers.updatedAt),
-    tasks: columnWidth(rows.map((row) => row.tasks), headers.tasks),
+    runId: columnWidth(
+      rows.map((row) => row.runId),
+      headers.runId,
+    ),
+    status: columnWidth(
+      rows.map((row) => row.status),
+      headers.status,
+    ),
+    startedAt: columnWidth(
+      rows.map((row) => row.startedAt),
+      headers.startedAt,
+    ),
+    updatedAt: columnWidth(
+      rows.map((row) => row.updatedAt),
+      headers.updatedAt,
+    ),
+    tasks: columnWidth(
+      rows.map((row) => row.tasks),
+      headers.tasks,
+    ),
   };
 
   console.log(`Runs for project ${projectName}:`);
@@ -129,7 +143,6 @@ function printRunList(projectName: string, runs: RunHistoryEntry[]): void {
     );
   }
 }
-
 
 // =============================================================================
 // UTILITIES
@@ -159,5 +172,8 @@ function pad(value: string, width: number): string {
 function formatTimestamp(ts: string): string {
   const parsed = new Date(ts);
   if (Number.isNaN(parsed.getTime())) return ts;
-  return parsed.toISOString().replace("T", " ").replace(/\.\d+Z$/, "Z");
+  return parsed
+    .toISOString()
+    .replace("T", " ")
+    .replace(/\.\d+Z$/, "Z");
 }

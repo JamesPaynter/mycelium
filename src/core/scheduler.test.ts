@@ -72,11 +72,7 @@ describe("scheduler", () => {
   });
 
   it("sorts ready tasks by id while filtering dependencies", () => {
-    const tasks = [
-      createTask("010", {}, ["2"]),
-      createTask("2"),
-      createTask("3", {}, ["9"]),
-    ];
+    const tasks = [createTask("010", {}, ["2"]), createTask("2"), createTask("3", {}, ["9"])];
 
     const ready = topologicalReady(tasks, new Set(["2"]));
 

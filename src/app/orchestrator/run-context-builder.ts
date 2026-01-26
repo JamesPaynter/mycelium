@@ -34,7 +34,6 @@ import {
   type RunValidatorConfig,
 } from "./run-context.js";
 
-
 // =============================================================================
 // TYPES
 // =============================================================================
@@ -47,17 +46,20 @@ export type BuildRunContextBaseInput<RunOptions extends RunContextOptions> = {
   paths?: PathsContext;
 };
 
-export type BuildRunContextInput<RunOptions extends RunContextOptions, RunResult> =
-  BuildRunContextBaseInput<RunOptions> & {
-    legacy: LegacyExecutor<RunOptions, RunResult>;
-  };
-
+export type BuildRunContextInput<
+  RunOptions extends RunContextOptions,
+  RunResult,
+> = BuildRunContextBaseInput<RunOptions> & {
+  legacy: LegacyExecutor<RunOptions, RunResult>;
+};
 
 // =============================================================================
 // HELPERS
 // =============================================================================
 
-function buildContainerResources(config: ProjectConfig["docker"]): RunContextResolved["docker"]["containerResources"] {
+function buildContainerResources(
+  config: ProjectConfig["docker"],
+): RunContextResolved["docker"]["containerResources"] {
   const memoryBytes =
     config.memory_mb !== undefined ? Math.trunc(config.memory_mb * 1024 * 1024) : undefined;
   const cpuQuota = config.cpu_quota;
@@ -105,14 +107,13 @@ function buildContainerSecurityPayload(config: ProjectConfig["docker"]): JsonObj
 function resolveControlPlaneConfig(config: ProjectConfig): ControlPlaneRunConfig {
   const raw = (config.control_plane ?? {}) as Partial<ProjectConfig["control_plane"]>;
   const rawChecks = (raw.checks ?? {}) as Partial<ProjectConfig["control_plane"]["checks"]>;
-  const rawSurfacePatterns =
-    (raw.surface_patterns ?? {}) as ControlPlaneSurfacePatternsConfig;
-  const rawSurfaceLocks =
-    (raw.surface_locks ?? {}) as Partial<ProjectConfig["control_plane"]["surface_locks"]>;
+  const rawSurfacePatterns = (raw.surface_patterns ?? {}) as ControlPlaneSurfacePatternsConfig;
+  const rawSurfaceLocks = (raw.surface_locks ?? {}) as Partial<
+    ProjectConfig["control_plane"]["surface_locks"]
+  >;
   const fallbackResourceRaw = raw.fallback_resource ?? "repo-root";
-  const fallbackResource = fallbackResourceRaw.trim().length > 0
-    ? fallbackResourceRaw.trim()
-    : "repo-root";
+  const fallbackResource =
+    fallbackResourceRaw.trim().length > 0 ? fallbackResourceRaw.trim() : "repo-root";
 
   return {
     enabled: raw.enabled === true,
@@ -138,9 +139,9 @@ function resolveValidatorMode(cfg?: { enabled?: boolean; mode?: ValidatorMode })
   return cfg.mode ?? "warn";
 }
 
-function resolveValidatorContext<TConfig extends { enabled?: boolean; mode?: ValidatorMode } | undefined>(
-  config: TConfig,
-): RunValidatorConfig<TConfig> {
+function resolveValidatorContext<
+  TConfig extends { enabled?: boolean; mode?: ValidatorMode } | undefined,
+>(config: TConfig): RunValidatorConfig<TConfig> {
   const mode = resolveValidatorMode(config);
   return {
     config,
@@ -148,7 +149,6 @@ function resolveValidatorContext<TConfig extends { enabled?: boolean; mode?: Val
     enabled: mode !== "off",
   };
 }
-
 
 // =============================================================================
 // PUBLIC API
@@ -187,7 +187,7 @@ export async function buildRunContextBase<RunOptions extends RunContextOptions>(
   const cleanupConfig = input.config.cleanup ?? { workspaces: "never", containers: "never" };
   const cleanupWorkspacesOnSuccess = cleanupConfig.workspaces === "on_success";
   const cleanupContainersOnSuccess =
-    input.options.cleanupOnSuccess ?? (cleanupConfig.containers === "on_success");
+    input.options.cleanupOnSuccess ?? cleanupConfig.containers === "on_success";
   const useDocker = input.options.useDocker ?? true;
   const stopContainersOnExit = input.options.stopContainersOnExit ?? false;
   const crashAfterContainerStart = input.options.crashAfterContainerStart ?? false;
@@ -200,8 +200,7 @@ export async function buildRunContextBase<RunOptions extends RunContextOptions>(
   const networkMode = input.config.docker.network_mode;
   const containerUser = input.config.docker.user;
   const controlPlaneConfig = resolveControlPlaneConfig(input.config);
-  const manifestPolicy: ManifestEnforcementPolicy =
-    input.config.manifest_enforcement ?? "warn";
+  const manifestPolicy: ManifestEnforcementPolicy = input.config.manifest_enforcement ?? "warn";
   const costPer1kTokens = DEFAULT_COST_PER_1K_TOKENS;
   const mockLlmMode = isMockLlmEnabled() || input.config.worker.model === "mock";
 

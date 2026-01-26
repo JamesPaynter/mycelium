@@ -6,7 +6,6 @@ import type { AutonomyTier, SurfaceChangeCategory } from "./types.js";
 const MODERATE_IMPACT_COMPONENTS = 2;
 const LARGE_IMPACT_COMPONENTS = 4;
 
-
 // =============================================================================
 // PUBLIC API
 // =============================================================================
@@ -26,8 +25,7 @@ export function classifyAutonomyTier(input: AutonomyTierInput): AutonomyTier {
 
   const hasSurfaceChange = surfaceCategories.length > 0;
   const hasLargeImpact = effectiveImpact >= LARGE_IMPACT_COMPONENTS;
-  const hasModerateImpact =
-    effectiveImpact >= MODERATE_IMPACT_COMPONENTS && !hasLargeImpact;
+  const hasModerateImpact = effectiveImpact >= MODERATE_IMPACT_COMPONENTS && !hasLargeImpact;
 
   if (hasHighRiskSurfaceCombo(surfaceCategories)) {
     return 3;
@@ -52,7 +50,6 @@ export function shouldForceGlobalChecksForTier(tier: AutonomyTier): boolean {
   return tier >= 2;
 }
 
-
 // =============================================================================
 // INTERNAL HELPERS
 // =============================================================================
@@ -65,12 +62,12 @@ function hasHighRiskSurfaceCombo(categories: SurfaceChangeCategory[]): boolean {
   return categories.includes("contract") && categories.includes("config");
 }
 
-function normalizeSurfaceCategories(
-  categories: SurfaceChangeCategory[],
-): SurfaceChangeCategory[] {
-  const normalized = categories.map((category) => category.trim()).filter((category) => {
-    return category.length > 0;
-  });
+function normalizeSurfaceCategories(categories: SurfaceChangeCategory[]): SurfaceChangeCategory[] {
+  const normalized = categories
+    .map((category) => category.trim())
+    .filter((category) => {
+      return category.length > 0;
+    });
 
   return Array.from(new Set(normalized)).sort() as SurfaceChangeCategory[];
 }

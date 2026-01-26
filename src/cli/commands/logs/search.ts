@@ -4,8 +4,6 @@ import { searchLogs, type LogSearchResult } from "../../../core/log-query.js";
 
 import type { LogsCommandContext, LogsCommandContextBuilder } from "./index.js";
 
-
-
 // =============================================================================
 // COMMAND REGISTRATION
 // =============================================================================
@@ -29,8 +27,6 @@ export function registerLogsSearchCommand(
       });
     });
 }
-
-
 
 // =============================================================================
 // COMMANDS

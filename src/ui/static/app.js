@@ -50,7 +50,6 @@ const views = {
 
 init();
 
-
 // =============================================================================
 // INITIALIZATION
 // =============================================================================
@@ -154,7 +153,6 @@ function maybeLoadRunsFromInputs() {
   void fetchRuns(projectName);
 }
 
-
 // =============================================================================
 // ROUTING + QUERY PARAMS
 // =============================================================================
@@ -214,7 +212,6 @@ function normalizeView(viewName) {
   }
   return "list";
 }
-
 
 // =============================================================================
 // TARGET + POLLING
@@ -281,7 +278,6 @@ function setSelectedTask(taskId) {
   views.list.onSelectionChanged(taskId);
 }
 
-
 // =============================================================================
 // SUMMARY API
 // =============================================================================
@@ -303,7 +299,6 @@ async function fetchSummary() {
     appState.isSummaryLoading = false;
   }
 }
-
 
 // =============================================================================
 // RUN LIST API
@@ -368,7 +363,6 @@ function formatRunOption(run) {
   return `${run.runId} | ${run.status} | ${tasks} | ${updatedAt}`;
 }
 
-
 // =============================================================================
 // UTILITIES
 // =============================================================================
@@ -427,5 +421,8 @@ function toErrorMessage(error) {
 function formatTimestamp(ts) {
   const parsed = new Date(ts);
   if (Number.isNaN(parsed.getTime())) return ts;
-  return parsed.toISOString().replace("T", " ").replace(/\.\d+Z$/, "Z");
+  return parsed
+    .toISOString()
+    .replace("T", " ")
+    .replace(/\.\d+Z$/, "Z");
 }

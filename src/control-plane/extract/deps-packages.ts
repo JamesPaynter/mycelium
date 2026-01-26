@@ -28,8 +28,6 @@ const WORKSPACE_DEPENDENCY_FIELDS: WorkspaceDependencyField[] = [
   "peerDependencies",
 ];
 
-
-
 // =============================================================================
 // PUBLIC API
 // =============================================================================
@@ -104,8 +102,6 @@ export async function extractWorkspacePackageDependencyEdges(
   return edges;
 }
 
-
-
 // =============================================================================
 // WORKSPACE PACKAGE LOADING
 // =============================================================================
@@ -142,9 +138,7 @@ async function loadWorkspacePackageInfo(
   };
 }
 
-function indexWorkspacePackagesByName(
-  packages: WorkspacePackageInfo[],
-): Map<string, string[]> {
+function indexWorkspacePackagesByName(packages: WorkspacePackageInfo[]): Map<string, string[]> {
   const index = new Map<string, string[]>();
 
   for (const pkg of packages) {
@@ -161,8 +155,6 @@ function indexWorkspacePackagesByName(
 
   return index;
 }
-
-
 
 // =============================================================================
 // PACKAGE JSON HELPERS
@@ -197,10 +189,7 @@ function extractWorkspaceGlobs(packageJson: unknown): string[] {
   return [];
 }
 
-function extractDependencyNames(
-  packageJson: unknown,
-  field: WorkspaceDependencyField,
-): string[] {
+function extractDependencyNames(packageJson: unknown, field: WorkspaceDependencyField): string[] {
   if (!packageJson || typeof packageJson !== "object") {
     return [];
   }
@@ -238,8 +227,6 @@ function isNonEmptyString(value: unknown): value is string {
   return typeof value === "string" && value.trim().length > 0;
 }
 
-
-
 // =============================================================================
 // PATH HELPERS
 // =============================================================================
@@ -270,8 +257,6 @@ function normalizeRepoPath(inputPath: string): string {
   return withoutLeading.replace(/\/+$/, "");
 }
 
-function isWorkspacePackageInfo(
-  entry: WorkspacePackageInfo | null,
-): entry is WorkspacePackageInfo {
+function isWorkspacePackageInfo(entry: WorkspacePackageInfo | null): entry is WorkspacePackageInfo {
   return entry !== null;
 }

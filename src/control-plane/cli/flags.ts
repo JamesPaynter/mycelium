@@ -14,8 +14,6 @@ export type ControlPlaneFlagOptions = {
   prettyJson: boolean;
 };
 
-
-
 // =============================================================================
 // FLAG REGISTRATION
 // =============================================================================
@@ -29,8 +27,6 @@ export function registerControlPlaneFlags(command: Command): void {
     .option("--pretty", "Pretty-print JSON output", false)
     .option("--no-build", "Fail fast if the navigation model is missing");
 }
-
-
 
 // =============================================================================
 // FLAG RESOLUTION
@@ -59,8 +55,6 @@ export function resolveControlPlaneFlags(command: Command): ControlPlaneFlagOpti
     prettyJson,
   };
 }
-
-
 
 // =============================================================================
 // REVISION CONTRACT

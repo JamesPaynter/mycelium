@@ -38,7 +38,7 @@ describe("acceptance: doctor canary config + logging", () => {
     process.env.MOCK_LLM = "1";
 
     const config = makeConfig(repoDir, {
-      doctorCommand: "node -e \"process.exit(0)\"",
+      doctorCommand: 'node -e "process.exit(0)"',
       doctorCanary: {
         mode: "off",
         env_var: "ORCH_CANARY",
@@ -52,9 +52,7 @@ describe("acceptance: doctor canary config + logging", () => {
       buildImage: false,
     });
 
-    const events = await readLogEvents(
-      orchestratorLogPath("doctor-canary-disabled", result.runId),
-    );
+    const events = await readLogEvents(orchestratorLogPath("doctor-canary-disabled", result.runId));
     const skipped = events.find((event) => event.type === "doctor.canary.skipped");
 
     expect((skipped?.payload as { reason?: string } | undefined)?.reason).toBe(
@@ -70,7 +68,7 @@ describe("acceptance: doctor canary config + logging", () => {
     process.env.MOCK_LLM = "1";
 
     const config = makeConfig(repoDir, {
-      doctorCommand: "node -e \"process.exit(0)\"",
+      doctorCommand: 'node -e "process.exit(0)"',
       doctorCanary: {
         mode: "env",
         env_var: "MYCELIUM_CANARY",
@@ -103,8 +101,7 @@ describe("acceptance: doctor canary config + logging", () => {
     process.env.MOCK_LLM = "1";
 
     const config = makeConfig(repoDir, {
-      doctorCommand:
-        "node -e \"process.exit(process.env.MYCELIUM_CANARY === '1' ? 1 : 0)\"",
+      doctorCommand: "node -e \"process.exit(process.env.MYCELIUM_CANARY === '1' ? 1 : 0)\"",
       doctorCanary: {
         mode: "env",
         env_var: "MYCELIUM_CANARY",
@@ -118,9 +115,7 @@ describe("acceptance: doctor canary config + logging", () => {
       buildImage: false,
     });
 
-    const events = await readLogEvents(
-      orchestratorLogPath("doctor-canary-expected", result.runId),
-    );
+    const events = await readLogEvents(orchestratorLogPath("doctor-canary-expected", result.runId));
     const expectedFail = events.find((event) => event.type === "doctor.canary.expected_fail");
 
     const expectedPayload = expectedFail?.payload as
@@ -165,7 +160,7 @@ async function makeRepoWithSingleTask(
         affected_tests: [],
         test_paths: [],
         tdd_mode: "off",
-        verify: { doctor: "node -e \"process.exit(0)\"" },
+        verify: { doctor: 'node -e "process.exit(0)"' },
       },
       null,
       2,

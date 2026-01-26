@@ -7,7 +7,6 @@ import type { AppContext } from "../app/context.js";
 
 import { createUiRouter } from "./router.js";
 
-
 // =============================================================================
 // TYPES
 // =============================================================================
@@ -23,7 +22,6 @@ export type UiServerHandle = {
   url: string;
   close: () => Promise<void>;
 };
-
 
 // =============================================================================
 // PUBLIC API
@@ -71,7 +69,6 @@ export async function startUiServer(options: StartUiServerOptions): Promise<UiSe
     close: () => closeServer(server),
   };
 }
-
 
 // =============================================================================
 // INTERNALS

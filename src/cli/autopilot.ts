@@ -51,11 +51,7 @@ export async function autopilotCommand(
   const startedAt = isoNow();
 
   const planningRoot = resolvePath(config.repo_path, config.planning_dir);
-  const planInputDefault = path.join(
-    planningRoot,
-    "002-implementation",
-    "implementation-plan.md",
-  );
+  const planInputDefault = path.join(planningRoot, "002-implementation", "implementation-plan.md");
   const planInputPath = resolvePath(config.repo_path, opts.planInput ?? planInputDefault);
   const transcriptPath = path.join(planningRoot, "sessions", `${sessionId}-autopilot.md`);
   const rel = (p: string): string => path.relative(config.repo_path, p);
@@ -68,7 +64,13 @@ export async function autopilotCommand(
     startedAt,
   };
 
-  const client = createPlannerClient(config.planner, projectName, config.repo_path, undefined, paths);
+  const client = createPlannerClient(
+    config.planner,
+    projectName,
+    config.repo_path,
+    undefined,
+    paths,
+  );
   const io = new ConsoleAutopilotIo();
   const stopHandler = createRunStopSignalHandler({
     onSignal: (signal) => {
@@ -90,7 +92,9 @@ export async function autopilotCommand(
   };
 
   try {
-    io.note(`Autopilot ${sessionId} starting. I will ask a few questions, draft planning files, plan tasks, then run.`);
+    io.note(
+      `Autopilot ${sessionId} starting. I will ask a few questions, draft planning files, plan tasks, then run.`,
+    );
 
     const session = await runAutopilotSession({
       client,
@@ -115,12 +119,17 @@ export async function autopilotCommand(
     transcriptData.artifactPaths = artifactPaths;
     io.note(`Planning artifacts updated (plan input: ${rel(planInputPath)})`);
 
-    const planResult = await planProject(projectName, config, {
-      input: planInputPath,
-      output: opts.planOutput,
-      dryRun: false,
-      runId: sessionId,
-    }, appContext);
+    const planResult = await planProject(
+      projectName,
+      config,
+      {
+        input: planInputPath,
+        output: opts.planOutput,
+        dryRun: false,
+        runId: sessionId,
+      },
+      appContext,
+    );
     transcriptData.plan = {
       tasksPlanned: planResult.tasks.length,
       outputDir: planResult.outputDir,
@@ -194,9 +203,7 @@ export async function autopilotCommand(
       if (runResult.stopped) {
         const signalLabel = runResult.stopped.signal ? ` (${runResult.stopped.signal})` : "";
         const containerLabel =
-          runResult.stopped.containers === "stopped"
-            ? "stopped"
-            : "left running for resume";
+          runResult.stopped.containers === "stopped" ? "stopped" : "left running for resume";
         io.note(
           `Run ${runResult.runId} stopped by signal${signalLabel}; containers ${containerLabel}. Resume with: mycelium resume --project ${projectName} --run-id ${runResult.runId}`,
         );

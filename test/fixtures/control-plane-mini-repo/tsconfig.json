@@ -11,9 +11,5 @@
       "@acme/infra-terraform": ["infra/terraform/src/index.ts"]
     }
   },
-  "include": [
-    "apps/web/src/**/*.ts",
-    "packages/utils/src/**/*.ts",
-    "infra/terraform/src/**/*.ts"
-  ]
+  "include": ["apps/web/src/**/*.ts", "packages/utils/src/**/*.ts", "infra/terraform/src/**/*.ts"]
 }

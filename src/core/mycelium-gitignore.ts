@@ -2,9 +2,7 @@ export type MyceliumGitignoreOptions = {
   includeSessions?: boolean;
 };
 
-export function buildMyceliumGitignore(
-  options: MyceliumGitignoreOptions = {},
-): string {
+export function buildMyceliumGitignore(options: MyceliumGitignoreOptions = {}): string {
   const entries = buildEntries(options);
   const lines = [
     "# Managed by Mycelium. Edit this file if you need different repo hygiene.",
@@ -15,13 +13,7 @@ export function buildMyceliumGitignore(
 }
 
 function buildEntries(options: MyceliumGitignoreOptions): string[] {
-  const entries = [
-    "logs/",
-    "state/",
-    "workspaces/",
-    "codex/",
-    "projects/",
-  ];
+  const entries = ["logs/", "state/", "workspaces/", "codex/", "projects/"];
 
   if (options.includeSessions ?? true) {
     entries.push("planning/sessions/");

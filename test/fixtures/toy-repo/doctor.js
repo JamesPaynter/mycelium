@@ -27,7 +27,7 @@ function main() {
   const targets =
     taskId === undefined
       ? REQUIRED_FILES
-      : REQUIRED_FILES.filter((entry) => entry.task === taskId) ?? REQUIRED_FILES;
+      : (REQUIRED_FILES.filter((entry) => entry.task === taskId) ?? REQUIRED_FILES);
 
   const failures = targets.filter((entry) => !fileHasMockUpdate(entry.path, entry.description));
 

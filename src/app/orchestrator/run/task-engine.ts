@@ -11,17 +11,16 @@ import fse from "fs-extra";
 
 import type { ControlPlaneModel } from "../../../control-plane/model/schema.js";
 import type { ChecksetDecision } from "../../../control-plane/policy/checkset.js";
-import { evaluateTaskPolicyDecision, type ChecksetReport } from "../../../control-plane/policy/eval.js";
+import {
+  evaluateTaskPolicyDecision,
+  type ChecksetReport,
+} from "../../../control-plane/policy/eval.js";
 import type { PolicyDecision, SurfacePatternSet } from "../../../control-plane/policy/types.js";
 import type { DerivedScopeReport } from "../../../control-plane/integration/derived-scope.js";
 import { ensureCodexAuthForHome } from "../../../core/codexAuth.js";
 import { resolveCodexReasoningEffort } from "../../../core/codex-reasoning.js";
 import type { ProjectConfig } from "../../../core/config.js";
-import {
-  JsonlLogger,
-  logOrchestratorEvent,
-  logTaskReset,
-} from "../../../core/logger.js";
+import { JsonlLogger, logOrchestratorEvent, logTaskReset } from "../../../core/logger.js";
 import {
   taskChecksetReportPath,
   taskEventsLogPath,
@@ -43,7 +42,6 @@ import { formatErrorMessage } from "../helpers/errors.js";
 import type { ControlPlaneRunConfig } from "../run-context.js";
 import type { Vcs } from "../vcs/vcs.js";
 import type { WorkerRunner, WorkerRunnerResult } from "../workers/worker-runner.js";
-
 
 // =============================================================================
 // TYPES
@@ -99,7 +97,6 @@ export type TaskEngine = {
   runTaskAttempt(task: TaskSpec): Promise<TaskRunResult>;
 };
 
-
 // =============================================================================
 // POLICY DECISIONS
 // =============================================================================
@@ -126,8 +123,7 @@ function computeTaskPolicyDecision(input: {
   surfacePatterns: SurfacePatternSet;
   fallbackResource: string;
 }): TaskPolicyDecisionResult {
-  const derivedScopeReport =
-    input.derivedScopeReports.get(input.task.manifest.id) ?? null;
+  const derivedScopeReport = input.derivedScopeReports.get(input.task.manifest.id) ?? null;
   const result = evaluateTaskPolicyDecision({
     task: input.task.manifest,
     derivedScopeReport,
@@ -147,7 +143,6 @@ function computeTaskPolicyDecision(input: {
   };
 }
 
-
 // =============================================================================
 // TASK ENGINE
 // =============================================================================
@@ -165,7 +160,8 @@ export function createTaskEngine(context: TaskEngineContext): TaskEngine {
     const branchName =
       taskState.branch ?? context.vcs.buildTaskBranchName(taskId, task.manifest.name);
     const workspace =
-      taskState.workspace ?? taskWorkspaceDir(context.projectName, context.runId, taskId, context.paths);
+      taskState.workspace ??
+      taskWorkspaceDir(context.projectName, context.runId, taskId, context.paths);
     const logsDir =
       taskState.logs_dir ??
       taskLogsDir(context.projectName, context.runId, taskId, task.slug, context.paths);
@@ -202,10 +198,7 @@ export function createTaskEngine(context: TaskEngineContext): TaskEngine {
     }
   };
 
-  const syncWorkerStateIntoTask = async (
-    taskId: string,
-    workspace: string,
-  ): Promise<boolean> => {
+  const syncWorkerStateIntoTask = async (taskId: string, workspace: string): Promise<boolean> => {
     try {
       const workerState = await loadWorkerState(workspace);
       if (!workerState) return false;
@@ -576,7 +569,6 @@ export function createTaskEngine(context: TaskEngineContext): TaskEngine {
   };
 }
 
-
 // =============================================================================
 // WORKER STATE HELPERS
 // =============================================================================
@@ -601,10 +593,7 @@ export function mergeCheckpointCommits(
   return Array.from(byAttempt.values()).sort((a, b) => a.attempt - b.attempt);
 }
 
-export function checkpointListsEqual(
-  a: CheckpointCommit[],
-  b: CheckpointCommit[],
-): boolean {
+export function checkpointListsEqual(a: CheckpointCommit[], b: CheckpointCommit[]): boolean {
   if (a.length !== b.length) return false;
 
   return a.every(

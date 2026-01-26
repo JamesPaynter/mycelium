@@ -12,14 +12,9 @@ import { buildCli } from "../cli/index.js";
 
 const HELP_ERROR_CODE = "commander.helpDisplayed";
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const FIXTURE_REPO = path.resolve(
-  __dirname,
-  "../../test/fixtures/control-plane-symbols-ts-repo",
-);
+const FIXTURE_REPO = path.resolve(__dirname, "../../test/fixtures/control-plane-symbols-ts-repo");
 const SYMBOL_REFS_TEST_TIMEOUT_MS = 15000;
 const tempDirs: string[] = [];
-
-
 
 // =============================================================================
 // HELPERS
@@ -79,12 +74,9 @@ async function initGitRepo(repoDir: string): Promise<void> {
 }
 
 function parseLastJsonLine<T>(logSpy: ReturnType<typeof vi.spyOn>): T {
-  const line =
-    logSpy.mock.calls.map((call: unknown[]) => call.join(" ")).pop() ?? "";
+  const line = logSpy.mock.calls.map((call: unknown[]) => call.join(" ")).pop() ?? "";
   return JSON.parse(line) as T;
 }
-
-
 
 // =============================================================================
 // TESTS
@@ -104,48 +96,48 @@ describe("control-plane symbol references", () => {
   it(
     "resolves TypeScript references for a symbol",
     async () => {
-    const repoDir = await createTempRepoFromFixture();
-    const logSpy = vi.spyOn(console, "log").mockImplementation(() => undefined);
+      const repoDir = await createTempRepoFromFixture();
+      const logSpy = vi.spyOn(console, "log").mockImplementation(() => undefined);
 
-    await runCli([
-      "node",
-      "mycelium",
-      "cp",
-      "symbols",
-      "find",
-      "UserId",
-      "--json",
-      "--repo",
-      repoDir,
-    ]);
+      await runCli([
+        "node",
+        "mycelium",
+        "cp",
+        "symbols",
+        "find",
+        "UserId",
+        "--json",
+        "--repo",
+        repoDir,
+      ]);
 
-    const findPayload = parseLastJsonLine<{
-      ok: boolean;
-      result?: { matches?: Array<{ symbol_id?: string }> };
-    }>(logSpy);
-    const symbolId = findPayload.result?.matches?.[0]?.symbol_id ?? "";
+      const findPayload = parseLastJsonLine<{
+        ok: boolean;
+        result?: { matches?: Array<{ symbol_id?: string }> };
+      }>(logSpy);
+      const symbolId = findPayload.result?.matches?.[0]?.symbol_id ?? "";
 
-    await runCli([
-      "node",
-      "mycelium",
-      "cp",
-      "symbols",
-      "refs",
-      symbolId,
-      "--json",
-      "--repo",
-      repoDir,
-    ]);
+      await runCli([
+        "node",
+        "mycelium",
+        "cp",
+        "symbols",
+        "refs",
+        symbolId,
+        "--json",
+        "--repo",
+        repoDir,
+      ]);
 
-    const refsPayload = parseLastJsonLine<{
-      ok: boolean;
-      result?: { references?: Array<{ file?: string; is_definition?: boolean }> };
-    }>(logSpy);
+      const refsPayload = parseLastJsonLine<{
+        ok: boolean;
+        result?: { references?: Array<{ file?: string; is_definition?: boolean }> };
+      }>(logSpy);
 
-    const references = refsPayload.result?.references ?? [];
-    expect(references.length).toBeGreaterThan(0);
-    expect(references.every((ref) => ref.is_definition === false)).toBe(true);
-    expect(references.every((ref) => ref.file === "src/index.ts")).toBe(true);
+      const references = refsPayload.result?.references ?? [];
+      expect(references.length).toBeGreaterThan(0);
+      expect(references.every((ref) => ref.is_definition === false)).toBe(true);
+      expect(references.every((ref) => ref.file === "src/index.ts")).toBe(true);
     },
     SYMBOL_REFS_TEST_TIMEOUT_MS,
   );
@@ -153,47 +145,47 @@ describe("control-plane symbol references", () => {
   it(
     "includes definition references when requested",
     async () => {
-    const repoDir = await createTempRepoFromFixture();
-    const logSpy = vi.spyOn(console, "log").mockImplementation(() => undefined);
+      const repoDir = await createTempRepoFromFixture();
+      const logSpy = vi.spyOn(console, "log").mockImplementation(() => undefined);
 
-    await runCli([
-      "node",
-      "mycelium",
-      "cp",
-      "symbols",
-      "find",
-      "UserId",
-      "--json",
-      "--repo",
-      repoDir,
-    ]);
+      await runCli([
+        "node",
+        "mycelium",
+        "cp",
+        "symbols",
+        "find",
+        "UserId",
+        "--json",
+        "--repo",
+        repoDir,
+      ]);
 
-    const findPayload = parseLastJsonLine<{
-      ok: boolean;
-      result?: { matches?: Array<{ symbol_id?: string }> };
-    }>(logSpy);
-    const symbolId = findPayload.result?.matches?.[0]?.symbol_id ?? "";
+      const findPayload = parseLastJsonLine<{
+        ok: boolean;
+        result?: { matches?: Array<{ symbol_id?: string }> };
+      }>(logSpy);
+      const symbolId = findPayload.result?.matches?.[0]?.symbol_id ?? "";
 
-    await runCli([
-      "node",
-      "mycelium",
-      "cp",
-      "symbols",
-      "refs",
-      symbolId,
-      "--include-definition",
-      "--json",
-      "--repo",
-      repoDir,
-    ]);
+      await runCli([
+        "node",
+        "mycelium",
+        "cp",
+        "symbols",
+        "refs",
+        symbolId,
+        "--include-definition",
+        "--json",
+        "--repo",
+        repoDir,
+      ]);
 
-    const refsPayload = parseLastJsonLine<{
-      ok: boolean;
-      result?: { references?: Array<{ is_definition?: boolean }> };
-    }>(logSpy);
+      const refsPayload = parseLastJsonLine<{
+        ok: boolean;
+        result?: { references?: Array<{ is_definition?: boolean }> };
+      }>(logSpy);
 
-    const references = refsPayload.result?.references ?? [];
-    expect(references.some((ref) => ref.is_definition === true)).toBe(true);
+      const references = refsPayload.result?.references ?? [];
+      expect(references.some((ref) => ref.is_definition === true)).toBe(true);
     },
     SYMBOL_REFS_TEST_TIMEOUT_MS,
   );

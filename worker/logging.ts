@@ -37,7 +37,9 @@ export type WorkerLogger = {
 // LOGGING
 // =============================================================================
 
-export function createStdoutLogger(defaults: { taskId?: string; taskSlug?: string } = {}): WorkerLogger {
+export function createStdoutLogger(
+  defaults: { taskId?: string; taskSlug?: string } = {},
+): WorkerLogger {
   return {
     log(event: WorkerLogEventInput) {
       const normalized = normalizeEvent(event, defaults);
@@ -57,7 +59,8 @@ function normalizeEvent(
         ? event.ts.toISOString()
         : isoNow();
 
-  const payload = event.payload && Object.keys(event.payload).length > 0 ? event.payload : undefined;
+  const payload =
+    event.payload && Object.keys(event.payload).length > 0 ? event.payload : undefined;
 
   const normalized: WorkerLogEvent = {
     ts,

@@ -45,126 +45,122 @@ describe("acceptance: CLI plan -> run -> status -> clean", () => {
     process.exitCode = 0;
   });
 
-  it(
-    "executes a full local-worker run via CLI and cleans artifacts",
-    async () => {
-      const tmpRoot = await fs.mkdtemp(path.join(os.tmpdir(), "mycelium-cli-acceptance-"));
-      tempRoots.push(tmpRoot);
+  it("executes a full local-worker run via CLI and cleans artifacts", async () => {
+    const tmpRoot = await fs.mkdtemp(path.join(os.tmpdir(), "mycelium-cli-acceptance-"));
+    tempRoots.push(tmpRoot);
 
-      const repoDir = path.join(tmpRoot, "repo");
-      await fse.copy(FIXTURE_REPO, repoDir);
-      await initGitRepo(repoDir);
+    const repoDir = path.join(tmpRoot, "repo");
+    await fse.copy(FIXTURE_REPO, repoDir);
+    await initGitRepo(repoDir);
 
-      const configPath = path.join(tmpRoot, "project.yaml");
-      await writeProjectConfig(configPath, repoDir);
+    const configPath = path.join(tmpRoot, "project.yaml");
+    await writeProjectConfig(configPath, repoDir);
 
-      const projectName = "cli-acceptance";
-      const runId = `${projectName}-${Date.now()}`;
+    const projectName = "cli-acceptance";
+    const runId = `${projectName}-${Date.now()}`;
 
-      process.env.MYCELIUM_HOME = path.join(tmpRoot, ".mycelium-home");
-      process.env.MOCK_LLM = "1";
-      process.env.MOCK_LLM_OUTPUT_PATH = path.join(repoDir, "mock-planner-output.json");
+    process.env.MYCELIUM_HOME = path.join(tmpRoot, ".mycelium-home");
+    process.env.MOCK_LLM = "1";
+    process.env.MOCK_LLM_OUTPUT_PATH = path.join(repoDir, "mock-planner-output.json");
 
-      originalCwd = process.cwd();
-      process.chdir(repoDir);
+    originalCwd = process.cwd();
+    process.chdir(repoDir);
 
-      const consoleLines: string[] = [];
-      const logSpy = vi.spyOn(console, "log").mockImplementation((...args) => {
-        consoleLines.push(args.map(String).join(" "));
-      });
-      const errorSpy = vi.spyOn(console, "error").mockImplementation((...args) => {
-        consoleLines.push(args.map(String).join(" "));
-      });
+    const consoleLines: string[] = [];
+    const logSpy = vi.spyOn(console, "log").mockImplementation((...args) => {
+      consoleLines.push(args.map(String).join(" "));
+    });
+    const errorSpy = vi.spyOn(console, "error").mockImplementation((...args) => {
+      consoleLines.push(args.map(String).join(" "));
+    });
 
-      process.exitCode = 0;
+    process.exitCode = 0;
 
-      await main([
-        "node",
-        "mycelium",
-        "--config",
-        configPath,
-        "plan",
-        "--project",
-        projectName,
-        "--input",
-        "docs/planning/implementation-plan.md",
-      ]);
+    await main([
+      "node",
+      "mycelium",
+      "--config",
+      configPath,
+      "plan",
+      "--project",
+      projectName,
+      "--input",
+      "docs/planning/implementation-plan.md",
+    ]);
 
-      expect(errorSpy).not.toHaveBeenCalled();
+    expect(errorSpy).not.toHaveBeenCalled();
 
-      const tasksDir = path.join(repoDir, ".mycelium", "tasks", "backlog");
-      const taskEntries = await fs.readdir(tasksDir);
-      expect(taskEntries.some((entry) => entry.startsWith("001-"))).toBe(true);
-      expect(taskEntries.some((entry) => entry.startsWith("002-"))).toBe(true);
+    const tasksDir = path.join(repoDir, ".mycelium", "tasks", "backlog");
+    const taskEntries = await fs.readdir(tasksDir);
+    expect(taskEntries.some((entry) => entry.startsWith("001-"))).toBe(true);
+    expect(taskEntries.some((entry) => entry.startsWith("002-"))).toBe(true);
 
-      await main([
-        "node",
-        "mycelium",
-        "--config",
-        configPath,
-        "run",
-        "--project",
-        projectName,
-        "--run-id",
-        runId,
-        "--local-worker",
-        "--max-parallel",
-        "2",
-        "--no-build-image",
-      ]);
+    await main([
+      "node",
+      "mycelium",
+      "--config",
+      configPath,
+      "run",
+      "--project",
+      projectName,
+      "--run-id",
+      runId,
+      "--local-worker",
+      "--max-parallel",
+      "2",
+      "--no-build-image",
+    ]);
 
-      const releaseNotes = await fs.readFile(
-        path.join(repoDir, "notes", "release-notes.txt"),
-        "utf8",
-      );
-      expect(releaseNotes).toContain("Mock update");
+    const releaseNotes = await fs.readFile(
+      path.join(repoDir, "notes", "release-notes.txt"),
+      "utf8",
+    );
+    expect(releaseNotes).toContain("Mock update");
 
-      const featureTracker = await fs.readFile(path.join(repoDir, "src", "feature.txt"), "utf8");
-      expect(featureTracker).toContain("Mock update");
+    const featureTracker = await fs.readFile(path.join(repoDir, "src", "feature.txt"), "utf8");
+    expect(featureTracker).toContain("Mock update");
 
-      logSpy.mockClear();
-      await main([
-        "node",
-        "mycelium",
-        "--config",
-        configPath,
-        "status",
-        "--project",
-        projectName,
-        "--run-id",
-        runId,
-      ]);
+    logSpy.mockClear();
+    await main([
+      "node",
+      "mycelium",
+      "--config",
+      configPath,
+      "status",
+      "--project",
+      projectName,
+      "--run-id",
+      runId,
+    ]);
 
-      const statusOutput = logSpy.mock.calls.flat().map(String).join("\n");
-      expect(statusOutput).toContain(`Run: ${runId}`);
-      expect(statusOutput).toMatch(/Status: (complete|failed|running|paused)/);
+    const statusOutput = logSpy.mock.calls.flat().map(String).join("\n");
+    expect(statusOutput).toContain(`Run: ${runId}`);
+    expect(statusOutput).toMatch(/Status: (complete|failed|running|paused)/);
 
-      await main([
-        "node",
-        "mycelium",
-        "--config",
-        configPath,
-        "clean",
-        "--project",
-        projectName,
-        "--run-id",
-        runId,
-        "--force",
-        "--no-containers",
-      ]);
+    await main([
+      "node",
+      "mycelium",
+      "--config",
+      configPath,
+      "clean",
+      "--project",
+      projectName,
+      "--run-id",
+      runId,
+      "--force",
+      "--no-containers",
+    ]);
 
-      const stateFile = runStatePath(projectName, runId);
-      const logsPath = runLogsDir(projectName, runId);
-      const workspacePath = runWorkspaceDir(projectName, runId);
+    const stateFile = runStatePath(projectName, runId);
+    const logsPath = runLogsDir(projectName, runId);
+    const workspacePath = runWorkspaceDir(projectName, runId);
 
-      expect(await fse.pathExists(stateFile)).toBe(false);
-      expect(await fse.pathExists(logsPath)).toBe(false);
-      expect(await fse.pathExists(workspacePath)).toBe(false);
+    expect(await fse.pathExists(stateFile)).toBe(false);
+    expect(await fse.pathExists(logsPath)).toBe(false);
+    expect(await fse.pathExists(workspacePath)).toBe(false);
 
-      expect(consoleLines.join("\n")).toContain("finished with status");
-    },
-    60_000,
-  );
+    expect(consoleLines.join("\n")).toContain("finished with status");
+  }, 60_000);
 });
 
 async function initGitRepo(repoDir: string): Promise<void> {
@@ -188,9 +184,9 @@ async function writeProjectConfig(configPath: string, repoDir: string): Promise<
     "doctor: npm test",
     "max_parallel: 2",
     "resources:",
-    '  - name: docs',
+    "  - name: docs",
     '    paths: ["notes/**"]',
-    '  - name: code',
+    "  - name: code",
     '    paths: ["src/**"]',
     "planner:",
     "  provider: mock",

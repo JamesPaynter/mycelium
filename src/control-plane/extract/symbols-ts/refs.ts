@@ -53,8 +53,6 @@ const IGNORED_ROOTS = new Set([
   "vendor",
 ]);
 
-
-
 // =============================================================================
 // PUBLIC API
 // =============================================================================
@@ -132,8 +130,7 @@ export async function resolveTypeScriptSymbolReferences(options: {
       }
 
       const sourceFile =
-        program.getSourceFile(entry.fileName) ??
-        sourceFileIndex.get(normalizedFileName);
+        program.getSourceFile(entry.fileName) ?? sourceFileIndex.get(normalizedFileName);
       if (!sourceFile || sourceFile.isDeclarationFile) {
         continue;
       }
@@ -145,8 +142,7 @@ export async function resolveTypeScriptSymbolReferences(options: {
 
       const isDefinition =
         entry.isDefinition ??
-        (normalizedFileName === definitionPath &&
-          entry.textSpan.start === definitionOffset);
+        (normalizedFileName === definitionPath && entry.textSpan.start === definitionOffset);
 
       references.push({
         file: repoPath,
@@ -173,8 +169,6 @@ export async function resolveTypeScriptSymbolReferences(options: {
     };
   }
 }
-
-
 
 // =============================================================================
 // PROJECT PREP
@@ -241,8 +235,6 @@ function buildReferenceKey(entry: ts.ReferencedSymbolEntry): string {
   return `${normalizedFileName}:${entry.textSpan.start}:${entry.textSpan.length}`;
 }
 
-
-
 // =============================================================================
 // LANGUAGE SERVICE
 // =============================================================================
@@ -262,10 +254,8 @@ function createLanguageService(options: {
   const host: ts.LanguageServiceHost = {
     getCompilationSettings: () => compilerOptions,
     getScriptFileNames: () => options.rootFileNames,
-    getScriptVersion: (fileName) =>
-      scriptVersions.get(normalizeFilePath(fileName)) ?? "0",
-    getScriptSnapshot: (fileName) =>
-      getScriptSnapshot(fileName, sourceFileIndex, snapshotCache),
+    getScriptVersion: (fileName) => scriptVersions.get(normalizeFilePath(fileName)) ?? "0",
+    getScriptSnapshot: (fileName) => getScriptSnapshot(fileName, sourceFileIndex, snapshotCache),
     getCurrentDirectory: () => options.repoRoot,
     getDefaultLibFileName: (opts) => ts.getDefaultLibFilePath(opts),
     fileExists: ts.sys.fileExists,
@@ -320,8 +310,6 @@ function getScriptSnapshot(
   return snapshot;
 }
 
-
-
 // =============================================================================
 // REFERENCE NORMALIZATION
 // =============================================================================
@@ -349,8 +337,6 @@ function createSymbolRange(
   };
 }
 
-
-
 // =============================================================================
 // COMPONENT RESOLUTION
 // =============================================================================
@@ -371,8 +357,6 @@ function resolveComponentId(
   cache.set(repoPath, componentId);
   return componentId;
 }
-
-
 
 // =============================================================================
 // SORTING
@@ -411,8 +395,6 @@ function compareSymbolReferences(
   return 0;
 }
 
-
-
 // =============================================================================
 // PATH HELPERS
 // =============================================================================
@@ -446,8 +428,6 @@ function shouldIgnoreRepoPath(repoPath: string): boolean {
   const root = normalized.split("/")[0] ?? "";
   return IGNORED_ROOTS.has(root);
 }
-
-
 
 // =============================================================================
 // ERROR HANDLING

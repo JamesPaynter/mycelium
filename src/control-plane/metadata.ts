@@ -20,8 +20,6 @@ export type ControlPlaneMetadataCompatibility = {
   extractorVersions: ControlPlaneExtractorVersions;
 };
 
-
-
 // =============================================================================
 // METADATA HELPERS
 // =============================================================================
@@ -66,8 +64,6 @@ export async function writeControlPlaneMetadata(
 ): Promise<void> {
   await writeJsonFile(metadataPath, metadata);
 }
-
-
 
 // =============================================================================
 // INTERNAL HELPERS

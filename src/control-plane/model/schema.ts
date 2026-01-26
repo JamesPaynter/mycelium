@@ -4,8 +4,6 @@
 
 export const MODEL_SCHEMA_VERSION = 4;
 
-
-
 // =============================================================================
 // MODEL TYPES
 // =============================================================================
@@ -94,8 +92,6 @@ export type ControlPlaneModel = {
   symbols: unknown[];
   symbols_ts: ControlPlaneSymbolsTs;
 };
-
-
 
 // =============================================================================
 // MODEL INITIALIZERS

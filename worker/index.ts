@@ -47,10 +47,8 @@ export async function main(argv: string[]): Promise<void> {
     .option("--manifest <path>", "Path to manifest.json (env: TASK_MANIFEST_PATH)")
     .option("--spec <path>", "Path to spec.md (env: TASK_SPEC_PATH)")
     .option("--lint <cmd>", "Lint command to run before doctor (env: LINT_CMD)")
-    .option(
-      "--lint-timeout <seconds>",
-      "Lint timeout in seconds (env: LINT_TIMEOUT)",
-      (v) => parseInt(v, 10),
+    .option("--lint-timeout <seconds>", "Lint timeout in seconds (env: LINT_TIMEOUT)", (v) =>
+      parseInt(v, 10),
     )
     .option("--doctor <cmd>", "Doctor command to run (env: DOCTOR_CMD)")
     .option(
@@ -58,10 +56,8 @@ export async function main(argv: string[]): Promise<void> {
       "Maximum Codex attempts before failing (env: MAX_RETRIES, default 20; 0 = unlimited)",
       (v) => parseInt(v, 10),
     )
-    .option(
-      "--doctor-timeout <seconds>",
-      "Doctor timeout in seconds (env: DOCTOR_TIMEOUT)",
-      (v) => parseInt(v, 10),
+    .option("--doctor-timeout <seconds>", "Doctor timeout in seconds (env: DOCTOR_TIMEOUT)", (v) =>
+      parseInt(v, 10),
     )
     .option("--bootstrap <cmd...>", "Bootstrap commands to run before Codex (env: BOOTSTRAP_CMDS)")
     .option(
@@ -133,7 +129,9 @@ function buildConfig(opts: CliOptions): WorkerConfig {
   );
 
   const specPath = resolveRequiredPath(
-    opts.spec ?? envOrUndefined("TASK_SPEC_PATH") ?? (taskDir ? path.join(taskDir, "spec.md") : undefined),
+    opts.spec ??
+      envOrUndefined("TASK_SPEC_PATH") ??
+      (taskDir ? path.join(taskDir, "spec.md") : undefined),
     workingDirectory,
     "TASK_SPEC_PATH or --spec (or set --task-dir)",
   );
@@ -165,7 +163,8 @@ function buildConfig(opts: CliOptions): WorkerConfig {
 
   const bootstrapCmds = opts.bootstrap ?? parseBootstrap(envOrUndefined("BOOTSTRAP_CMDS"));
   const defaultTestPaths =
-    opts.defaultTestPaths ?? parseStringArray(envOrUndefined("DEFAULT_TEST_PATHS"), "DEFAULT_TEST_PATHS");
+    opts.defaultTestPaths ??
+    parseStringArray(envOrUndefined("DEFAULT_TEST_PATHS"), "DEFAULT_TEST_PATHS");
 
   const runLogsDir = resolvePath(
     opts.runLogsDir ?? envOrUndefined("RUN_LOGS_DIR") ?? "/run-logs",

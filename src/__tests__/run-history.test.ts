@@ -25,7 +25,6 @@ afterEach(() => {
   }
 });
 
-
 // =============================================================================
 // HELPERS
 // =============================================================================
@@ -56,7 +55,6 @@ function writeRunStateFile(
   const statePath = path.join(stateDir, `run-${runId}.json`);
   fs.writeFileSync(statePath, JSON.stringify(state, null, 2), "utf8");
 }
-
 
 // =============================================================================
 // TESTS

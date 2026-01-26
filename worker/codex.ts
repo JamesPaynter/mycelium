@@ -12,7 +12,6 @@ import {
 
 import { isMockLlmEnabled } from "../src/llm/mock.js";
 
-
 // =============================================================================
 // TYPES
 // =============================================================================
@@ -49,7 +48,6 @@ export type MockCodexContext = {
 
 export type MockCodexHandler = (context: MockCodexContext) => Promise<void> | void;
 
-
 // =============================================================================
 // MOCK SUPPORT
 // =============================================================================
@@ -59,7 +57,6 @@ let mockCodexHandler: MockCodexHandler | null = null;
 export function __setMockCodexHandler(handler: MockCodexHandler | null): void {
   mockCodexHandler = handler;
 }
-
 
 // =============================================================================
 // PUBLIC API
@@ -208,7 +205,8 @@ class MockCodexRunner {
       }>;
 
       const input = typeof parsed.input_tokens === "number" ? parsed.input_tokens : 0;
-      const cached = typeof parsed.cached_input_tokens === "number" ? parsed.cached_input_tokens : 0;
+      const cached =
+        typeof parsed.cached_input_tokens === "number" ? parsed.cached_input_tokens : 0;
       const output = typeof parsed.output_tokens === "number" ? parsed.output_tokens : 0;
 
       return {
@@ -258,9 +256,7 @@ class MockCodexRunner {
     try {
       const raw = await fs.readFile(this.manifestPath, "utf8");
       const parsed = JSON.parse(raw) as { files?: { writes?: unknown } };
-      const writes = Array.isArray(parsed.files?.writes)
-        ? (parsed.files?.writes as string[])
-        : [];
+      const writes = Array.isArray(parsed.files?.writes) ? (parsed.files?.writes as string[]) : [];
       return writes.length > 0 ? writes : ["mock-output.txt"];
     } catch {
       return ["mock-output.txt"];

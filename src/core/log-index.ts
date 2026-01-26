@@ -37,7 +37,10 @@ export function logIndexPath(runLogsDir: string): string {
 export class LogIndex {
   private closed = false;
 
-  private constructor(private readonly db: Database.Database, private readonly runId: string) {}
+  private constructor(
+    private readonly db: Database.Database,
+    private readonly runId: string,
+  ) {}
 
   static open(runId: string, runLogsDir: string, dbPath = logIndexPath(runLogsDir)): LogIndex {
     fs.mkdirSync(path.dirname(dbPath), { recursive: true });

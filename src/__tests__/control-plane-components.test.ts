@@ -13,8 +13,6 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const WORKSPACE_FIXTURE = path.resolve(__dirname, "../../test/fixtures/control-plane-mini-repo");
 const FLAT_FIXTURE = path.resolve(__dirname, "../../test/fixtures/control-plane-flat-repo");
 
-
-
 // =============================================================================
 // COMPONENT EXTRACTION
 // =============================================================================
@@ -78,8 +76,6 @@ describe("control-plane component extraction", () => {
   });
 });
 
-
-
 // =============================================================================
 // OWNERSHIP LOOKUPS
 // =============================================================================
@@ -89,20 +85,12 @@ describe("control-plane ownership", () => {
     const { components } = await extractComponents(WORKSPACE_FIXTURE);
     const ownership = buildOwnershipIndex(components);
 
-    const appMatch = resolveOwnershipForPath(
-      ownership,
-      components,
-      "apps/web/src/index.ts",
-    );
+    const appMatch = resolveOwnershipForPath(ownership, components, "apps/web/src/index.ts");
     expect(appMatch.owner?.component.id).toBe("acme-web-app");
     expect(appMatch.owner?.root).toBe("apps/web");
     expect(appMatch.candidates).toHaveLength(1);
 
-    const utilMatch = resolveOwnershipForPath(
-      ownership,
-      components,
-      "packages/utils/src/index.ts",
-    );
+    const utilMatch = resolveOwnershipForPath(ownership, components, "packages/utils/src/index.ts");
     expect(utilMatch.owner?.component.id).toBe("acme-utils");
     expect(utilMatch.owner?.root).toBe("packages/utils");
     expect(utilMatch.candidates).toHaveLength(1);

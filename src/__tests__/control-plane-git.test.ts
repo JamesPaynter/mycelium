@@ -13,8 +13,6 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const FIXTURE_REPO = path.resolve(__dirname, "../../test/fixtures/control-plane-mini-repo");
 const tempDirs: string[] = [];
 
-
-
 // =============================================================================
 // HELPERS
 // =============================================================================
@@ -43,11 +41,7 @@ async function commitAll(repoDir: string, message: string): Promise<void> {
   await execa("git", ["commit", "-m", message], { cwd: repoDir });
 }
 
-async function appendLine(
-  repoDir: string,
-  relativePath: string,
-  line: string,
-): Promise<void> {
+async function appendLine(repoDir: string, relativePath: string, line: string): Promise<void> {
   const absolutePath = path.join(repoDir, relativePath);
   await fs.appendFile(absolutePath, `\n${line}\n`);
 }
@@ -56,8 +50,6 @@ async function resolveGitSha(repoDir: string, revision: string): Promise<string>
   const result = await execa("git", ["rev-parse", revision], { cwd: repoDir });
   return result.stdout.trim();
 }
-
-
 
 // =============================================================================
 // TESTS
