@@ -39,6 +39,7 @@ import { prepareTaskWorkspace } from "../../../core/workspaces.js";
 import { loadWorkerState, type WorkerCheckpoint } from "../../../../worker/state.js";
 
 import { formatErrorMessage } from "../helpers/errors.js";
+import { shouldResetTaskToPending } from "./failure-policy.js";
 import type { ControlPlaneRunConfig } from "../run-context.js";
 import type { Vcs } from "../vcs/vcs.js";
 import type { WorkerRunner, WorkerRunnerResult } from "../workers/worker-runner.js";
@@ -148,6 +149,7 @@ function computeTaskPolicyDecision(input: {
 // =============================================================================
 
 export function createTaskEngine(context: TaskEngineContext): TaskEngine {
+  const failurePolicy = context.config.task_failure_policy ?? "retry";
   const resolveTaskMeta = (
     task: TaskSpec,
   ): { branchName: string; workspace: string; logsDir: string } => {
@@ -308,7 +310,12 @@ export function createTaskEngine(context: TaskEngineContext): TaskEngine {
 
     await syncWorkerStateIntoTask(taskId, meta.workspace);
 
-    if (resumeResult.resetToPending) {
+    const shouldReset = shouldResetTaskToPending({
+      policy: failurePolicy,
+      result: resumeResult,
+    });
+
+    if (shouldReset) {
       const reason = resumeResult.errorMessage ?? "Task reset to pending";
       logTaskReset(context.orchestratorLog, taskId, reason);
       return {
@@ -435,12 +442,20 @@ export function createTaskEngine(context: TaskEngineContext): TaskEngine {
       mainBranch: context.config.main_branch,
       taskBranch: branchName,
       paths: context.paths,
+      recoverDirtyWorkspace: failurePolicy === "retry",
     });
     logOrchestratorEvent(context.orchestratorLog, "workspace.prepare.complete", {
       taskId,
       workspace,
       created: workspacePrep.created,
     });
+    if (workspacePrep.recovered) {
+      logOrchestratorEvent(context.orchestratorLog, "workspace.recovered", {
+        taskId,
+        workspace,
+        method: "git_reset_clean",
+      });
+    }
 
     await ensureDir(codexHome);
     await writeCodexConfig(codexConfigPath, {
@@ -549,6 +564,11 @@ export function createTaskEngine(context: TaskEngineContext): TaskEngine {
       };
     }
 
+    const shouldResetAttempt = shouldResetTaskToPending({
+      policy: failurePolicy,
+      result: attemptResult,
+    });
+
     return {
       taskId,
       taskSlug,
@@ -557,6 +577,7 @@ export function createTaskEngine(context: TaskEngineContext): TaskEngine {
       logsDir: tLogsDir,
       errorMessage: attemptResult.errorMessage,
       success: false as const,
+      ...(shouldResetAttempt ? { resetToPending: true } : {}),
     };
   };
 
