@@ -63,6 +63,7 @@ describe("mergeTaskBranches", () => {
 
     expect(result.status).toBe("merged");
     expect(result.merged.map((b) => b.taskId)).toEqual(["001", "002"]);
+    expect(result.conflicts).toHaveLength(0);
     expect(result.mergeCommit).toBe(await headSha(repoPath));
 
     const fromA = await fse.readFile(path.join(repoPath, "notes-a.txt"), "utf8");
@@ -71,12 +72,14 @@ describe("mergeTaskBranches", () => {
     expect(fromB).toContain("goodbye from B");
   });
 
-  it("stops merging when a conflict occurs", async () => {
+  it("continues merging after a conflict", async () => {
     const workspaceA = path.join(tmpDir, "workspace-a");
     const workspaceB = path.join(tmpDir, "workspace-b");
+    const workspaceC = path.join(tmpDir, "workspace-c");
 
     const branchA = buildTaskBranchName("agent/", "010", "bump value");
     const branchB = buildTaskBranchName("agent/", "011", "conflicting value");
+    const branchC = buildTaskBranchName("agent/", "012", "add notes");
 
     await cloneWorkspace(repoPath, workspaceA);
     await checkoutTaskBranch(workspaceA, mainBranch, branchA);
@@ -88,27 +91,31 @@ describe("mergeTaskBranches", () => {
     await fse.writeFile(path.join(workspaceB, "config.txt"), "color=green\n", "utf8");
     await commitAll(workspaceB, "Set color to green");
 
+    await cloneWorkspace(repoPath, workspaceC);
+    await checkoutTaskBranch(workspaceC, mainBranch, branchC);
+    await appendToFile(workspaceC, "notes-c.txt", "notes from C\n");
+
     const result = await mergeTaskBranches({
       repoPath,
       mainBranch,
       branches: [
         { taskId: "010", branchName: branchA, workspacePath: workspaceA },
         { taskId: "011", branchName: branchB, workspacePath: workspaceB },
+        { taskId: "012", branchName: branchC, workspacePath: workspaceC },
       ],
     });
 
-    if (result.status !== "conflict") {
-      throw new Error(`Expected conflict merge result, got ${result.status}`);
-    }
-
-    expect(result.merged.map((b) => b.taskId)).toEqual(["010"]);
-    expect(result.conflict.taskId).toBe("011");
+    expect(result.status).toBe("merged");
+    expect(result.merged.map((b) => b.taskId)).toEqual(["010", "012"]);
+    expect(result.conflicts.map((conflict) => conflict.branch.taskId)).toEqual(["011"]);
     expect(result.mergeCommit).toBe(await headSha(repoPath));
 
     const status = await gitStatus(repoPath);
     expect(status).toBe("");
     const contents = await fse.readFile(path.join(repoPath, "config.txt"), "utf8");
     expect(contents.trim()).toBe("color=blue");
+    const fromC = await fse.readFile(path.join(repoPath, "notes-c.txt"), "utf8");
+    expect(fromC).toContain("notes from C");
   });
 });
 

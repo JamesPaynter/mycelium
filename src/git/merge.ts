@@ -16,19 +16,17 @@ export type TaskBranchToMerge = {
   workspacePath: string;
 };
 
-export type MergeResult =
-  | {
-      status: "merged";
-      merged: TaskBranchToMerge[];
-      mergeCommit: string;
-    }
-  | {
-      status: "conflict";
-      merged: TaskBranchToMerge[];
-      conflict: TaskBranchToMerge;
-      mergeCommit: string;
-      message: string;
-    };
+export type MergeConflict = {
+  branch: TaskBranchToMerge;
+  message: string;
+};
+
+export type MergeResult = {
+  status: "merged";
+  merged: TaskBranchToMerge[];
+  conflicts: MergeConflict[];
+  mergeCommit: string;
+};
 
 export async function mergeTaskBranches(opts: {
   repoPath: string;
@@ -41,6 +39,7 @@ export async function mergeTaskBranches(opts: {
   await checkout(repoPath, mainBranch);
 
   const merged: TaskBranchToMerge[] = [];
+  const conflicts: MergeConflict[] = [];
   let mergeCommit = await headSha(repoPath);
 
   for (const branch of branches) {
@@ -58,13 +57,11 @@ export async function mergeTaskBranches(opts: {
       if (isMergeConflictError(err)) {
         await abortMerge(repoPath).catch(() => undefined);
 
-        return {
-          status: "conflict",
-          merged,
-          conflict: branch,
-          mergeCommit,
+        conflicts.push({
+          branch,
           message: formatMergeError(err),
-        };
+        });
+        continue;
       }
 
       throw err;
@@ -73,7 +70,7 @@ export async function mergeTaskBranches(opts: {
     }
   }
 
-  return { status: "merged", merged, mergeCommit };
+  return { status: "merged", merged, conflicts, mergeCommit };
 }
 
 function buildWorkspaceRemoteName(taskId: string): string {

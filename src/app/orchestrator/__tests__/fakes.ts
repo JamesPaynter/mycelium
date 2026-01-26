@@ -138,6 +138,7 @@ export class FakeVcs implements Vcs {
   headShaValue = "head-sha";
   mergeCommit = "merge-sha";
   mergeResult: MergeResult | null = null;
+  readonly mergeResults: MergeResult[] = [];
   changedFiles: string[] = [];
   taskBranchPrefix = "task/";
 
@@ -185,12 +186,19 @@ export class FakeVcs implements Vcs {
     branches: TaskBranchToMerge[];
   }): Promise<MergeResult> {
     this.mergeCalls.push(opts);
+    const queued = this.mergeResults.shift();
+    if (queued) return queued;
     if (this.mergeResult) return this.mergeResult;
     return {
       status: "merged",
       merged: opts.branches,
+      conflicts: [],
       mergeCommit: this.mergeCommit,
     };
+  }
+
+  queueMergeResult(result: MergeResult): void {
+    this.mergeResults.push(result);
   }
 
   buildTaskBranchName(taskId: string, taskName: string): string {

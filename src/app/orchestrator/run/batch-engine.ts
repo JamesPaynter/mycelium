@@ -71,7 +71,7 @@ import type { ControlPlaneModel } from "../../../control-plane/model/schema.js";
 // TYPES
 // =============================================================================
 
-export type BatchStopReason = "merge_conflict" | "integration_doctor_failed" | "budget_block";
+export type BatchStopReason = "integration_doctor_failed" | "budget_block";
 
 export type BatchEngineContext = {
   projectName: string;
@@ -496,7 +496,6 @@ export function createBatchEngine(
     let batchMergeCommit: string | undefined;
     let integrationDoctorPassed: boolean | undefined;
     let stopReason: BatchStopReason | undefined;
-    let mergeConflictDetail: { taskId: string; branchName: string; message: string } | null = null;
     let integrationDoctorFailureDetail: { exitCode: number; output: string } | null = null;
 
     const budgetOutcome = context.budgetTracker.evaluateBreaches({
@@ -541,6 +540,7 @@ export function createBatchEngine(
     ({ completed, failed } = context.buildStatusSets(context.state));
 
     const successfulTasks = context.taskEngine.buildValidatedTaskSummaries(params.batchTasks);
+    let mergedTasks: TaskSuccessResult[] = [];
 
     if (successfulTasks.length > 0 && !stopReason) {
       logOrchestratorEvent(context.orchestratorLog, "batch.merging", {
@@ -558,24 +558,31 @@ export function createBatchEngine(
         })),
       });
 
-      if (mergeResult.status === "conflict") {
-        batchMergeCommit = mergeResult.mergeCommit;
-        mergeConflictDetail = {
-          taskId: mergeResult.conflict.taskId,
-          branchName: mergeResult.conflict.branchName,
-          message: mergeResult.message,
-        };
-        logOrchestratorEvent(context.orchestratorLog, "batch.merge_conflict", {
-          batch_id: params.batchId,
-          task_id: mergeResult.conflict.taskId,
-          branch: mergeResult.conflict.branchName,
-          message: mergeResult.message,
-        });
-        context.state.status = "failed";
-        stopReason = "merge_conflict";
-      } else {
-        batchMergeCommit = mergeResult.mergeCommit;
+      batchMergeCommit = mergeResult.mergeCommit;
 
+      const successfulTasksById = new Map(successfulTasks.map((task) => [task.taskId, task]));
+      mergedTasks = mergeResult.merged
+        .map((task) => successfulTasksById.get(task.taskId))
+        .filter((task): task is TaskSuccessResult => task !== undefined);
+
+      if (mergeResult.conflicts.length > 0) {
+        for (const conflict of mergeResult.conflicts) {
+          const reason = "merge conflict";
+          resetTaskToPending(context.state, conflict.branch.taskId, reason);
+          logTaskReset(context.orchestratorLog, conflict.branch.taskId, reason);
+          logOrchestratorEvent(context.orchestratorLog, "batch.merge_conflict.recovered", {
+            batch_id: params.batchId,
+            task_id: conflict.branch.taskId,
+            branch: conflict.branch.branchName,
+            message: conflict.message,
+            action: "rescheduled",
+          });
+        }
+        await context.stateStore.save(context.state);
+        ({ completed, failed } = context.buildStatusSets(context.state));
+      }
+
+      if (mergedTasks.length > 0) {
         logOrchestratorEvent(context.orchestratorLog, "doctor.integration.start", {
           batch_id: params.batchId,
           command: context.config.doctor,
@@ -683,7 +690,7 @@ export function createBatchEngine(
       context.doctorValidatorEnabled &&
       context.doctorValidatorConfig &&
       canaryUnexpectedPass &&
-      successfulTasks.length > 0 &&
+      mergedTasks.length > 0 &&
       !stopReason
     ) {
       const doctorOutcome = await context.validationPipeline?.runDoctorValidation({
@@ -698,7 +705,7 @@ export function createBatchEngine(
       doctorValidatorLastCount = completed.size + failed.size;
 
       if (doctorOutcome) {
-        for (const r of successfulTasks) {
+        for (const r of mergedTasks) {
           applyDoctorOutcome(r.taskId, doctorOutcome, blockedTasks);
         }
         await context.stateStore.save(context.state);
@@ -721,27 +728,20 @@ export function createBatchEngine(
     };
 
     let finalizedTasks = false;
-    if (stopReason === "merge_conflict" && mergeConflictDetail && successfulTasks.length > 0) {
-      const reason = `Merge conflict while merging ${mergeConflictDetail.branchName} (task ${mergeConflictDetail.taskId}).`;
-      const summary = mergeConflictDetail.message;
-      markTasksForHumanReview(successfulTasks, reason, summary);
-      finalizedTasks = true;
-    }
-
     if (
       stopReason === "integration_doctor_failed" &&
       integrationDoctorFailureDetail &&
-      successfulTasks.length > 0
+      mergedTasks.length > 0
     ) {
       const rawOutput = integrationDoctorFailureDetail.output.trim();
       const summary = rawOutput.length > 0 ? rawOutput.slice(0, 500) : undefined;
       const reason = `Integration doctor failed (exit ${integrationDoctorFailureDetail.exitCode}).`;
-      markTasksForHumanReview(successfulTasks, reason, summary);
+      markTasksForHumanReview(mergedTasks, reason, summary);
       finalizedTasks = true;
     }
 
-    if (!stopReason && integrationDoctorPassed === true && successfulTasks.length > 0) {
-      for (const task of successfulTasks) {
+    if (!stopReason && integrationDoctorPassed === true && mergedTasks.length > 0) {
+      for (const task of mergedTasks) {
         markTaskComplete(context.state, task.taskId);
         logOrchestratorEvent(context.orchestratorLog, "task.complete", {
           taskId: task.taskId,
@@ -867,15 +867,15 @@ export function createBatchEngine(
       doctorValidatorLastCount = postMergeFinishedCount;
 
       if (doctorOutcome) {
-        for (const r of successfulTasks) {
+        for (const r of mergedTasks) {
           applyDoctorOutcome(r.taskId, doctorOutcome, blockedTasks);
         }
         await context.stateStore.save(context.state);
       }
     }
 
-    if (integrationDoctorPassed === true && !stopReason && successfulTasks.length > 0) {
-      const archiveIds = new Set(successfulTasks.map((task) => task.taskId));
+    if (integrationDoctorPassed === true && !stopReason && mergedTasks.length > 0) {
+      const archiveIds = new Set(mergedTasks.map((task) => task.taskId));
 
       for (const task of params.batchTasks) {
         if (!archiveIds.has(task.manifest.id)) continue;
@@ -912,7 +912,7 @@ export function createBatchEngine(
     await cleanupSuccessfulBatchArtifacts({
       batchStatus,
       integrationDoctorPassed,
-      successfulTasks,
+      successfulTasks: mergedTasks,
     });
 
     logOrchestratorEvent(context.orchestratorLog, "batch.complete", { batch_id: params.batchId });

@@ -314,6 +314,20 @@ function describeTimelineEvent(
         details: formatTaskList(payload.tasks),
       };
     }
+    case "batch.merge_conflict.recovered": {
+      const batchId = numberFrom(payload.batch_id);
+      const task = stringFrom(payload.task_id);
+      const branch = stringFrom(payload.branch);
+      const action = stringFrom(payload.action);
+      return {
+        label: `Batch ${batchId ?? "?"} merge conflict recovered`,
+        details: compact([
+          task ? `task ${task}` : null,
+          branch ? `branch ${branch}` : null,
+          action ? `action: ${action}` : null,
+        ]),
+      };
+    }
     case "batch.merge_conflict": {
       const batchId = numberFrom(payload.batch_id);
       const reason = stringFrom(payload.reason) ?? stringFrom(payload.conflict);
@@ -577,6 +591,14 @@ function classifyFailure(
       return {
         key: "batch.merge_conflict",
         label: "Merge conflicts",
+        example: { ...baseExample, message },
+      };
+    }
+    case "batch.merge_conflict.recovered": {
+      const message = stringFrom(payload.message) ?? "Merge conflict recovered";
+      return {
+        key: "batch.merge_conflict.recovered",
+        label: "Merge conflicts recovered",
         example: { ...baseExample, message },
       };
     }
