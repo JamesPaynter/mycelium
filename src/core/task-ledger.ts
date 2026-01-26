@@ -7,8 +7,8 @@ import { z } from "zod";
 
 import type { PathsContext } from "./paths.js";
 import { taskLedgerPath } from "./paths.js";
+import { buildTaskFileIndex } from "./task-file-index.js";
 import { TaskManifestSchema, normalizeTaskManifest, type TaskSpec } from "./task-manifest.js";
-import { resolveTaskManifestPath, resolveTaskSpecPath } from "./task-layout.js";
 import type { RunState } from "./state.js";
 import { isoNow } from "./utils.js";
 
@@ -145,8 +145,8 @@ export async function importLedgerFromRunState(opts: {
   state: RunState;
   paths?: PathsContext;
 }): Promise<TaskLedgerImportResult> {
-  const tasksById = new Map(opts.tasks.map((task) => [task.manifest.id, task]));
   const tasksRoot = opts.tasksRoot ?? path.join(opts.repoPath, ".mycelium", "tasks");
+  const taskFileIndex = await buildTaskFileIndex({ tasksRoot, tasks: opts.tasks });
   const imported: string[] = [];
   const skipped: string[] = [];
   const skippedDetails: TaskLedgerImportSkip[] = [];
@@ -161,12 +161,12 @@ export async function importLedgerFromRunState(opts: {
       continue;
     }
 
-    const taskSpec = tasksById.get(taskId);
-    if (!taskSpec) {
+    const taskFiles = taskFileIndex.get(taskId);
+    if (!taskFiles) {
       console.warn(
-        `Warning: task ${taskId} missing from current tasks directory; skipping ledger import.`,
+        `Warning: task ${taskId} missing manifest/spec in ${tasksRoot} or archive; skipping ledger import.`,
       );
-      recordSkip(taskId, "task missing from current tasks directory");
+      recordSkip(taskId, "task manifest/spec missing");
       continue;
     }
 
@@ -182,28 +182,8 @@ export async function importLedgerFromRunState(opts: {
       continue;
     }
 
-    const manifestPath = resolveTaskManifestPath({
-      tasksRoot,
-      stage: taskSpec.stage,
-      taskDirName: taskSpec.taskDirName,
-    });
-    const specPath = resolveTaskSpecPath({
-      tasksRoot,
-      stage: taskSpec.stage,
-      taskDirName: taskSpec.taskDirName,
-    });
-
-    const [manifestExists, specExists] = await Promise.all([
-      fse.pathExists(manifestPath),
-      fse.pathExists(specPath),
-    ]);
-    if (!manifestExists || !specExists) {
-      console.warn(
-        `Warning: task ${taskId} missing manifest/spec in ${tasksRoot}; skipping ledger import.`,
-      );
-      recordSkip(taskId, "task manifest/spec missing");
-      continue;
-    }
+    const manifestPath = taskFiles.manifestPath;
+    const specPath = taskFiles.specPath;
 
     let fingerprint: string;
     try {
