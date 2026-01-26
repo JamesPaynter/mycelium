@@ -17,7 +17,7 @@ import type {
 } from "../../core/config.js";
 import type { JsonObject } from "../../core/logger.js";
 import type { PathsContext } from "../../core/paths.js";
-import { createPathsContext } from "../../core/paths.js";
+import { createPathsContext, getDefaultPathsContext } from "../../core/paths.js";
 import { defaultRunId } from "../../core/utils.js";
 import { DEFAULT_CPU_PERIOD } from "../../docker/docker.js";
 import { isMockLlmEnabled } from "../../llm/mock.js";
@@ -158,7 +158,7 @@ export async function buildRunContextBase<RunOptions extends RunContextOptions>(
   input: BuildRunContextBaseInput<RunOptions>,
 ): Promise<RunContextBase<RunOptions>> {
   const repoPath = input.config.repo_path;
-  const paths = input.paths ?? createPathsContext({ repoPath });
+  const paths = input.paths ?? getDefaultPathsContext() ?? createPathsContext({ repoPath });
 
   const ports: OrchestratorPorts = {
     ...createDefaultPorts(input.config, paths),

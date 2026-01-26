@@ -2,24 +2,25 @@ import path from "node:path";
 
 import { Command } from "commander";
 
+import { createAppPathsContext } from "../app/paths.js";
 import type { ProjectConfig } from "../core/config.js";
 import { TaskError } from "../core/errors.js";
 import type { PathsContext } from "../core/paths.js";
-import { createPathsContext } from "../core/paths.js";
-import { loadTaskSpecs } from "../core/task-loader.js";
+import { loadRunStateForProject, StateStore } from "../core/state-store.js";
+import {
+  applyTaskStatusOverride,
+  TaskOverrideStatusSchema,
+  type TaskOverrideStatus,
+} from "../core/state.js";
 import {
   importLedgerFromRunState,
   loadTaskLedger,
   type TaskLedgerEntry,
   type TaskLedgerImportResult,
 } from "../core/task-ledger.js";
-import { StateStore, loadRunStateForProject } from "../core/state-store.js";
-import {
-  applyTaskStatusOverride,
-  TaskOverrideStatusSchema,
-  type TaskOverrideStatus,
-} from "../core/state.js";
+import { loadTaskSpecs } from "../core/task-loader.js";
 import type { TaskSpec } from "../core/task-manifest.js";
+
 import { loadConfigForCli } from "./config.js";
 
 
@@ -350,7 +351,7 @@ function parseOverrideStatus(raw: string): TaskOverrideStatus | null {
 }
 
 function resolvePathsContext(config: ProjectConfig, paths?: PathsContext): PathsContext {
-  return paths ?? createPathsContext({ repoPath: config.repo_path });
+  return paths ?? createAppPathsContext({ repoPath: config.repo_path });
 }
 
 function resolveTasksRoot(config: ProjectConfig): string {

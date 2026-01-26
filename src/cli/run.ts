@@ -1,7 +1,9 @@
 import type { AppContext } from "../app/context.js";
+import { createAppPathsContext } from "../app/paths.js";
 import type { ProjectConfig } from "../core/config.js";
 import { runProject, type BatchPlanEntry, type RunOptions } from "../core/executor.js";
 import { defaultRunId } from "../core/utils.js";
+
 import { createRunStopSignalHandler } from "./signal-handlers.js";
 import {
   closeUiServer,
@@ -25,6 +27,7 @@ export async function runCommand(
 ): Promise<void> {
   const { ui, uiPort, uiOpen, ...runOptions } = opts;
   const runId = runOptions.runId ?? defaultRunId();
+  const paths = appContext?.paths ?? createAppPathsContext({ repoPath: config.repo_path });
   const uiRuntime = resolveUiRuntimeConfig(config.ui, {
     enabled: ui,
     port: uiPort,
@@ -56,11 +59,16 @@ export async function runCommand(
       await maybeOpenUiBrowser(uiStart.url, uiRuntime.openBrowser);
     }
 
-    res = await runProject(projectName, config, {
-      ...runOptions,
-      runId,
-      stopSignal: stopHandler.signal,
-    });
+    res = await runProject(
+      projectName,
+      config,
+      {
+        ...runOptions,
+        runId,
+        stopSignal: stopHandler.signal,
+      },
+      paths,
+    );
   } finally {
     stopHandler.cleanup();
     await closeUiServer(uiStart?.handle ?? null);

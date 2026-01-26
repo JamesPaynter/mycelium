@@ -2,9 +2,9 @@ import { stdin as input, stdout as output } from "node:process";
 import { createInterface } from "node:readline/promises";
 
 import type { AppContext } from "../app/context.js";
-import type { ProjectConfig } from "../core/config.js";
+import { createAppPathsContext } from "../app/paths.js";
 import { buildCleanupPlan, executeCleanupPlan, type CleanupPlan } from "../core/cleanup.js";
-import { createPathsContext } from "../core/paths.js";
+import type { ProjectConfig } from "../core/config.js";
 import { DockerManager } from "../docker/manager.js";
 
 type CleanOptions = {
@@ -23,7 +23,7 @@ export async function cleanCommand(
 ): Promise<void> {
   const removeContainers = opts.removeContainers !== false;
   const dockerManager = removeContainers ? new DockerManager() : undefined;
-  const paths = appContext?.paths ?? createPathsContext({ repoPath: config.repo_path });
+  const paths = appContext?.paths ?? createAppPathsContext({ repoPath: config.repo_path });
 
   let plan: CleanupPlan | null;
   try {

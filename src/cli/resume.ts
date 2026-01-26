@@ -1,8 +1,9 @@
 import type { AppContext } from "../app/context.js";
+import { createAppPathsContext } from "../app/paths.js";
 import type { ProjectConfig } from "../core/config.js";
-import { createPathsContext } from "../core/paths.js";
 import { runProject, type RunOptions } from "../core/executor.js";
 import { loadRunStateForProject } from "../core/state-store.js";
+
 import { createRunStopSignalHandler } from "./signal-handlers.js";
 import {
   closeUiServer,
@@ -34,7 +35,7 @@ export async function resumeCommand(
   opts: ResumeOptions,
   appContext?: AppContext,
 ): Promise<void> {
-  const paths = appContext?.paths ?? createPathsContext({ repoPath: config.repo_path });
+  const paths = appContext?.paths ?? createAppPathsContext({ repoPath: config.repo_path });
   const resolved = await loadRunStateForProject(projectName, opts.runId, paths);
   if (!resolved) {
     const notFound = opts.runId
@@ -75,18 +76,23 @@ export async function resumeCommand(
       await maybeOpenUiBrowser(uiStart.url, uiRuntime.openBrowser);
     }
 
-    res = await runProject(projectName, config, {
-      runId: resolved.runId,
-      maxParallel: opts.maxParallel,
-      dryRun: opts.dryRun,
-      buildImage: opts.buildImage,
-      useDocker: opts.useDocker,
-      stopContainersOnExit: opts.stopContainersOnExit,
-      reuseCompleted: opts.reuseCompleted,
-      importRun: opts.importRun,
-      stopSignal: stopHandler.signal,
-      resume: true,
-    });
+    res = await runProject(
+      projectName,
+      config,
+      {
+        runId: resolved.runId,
+        maxParallel: opts.maxParallel,
+        dryRun: opts.dryRun,
+        buildImage: opts.buildImage,
+        useDocker: opts.useDocker,
+        stopContainersOnExit: opts.stopContainersOnExit,
+        reuseCompleted: opts.reuseCompleted,
+        importRun: opts.importRun,
+        stopSignal: stopHandler.signal,
+        resume: true,
+      },
+      paths,
+    );
   } finally {
     stopHandler.cleanup();
     await closeUiServer(uiStart?.handle ?? null);

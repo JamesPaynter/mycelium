@@ -7,9 +7,10 @@
 
 import path from "node:path";
 
-import { loadProjectConfig } from "../../core/config-loader.js";
 import { findRepoRoot, resolveProjectConfigPath } from "../../core/config-discovery.js";
+import { loadProjectConfig } from "../../core/config-loader.js";
 import { createAppContext, type AppContext } from "../context.js";
+import { setDefaultAppPathsContext } from "../paths.js";
 
 
 // =============================================================================
@@ -37,6 +38,8 @@ export type LoadAppContextResult = {
 export async function loadAppContext(args: LoadAppContextArgs): Promise<LoadAppContextResult> {
   const cwd = args.cwd ?? process.cwd();
   let projectName = args.projectName;
+
+  setDefaultAppPathsContext({ myceliumHome: args.myceliumHome });
 
   if (!projectName) {
     const repoRoot = findRepoRoot(cwd);

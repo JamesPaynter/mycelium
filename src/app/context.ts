@@ -8,7 +8,9 @@
 import path from "node:path";
 
 import type { ProjectConfig } from "../core/config.js";
-import { createPathsContext, resolveMyceliumHome, type PathsContext } from "../core/paths.js";
+import type { PathsContext } from "../core/paths.js";
+
+import { setDefaultAppPathsContext } from "./paths.js";
 
 
 // =============================================================================
@@ -38,10 +40,11 @@ export type CreateAppContextInput = {
 
 export function createAppContext(input: CreateAppContextInput): AppContext {
   const repoPath = path.resolve(input.config.repo_path);
-  const myceliumHome = resolveMyceliumHome({
+  const paths = setDefaultAppPathsContext({
     repoPath,
     myceliumHome: input.myceliumHome,
   });
+  const myceliumHome = paths.myceliumHome;
 
   return {
     projectName: input.projectName,
@@ -49,6 +52,6 @@ export function createAppContext(input: CreateAppContextInput): AppContext {
     config: input.config,
     repoPath,
     myceliumHome,
-    paths: createPathsContext({ myceliumHome }),
+    paths,
   };
 }

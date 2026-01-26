@@ -1,13 +1,13 @@
-import type { IncomingMessage, ServerResponse } from "node:http";
 import fs from "node:fs/promises";
+import type { IncomingMessage, ServerResponse } from "node:http";
 import path from "node:path";
 
 import { findTaskLogDir, readJsonlFromCursor, taskEventsLogPathForId } from "../core/log-query.js";
-import type { PathsContext } from "../core/paths.js";
-import { resolveRunLogsDir } from "../core/paths.js";
-import { readDoctorLogSnippet } from "../core/run-logs.js";
+import { resolveRunLogsDir, type Paths } from "../core/paths.js";
 import { listRunHistoryEntries } from "../core/run-history.js";
+import { readDoctorLogSnippet } from "../core/run-logs.js";
 import { loadRunStateForProject, summarizeRunState } from "../core/state-store.js";
+
 import { loadCodeGraphSnapshot, type CodeGraphError } from "./code-graph.js";
 
 
@@ -19,7 +19,7 @@ export type UiRouterOptions = {
   projectName: string;
   runId: string;
   staticRoot: string;
-  paths?: PathsContext;
+  paths?: Paths;
 };
 
 type ResolvedUiRouterOptions = UiRouterOptions & {

@@ -6,9 +6,11 @@ import path from "node:path";
 // TYPES
 // =============================================================================
 
-export type PathsContext = {
+export type Paths = {
   myceliumHome: string;
 };
+
+export type PathsContext = Paths;
 
 export type ResolveMyceliumHomeOptions = {
   myceliumHome?: string;
@@ -20,13 +22,23 @@ export type ResolveMyceliumHomeOptions = {
 // CONTEXT
 // =============================================================================
 
+let defaultPathsContext: PathsContext | undefined;
+
+export function setDefaultPathsContext(paths?: PathsContext): void {
+  defaultPathsContext = paths;
+}
+
+export function clearDefaultPathsContext(): void {
+  defaultPathsContext = undefined;
+}
+
+export function getDefaultPathsContext(): PathsContext | undefined {
+  return defaultPathsContext;
+}
+
 export function resolveMyceliumHome(opts: ResolveMyceliumHomeOptions = {}): string {
   if (opts.myceliumHome) {
     return path.resolve(opts.myceliumHome);
-  }
-
-  if (process.env.MYCELIUM_HOME) {
-    return path.resolve(process.env.MYCELIUM_HOME);
   }
 
   if (opts.repoPath) {
@@ -41,7 +53,8 @@ export function createPathsContext(opts: ResolveMyceliumHomeOptions): PathsConte
 }
 
 function normalizeMyceliumHome(paths?: PathsContext): string {
-  return resolveMyceliumHome({ myceliumHome: paths?.myceliumHome });
+  const resolved = paths ?? defaultPathsContext;
+  return resolveMyceliumHome({ myceliumHome: resolved?.myceliumHome });
 }
 
 

@@ -1,9 +1,10 @@
 import { Command } from "commander";
 
 import type { AppContext } from "../app/context.js";
+import { createAppPathsContext } from "../app/paths.js";
 import type { ProjectConfig } from "../core/config.js";
-import { createPathsContext } from "../core/paths.js";
 import { listRunHistoryEntries, type RunHistoryEntry } from "../core/run-history.js";
+
 import { loadConfigForCli } from "./config.js";
 
 
@@ -65,7 +66,7 @@ export async function runsListCommand(
   opts: { limit?: number; json?: boolean },
   appContext?: AppContext,
 ): Promise<void> {
-  const paths = appContext?.paths ?? createPathsContext({ repoPath: config.repo_path });
+  const paths = appContext?.paths ?? createAppPathsContext({ repoPath: config.repo_path });
   const runs = await listRunHistoryEntries(projectName, { limit: opts.limit }, paths);
 
   if (opts.json) {

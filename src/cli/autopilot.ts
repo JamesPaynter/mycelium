@@ -1,9 +1,9 @@
 import path from "node:path";
-import { createInterface } from "node:readline/promises";
 import { stdin as input, stdout as output } from "node:process";
+import { createInterface } from "node:readline/promises";
 
 import type { AppContext } from "../app/context.js";
-import type { ProjectConfig } from "../core/config.js";
+import { createAppPathsContext } from "../app/paths.js";
 import {
   runAutopilotSession,
   writeAutopilotTranscript,
@@ -12,12 +12,13 @@ import {
   type AutopilotTranscriptData,
   type AutopilotTranscriptContext,
 } from "../core/autopilot.js";
+import type { ProjectConfig } from "../core/config.js";
 import { runProject } from "../core/executor.js";
-import { createPlannerClient } from "../core/planner.js";
 import type { PathsContext } from "../core/paths.js";
-import { createPathsContext } from "../core/paths.js";
+import { createPlannerClient } from "../core/planner.js";
 import { StateStore, summarizeRunState } from "../core/state-store.js";
-import { isoNow, defaultRunId } from "../core/utils.js";
+import { defaultRunId, isoNow } from "../core/utils.js";
+
 import { planProject } from "./plan.js";
 import { createRunStopSignalHandler } from "./signal-handlers.js";
 
@@ -42,7 +43,7 @@ export async function autopilotCommand(
   },
   appContext?: AppContext,
 ): Promise<void> {
-  const paths = appContext?.paths ?? createPathsContext({ repoPath: config.repo_path });
+  const paths = appContext?.paths ?? createAppPathsContext({ repoPath: config.repo_path });
   const sessionId = opts.runId ?? defaultRunId();
   const startedAt = isoNow();
 
@@ -141,15 +142,20 @@ export async function autopilotCommand(
 
     const stopReporter = startRunProgressReporter(projectName, sessionId, paths);
     try {
-      const runResult = await runProject(projectName, config, {
-        runId: sessionId,
-        maxParallel: opts.maxParallel,
-        dryRun: opts.runDryRun,
-        buildImage: opts.buildImage,
-        useDocker: opts.useDocker,
-        stopContainersOnExit: opts.stopContainersOnExit,
-        stopSignal: stopHandler.signal,
-      });
+      const runResult = await runProject(
+        projectName,
+        config,
+        {
+          runId: sessionId,
+          maxParallel: opts.maxParallel,
+          dryRun: opts.runDryRun,
+          buildImage: opts.buildImage,
+          useDocker: opts.useDocker,
+          stopContainersOnExit: opts.stopContainersOnExit,
+          stopSignal: stopHandler.signal,
+        },
+        paths,
+      );
 
       const summary = summarizeRunState(runResult.state);
       const runStatus = runResult.stopped

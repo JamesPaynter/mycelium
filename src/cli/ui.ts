@@ -7,10 +7,11 @@
 import { execa } from "execa";
 
 import type { AppContext } from "../app/context.js";
+import { createAppPathsContext } from "../app/paths.js";
 import type { ProjectConfig, UiConfig } from "../core/config.js";
-import { createPathsContext } from "../core/paths.js";
 import { loadRunStateForProject } from "../core/state-store.js";
 import { startUiServer, type UiServerHandle } from "../ui/server.js";
+
 import { createRunStopSignalHandler } from "./signal-handlers.js";
 
 
@@ -52,7 +53,7 @@ export async function uiCommand(
   opts: UiCommandOptions,
   appContext?: AppContext,
 ): Promise<void> {
-  const paths = appContext?.paths ?? createPathsContext({ repoPath: config.repo_path });
+  const paths = appContext?.paths ?? createAppPathsContext({ repoPath: config.repo_path });
   const resolved = await loadRunStateForProject(projectName, opts.runId, paths);
   if (!resolved) {
     printRunNotFound(projectName, opts.runId);
