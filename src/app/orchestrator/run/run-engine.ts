@@ -711,6 +711,7 @@ async function runEngineImpl(context: RunContext<RunOptions, RunResult>): Promis
           recordDoctorDuration(runMetrics, durationMs);
         },
         controlPlaneConfig,
+        derivedScopeReports,
         scopeComplianceMode,
         manifestPolicy,
         policyDecisions,

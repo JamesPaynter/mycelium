@@ -15,6 +15,8 @@ import {
   buildTaskChangeManifest,
   type TaskChangeManifest,
 } from "../../../control-plane/integration/change-manifest.js";
+import type { DerivedScopeReport } from "../../../control-plane/integration/derived-scope.js";
+import { evaluateControlGraphScope } from "../../../control-plane/integration/scope-enforcement.js";
 import {
   buildDoctorCanarySummary,
   formatDoctorCanaryEnvVar,
@@ -38,11 +40,13 @@ import type {
   ManifestEnforcementPolicy,
   ProjectConfig,
 } from "../../../core/config.js";
+import { computeRescopeFromComponentScope } from "../../../core/manifest-rescope.js";
 import {
   completeBatch,
   markTaskComplete,
   markTaskFailed,
   markTaskNeedsHumanReview,
+  markTaskRescopeRequired,
   markTaskValidated,
   resetTaskToPending,
   type RunState,
@@ -86,6 +90,7 @@ export type BatchEngineContext = {
   runMetrics: RunMetrics;
   recordDoctorDuration: (durationMs: number) => void;
   controlPlaneConfig: ControlPlaneRunConfig;
+  derivedScopeReports: Map<string, DerivedScopeReport>;
   scopeComplianceMode: ControlPlaneScopeMode;
   manifestPolicy: ManifestEnforcementPolicy;
   policyDecisions: Map<string, PolicyDecision>;
@@ -182,6 +187,122 @@ export function createBatchEngine(
       },
       blockedTasks,
     );
+  };
+
+  const applyControlGraphScopeEnforcement = async (input: {
+    task: TaskSpec;
+    taskId: string;
+    changeManifest: TaskChangeManifest | null;
+  }): Promise<void> => {
+    if (!context.controlPlaneConfig.enabled) {
+      return;
+    }
+
+    const taskId = input.taskId;
+    const taskState = context.state.tasks[taskId];
+    if (!taskState || taskState.status !== "running") {
+      return;
+    }
+
+    if (!input.changeManifest) {
+      const reason = "Control graph scope enforcement failed: change manifest missing.";
+      markTaskNeedsHumanReview(context.state, taskId, {
+        validator: "doctor",
+        reason,
+      });
+      logOrchestratorEvent(context.orchestratorLog, "task.rescope.failed", {
+        taskId,
+        reason,
+      });
+      return;
+    }
+
+    if (input.changeManifest.changed_files.length === 0) {
+      return;
+    }
+
+    const changeManifestPath = taskChangeManifestPath(context.repoPath, context.runId, taskId);
+    const evaluation = evaluateControlGraphScope({
+      manifest: input.task.manifest,
+      derivedScopeReport: context.derivedScopeReports.get(taskId) ?? null,
+      changeManifest: input.changeManifest,
+      componentResourcePrefix: context.controlPlaneConfig.componentResourcePrefix,
+      model: context.blastContext?.model ?? null,
+    });
+
+    if (evaluation.status === "pass") {
+      return;
+    }
+
+    if (evaluation.status === "unmapped") {
+      const reason = `Control graph scope enforcement failed: ${evaluation.reason}`;
+      markTaskNeedsHumanReview(context.state, taskId, {
+        validator: "doctor",
+        reason,
+        summary: evaluation.reason,
+        reportPath: changeManifestPath,
+      });
+      logOrchestratorEvent(context.orchestratorLog, "task.rescope.failed", {
+        taskId,
+        reason,
+        report_path: changeManifestPath,
+        unmapped_files: evaluation.unmappedFiles,
+        missing_components: evaluation.missingComponents,
+      });
+      return;
+    }
+
+    const rescopeReason = `Rescope required: ${evaluation.reason}`;
+    const rescope = computeRescopeFromComponentScope({
+      manifest: input.task.manifest,
+      componentResourcePrefix: context.controlPlaneConfig.componentResourcePrefix,
+      missingComponents: evaluation.missingComponents,
+      changedFiles: evaluation.changedFiles,
+    });
+
+    if (rescope.status !== "updated") {
+      const reason = `Control graph scope enforcement failed: ${rescope.reason}`;
+      markTaskNeedsHumanReview(context.state, taskId, {
+        validator: "doctor",
+        reason,
+        summary: evaluation.reason,
+        reportPath: changeManifestPath,
+      });
+      logOrchestratorEvent(context.orchestratorLog, "task.rescope.failed", {
+        taskId,
+        reason,
+        report_path: changeManifestPath,
+        missing_components: evaluation.missingComponents,
+      });
+      return;
+    }
+
+    markTaskRescopeRequired(context.state, taskId, rescopeReason);
+    logOrchestratorEvent(context.orchestratorLog, "task.rescope.start", {
+      taskId,
+      reason: rescopeReason,
+      report_path: changeManifestPath,
+      missing_components: evaluation.missingComponents,
+    });
+
+    const manifestPath = resolveTaskManifestPath({
+      tasksRoot: context.tasksRootAbs,
+      stage: input.task.stage,
+      taskDirName: input.task.taskDirName,
+    });
+    await writeJsonFile(manifestPath, rescope.manifest);
+    input.task.manifest = rescope.manifest;
+
+    const resetReason = `Rescoped manifest (control graph): +${rescope.addedLocks.length} locks, +${rescope.addedFiles.length} files`;
+    resetTaskToPending(context.state, taskId, resetReason);
+    logOrchestratorEvent(context.orchestratorLog, "task.rescope.updated", {
+      taskId,
+      added_locks: rescope.addedLocks,
+      added_files: rescope.addedFiles,
+      manifest_path: manifestPath,
+      report_path: changeManifestPath,
+      reason: resetReason,
+    });
   };
 
   const cleanupSuccessfulBatchArtifacts = async (args: {
@@ -330,6 +451,12 @@ export function createBatchEngine(
 
       context.runMetrics.scopeViolations.warnCount += complianceOutcome.scopeViolations.warnCount;
       context.runMetrics.scopeViolations.blockCount += complianceOutcome.scopeViolations.blockCount;
+
+      await applyControlGraphScopeEnforcement({
+        task: taskSpec,
+        taskId: r.taskId,
+        changeManifest,
+      });
     }
 
     await context.stateStore.save(context.state);

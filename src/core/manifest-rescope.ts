@@ -81,6 +81,69 @@ export function computeRescopeFromCompliance(
   };
 }
 
+export function computeRescopeFromComponentScope(input: {
+  manifest: TaskManifest;
+  componentResourcePrefix: string;
+  missingComponents: string[];
+  changedFiles: string[];
+}): RescopeComputation {
+  if (input.missingComponents.length === 0 && input.changedFiles.length === 0) {
+    return { status: "noop", reason: "No component scope drift detected" };
+  }
+
+  const prefix = input.componentResourcePrefix.trim();
+  if (!prefix) {
+    return { status: "failed", reason: "Cannot rescope: component resource prefix missing" };
+  }
+
+  const existingLocks = new Set(input.manifest.locks.writes ?? []);
+  const existingWriteFiles = new Set(input.manifest.files.writes ?? []);
+  const existingReadFiles = new Set(input.manifest.files.reads ?? []);
+
+  const addedLocks = new Set<string>();
+  const addedFiles = new Set<string>();
+
+  for (const componentId of input.missingComponents) {
+    const lockName = `${prefix}${componentId}`;
+    if (!existingLocks.has(lockName)) {
+      addedLocks.add(lockName);
+    }
+  }
+
+  for (const file of input.changedFiles) {
+    const normalizedPath = toPosixPath(file);
+    if (!existingWriteFiles.has(normalizedPath) && !existingReadFiles.has(normalizedPath)) {
+      addedFiles.add(normalizedPath);
+    }
+  }
+
+  if (addedLocks.size === 0 && addedFiles.size === 0) {
+    return {
+      status: "noop",
+      reason: "Component scope drift detected but no new locks/files to add",
+    };
+  }
+
+  const nextManifest = normalizeTaskManifest({
+    ...input.manifest,
+    locks: {
+      reads: input.manifest.locks.reads ?? [],
+      writes: [...(input.manifest.locks.writes ?? []), ...addedLocks],
+    },
+    files: {
+      reads: [...(input.manifest.files.reads ?? []), ...addedFiles],
+      writes: [...(input.manifest.files.writes ?? []), ...addedFiles],
+    },
+  });
+
+  return {
+    status: "updated",
+    manifest: nextManifest,
+    addedLocks: Array.from(addedLocks).sort(),
+    addedFiles: Array.from(addedFiles).sort(),
+  };
+}
+
 function toPosixPath(input: string): string {
   return input.split(path.sep).join("/");
 }

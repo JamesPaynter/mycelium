@@ -1,7 +1,10 @@
 import { describe, expect, it } from "vitest";
 
 import type { ManifestComplianceViolation } from "./manifest-compliance.js";
-import { computeRescopeFromCompliance } from "./manifest-rescope.js";
+import {
+  computeRescopeFromCompliance,
+  computeRescopeFromComponentScope,
+} from "./manifest-rescope.js";
 import type { TaskManifest } from "./task-manifest.js";
 
 describe("computeRescopeFromCompliance", () => {
@@ -61,6 +64,71 @@ describe("computeRescopeFromCompliance", () => {
   it("returns noop when there are no violations", () => {
     const compliance = buildCompliance(baseManifest, []);
     const result = computeRescopeFromCompliance(baseManifest, compliance);
+
+    expect(result.status).toBe("noop");
+  });
+});
+
+describe("computeRescopeFromComponentScope", () => {
+  it("adds missing component locks and files", () => {
+    const manifest: TaskManifest = {
+      id: "002",
+      name: "component-scope",
+      description: "Component scope rescope test.",
+      estimated_minutes: 10,
+      dependencies: [],
+      locks: { reads: [], writes: ["component:component-a"] },
+      files: { reads: [], writes: ["apps/component-a/owned.ts"] },
+      affected_tests: [],
+      test_paths: [],
+      tdd_mode: "off",
+      verify: { doctor: "npm test" },
+    };
+
+    const result = computeRescopeFromComponentScope({
+      manifest,
+      componentResourcePrefix: "component:",
+      missingComponents: ["component-b"],
+      changedFiles: ["apps/component-b/new.ts", "apps/component-a/owned.ts"],
+    });
+
+    expect(result.status).toBe("updated");
+    if (result.status !== "updated") return;
+
+    expect(result.addedLocks).toEqual(["component:component-b"]);
+    expect(result.addedFiles).toEqual(["apps/component-b/new.ts"]);
+    expect(result.manifest.locks.writes).toEqual([
+      "component:component-a",
+      "component:component-b",
+    ]);
+    expect(result.manifest.files.writes).toEqual([
+      "apps/component-a/owned.ts",
+      "apps/component-b/new.ts",
+    ]);
+    expect(result.manifest.files.reads).toEqual(["apps/component-b/new.ts"]);
+  });
+
+  it("returns noop when nothing new is added", () => {
+    const manifest: TaskManifest = {
+      id: "003",
+      name: "component-scope-noop",
+      description: "Component scope rescope noop test.",
+      estimated_minutes: 10,
+      dependencies: [],
+      locks: { reads: [], writes: ["component:component-a"] },
+      files: { reads: [], writes: ["apps/component-a/owned.ts"] },
+      affected_tests: [],
+      test_paths: [],
+      tdd_mode: "off",
+      verify: { doctor: "npm test" },
+    };
+
+    const result = computeRescopeFromComponentScope({
+      manifest,
+      componentResourcePrefix: "component:",
+      missingComponents: [],
+      changedFiles: ["apps/component-a/owned.ts"],
+    });
 
     expect(result.status).toBe("noop");
   });
