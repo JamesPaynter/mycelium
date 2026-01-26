@@ -1,16 +1,18 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 
 import { afterEach, describe, expect, it } from "vitest";
 
 import { createAppContext, type AppContext } from "../app/context.js";
 import { ProjectConfigSchema } from "../core/config.js";
 import { createRunState } from "../core/state.js";
-import { startUiServer, type UiServerHandle } from "../ui/server.js";
+import { startUiServer, type StartUiServerOptions, type UiServerHandle } from "../ui/server.js";
 
 const tempDirs: string[] = [];
 const servers: UiServerHandle[] = [];
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 afterEach(async () => {
   for (const server of servers) {
@@ -153,6 +155,35 @@ function buildTaskEventsUrl(
 // =============================================================================
 
 describe("UI server", () => {
+  it("does not import CLI modules", () => {
+    const serverPath = path.resolve(__dirname, "../ui/server.ts");
+    const source = fs.readFileSync(serverPath, "utf8");
+
+    expect(source).not.toMatch(/from\s+["']\.\.\/cli\//);
+  });
+
+  it("requires an app context", async () => {
+    const options = {
+      project: "demo-project",
+      runId: "run-missing-context",
+      port: 0,
+    } as StartUiServerOptions;
+
+    let handle: UiServerHandle | null = null;
+    try {
+      handle = await startUiServer(options);
+    } catch (err) {
+      expect(String(err)).toContain("App context");
+      return;
+    } finally {
+      if (handle) {
+        await handle.close();
+      }
+    }
+
+    throw new Error("Expected startUiServer to require an app context.");
+  });
+
   it("serves summary and cursor-based event endpoints", async () => {
     const root = makeTempDir();
     const projectName = "demo-project";

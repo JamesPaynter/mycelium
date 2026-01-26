@@ -4,7 +4,6 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 import type { AppContext } from "../app/context.js";
-import { loadAppContext } from "../app/config/load-app-context.js";
 
 import { createUiRouter } from "./router.js";
 
@@ -17,7 +16,7 @@ export type StartUiServerOptions = {
   project: string;
   runId: string;
   port?: number;
-  appContext?: AppContext;
+  appContext: AppContext;
 };
 
 export type UiServerHandle = {
@@ -43,10 +42,12 @@ export async function startUiServer(options: StartUiServerOptions): Promise<UiSe
     throw new Error("Port must be a non-negative integer.");
   }
 
-  const appContext = options.appContext ?? (await loadAppContext({
-    projectName: options.project,
-    initIfMissing: true,
-  })).appContext;
+  const appContext = options.appContext;
+  if (!appContext) {
+    throw new Error(
+      "App context is required to start the UI server. Create one via createAppContext() or loadAppContext().",
+    );
+  }
 
   const staticRoot = resolveUiStaticRoot();
   const router = createUiRouter({

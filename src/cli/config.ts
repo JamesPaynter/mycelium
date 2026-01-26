@@ -1,5 +1,5 @@
+import { loadAppContext, type LoadAppContextResult } from "../app/config/load-app-context.js";
 import type { AppContext } from "../app/context.js";
-import { loadAppContext } from "../app/config/load-app-context.js";
 import type { ProjectConfig } from "../core/config.js";
 
 // =============================================================================
@@ -18,6 +18,17 @@ export type LoadConfigForCliArgs = {
   cwd?: string;
 };
 
+export async function loadAppContextForCli(
+  args: LoadConfigForCliArgs,
+): Promise<LoadAppContextResult> {
+  return loadAppContext({
+    projectName: args.projectName,
+    explicitConfigPath: args.explicitConfigPath,
+    initIfMissing: args.initIfMissing,
+    cwd: args.cwd,
+  });
+}
+
 export async function loadConfigForCli(args: LoadConfigForCliArgs): Promise<{
   appContext: AppContext;
   config: ProjectConfig;
@@ -25,12 +36,7 @@ export async function loadConfigForCli(args: LoadConfigForCliArgs): Promise<{
   created: boolean;
   projectName: string;
 }> {
-  const { appContext, created } = await loadAppContext({
-    projectName: args.projectName,
-    explicitConfigPath: args.explicitConfigPath,
-    initIfMissing: args.initIfMissing,
-    cwd: args.cwd,
-  });
+  const { appContext, created } = await loadAppContextForCli(args);
 
   return {
     appContext,
