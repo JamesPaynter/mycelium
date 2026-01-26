@@ -19,6 +19,8 @@ import { DockerWorkerRunner } from "../workers/docker-worker-runner.js";
 import { LocalWorkerRunner } from "../workers/local-worker-runner.js";
 import type { WorkerRunner } from "../workers/worker-runner.js";
 
+export { shouldResetTaskToPending } from "./failure-policy.js";
+
 import { buildControlPlaneModel } from "../../../control-plane/model/build.js";
 import type { ControlPlaneModel } from "../../../control-plane/model/schema.js";
 import { ControlPlaneStore } from "../../../control-plane/storage.js";
@@ -1006,8 +1008,8 @@ function resolveEffectiveLockMode(config: ControlPlaneRunConfig): ControlPlaneLo
   return config.enabled ? config.lockMode : "declared";
 }
 
-function resolveScopeComplianceMode(config: ControlPlaneRunConfig): ControlPlaneScopeMode {
-  return config.enabled ? config.scopeMode : "enforce";
+export function resolveScopeComplianceMode(config: ControlPlaneRunConfig): ControlPlaneScopeMode {
+  return config.scopeMode;
 }
 
 async function buildControlPlaneSnapshot(input: {

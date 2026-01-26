@@ -3,7 +3,7 @@ import path from "node:path";
 import fse from "fs-extra";
 
 import { cloneRepo, checkoutBranchInClone, createBranchInClone } from "../git/branches.js";
-import { branchExists, ensureCleanWorkingTree, getRemoteUrl } from "../git/git.js";
+import { branchExists, ensureCleanWorkingTree, getRemoteUrl, git } from "../git/git.js";
 
 import { TaskError } from "./errors.js";
 import type { PathsContext } from "./paths.js";
@@ -18,11 +18,13 @@ export type PrepareTaskWorkspaceOptions = {
   mainBranch: string;
   taskBranch: string;
   paths?: PathsContext;
+  recoverDirtyWorkspace?: boolean;
 };
 
 export type PrepareTaskWorkspaceResult = {
   workspacePath: string;
   created: boolean;
+  recovered?: boolean;
 };
 
 export async function prepareTaskWorkspace(
@@ -32,10 +34,15 @@ export async function prepareTaskWorkspace(
   const exists = await pathExists(workspacePath);
 
   if (exists) {
-    await assertExistingWorkspaceValid(workspacePath, opts.repoPath, opts.mainBranch);
+    const recovered = await assertExistingWorkspaceValid(
+      workspacePath,
+      opts.repoPath,
+      opts.mainBranch,
+      opts.recoverDirtyWorkspace ?? false,
+    );
     await ensureTaskBranchPresent(workspacePath, opts.mainBranch, opts.taskBranch);
     await ensureWorkspaceRuntimeIgnored(workspacePath);
-    return { workspacePath, created: false };
+    return { workspacePath, created: false, recovered };
   }
 
   await ensureDir(runWorkspaceDir(opts.projectName, opts.runId, opts.paths));
@@ -44,7 +51,7 @@ export async function prepareTaskWorkspace(
   await createBranchInClone(workspacePath, opts.taskBranch, opts.mainBranch);
   await ensureWorkspaceRuntimeIgnored(workspacePath);
 
-  return { workspacePath, created: true };
+  return { workspacePath, created: true, recovered: false };
 }
 
 export async function removeTaskWorkspace(
@@ -111,14 +118,15 @@ async function assertExistingWorkspaceValid(
   workspacePath: string,
   repoPath: string,
   mainBranch: string,
-): Promise<void> {
+  recoverDirtyWorkspace: boolean,
+): Promise<boolean> {
   if (!isGitRepo(workspacePath)) {
     throw new TaskError(
       `Workspace exists but is not a git repository: ${workspacePath}. Remove it or choose a new run id.`,
     );
   }
 
-  await ensureCleanWorkingTree(workspacePath);
+  const recovered = await ensureCleanWorkspaceOrRecover(workspacePath, recoverDirtyWorkspace);
 
   const originUrl = await getRemoteUrl(workspacePath);
   const [expectedLocal, originLocal] = await Promise.all([
@@ -138,6 +146,8 @@ async function assertExistingWorkspaceValid(
       `Workspace ${workspacePath} is missing branch ${mainBranch}. Remove it and retry.`,
     );
   }
+
+  return recovered;
 }
 
 async function ensureTaskBranchPresent(
@@ -153,6 +163,25 @@ async function ensureTaskBranchPresent(
 
   await checkoutBranchInClone(workspacePath, mainBranch);
   await createBranchInClone(workspacePath, taskBranch, mainBranch);
+}
+
+async function ensureCleanWorkspaceOrRecover(
+  workspacePath: string,
+  recoverDirtyWorkspace: boolean,
+): Promise<boolean> {
+  try {
+    await ensureCleanWorkingTree(workspacePath);
+    return false;
+  } catch (error) {
+    if (!recoverDirtyWorkspace) {
+      throw error;
+    }
+
+    await git(workspacePath, ["reset", "--hard"]);
+    await git(workspacePath, ["clean", "-fd"]);
+    await ensureCleanWorkingTree(workspacePath);
+    return true;
+  }
 }
 
 async function normalizeLocalPath(input: string | null): Promise<string | null> {

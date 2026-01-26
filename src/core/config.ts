@@ -169,6 +169,7 @@ const DockerSchema = z
   .strict();
 
 const ManifestEnforcementSchema = z.enum(["off", "warn", "block"]).default("warn");
+const TaskFailurePolicySchema = z.enum(["fail_fast", "retry"]);
 
 export const ProjectConfigSchema = z
   .object({
@@ -203,6 +204,7 @@ export const ProjectConfigSchema = z
 
     docker: DockerSchema.default({}),
     manifest_enforcement: ManifestEnforcementSchema.default("warn"),
+    task_failure_policy: TaskFailurePolicySchema.default("retry"),
 
     planner: PlannerSchema,
     worker: WorkerSchema,
@@ -245,3 +247,4 @@ export type DockerConfig = z.infer<typeof DockerSchema>;
 export type DockerNetworkMode = z.infer<typeof DockerNetworkModeSchema>;
 export type ProjectConfig = z.infer<typeof ProjectConfigSchema>;
 export type ManifestEnforcementPolicy = z.infer<typeof ManifestEnforcementSchema>;
+export type TaskFailurePolicy = z.infer<typeof TaskFailurePolicySchema>;
