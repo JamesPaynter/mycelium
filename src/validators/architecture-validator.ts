@@ -67,8 +67,8 @@ export type ArchitectureValidatorArgs = {
 // CONSTANTS
 // =============================================================================
 
-const VALIDATOR_NAME = "architecture-validator";
-const VALIDATOR_ID = "architecture";
+export const VALIDATOR_NAME = "architecture-validator";
+export const VALIDATOR_ID = "architecture";
 
 const DOC_SNIPPET_LIMIT = 4_000;
 const FILE_SNIPPET_LIMIT = 3_000;
