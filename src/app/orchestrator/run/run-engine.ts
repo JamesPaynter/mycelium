@@ -5,6 +5,7 @@
  * Usage: runEngine(context) from executor.
  */
 
+import fs from "node:fs/promises";
 import path from "node:path";
 
 import { BudgetTracker } from "../budgets/budget-tracker.js";
@@ -56,6 +57,7 @@ import {
 import { loadTaskSpecs } from "../../../core/task-loader.js";
 import { normalizeLocks, type TaskSpec } from "../../../core/task-manifest.js";
 import { buildTaskFileIndex, type TaskFileLocation } from "../../../core/task-file-index.js";
+import { resolveTasksArchiveDir } from "../../../core/task-layout.js";
 import {
   computeTaskFingerprint,
   importLedgerFromRunState,
@@ -533,6 +535,37 @@ async function runEngineImpl(context: RunContext<RunOptions, RunResult>): Promis
         imported: importResult.imported,
         skipped: importResult.skipped,
       });
+    }
+
+    const externalDeps = collectExternalDependencies(tasks);
+    if (reuseCompleted && !importRunId && externalDeps.size > 0) {
+      const ledgerContext = await ensureLedgerContext();
+      const ledgerTasks = ledgerContext.ledger?.tasks ?? {};
+      const missingFromLedger = [...externalDeps].filter((depId) => !ledgerTasks[depId]);
+
+      if (missingFromLedger.length > 0) {
+        const archiveImport = await autoImportLedgerFromArchiveRuns({
+          projectName,
+          repoPath,
+          tasksRoot: tasksRootAbs,
+          tasks: taskCatalog,
+          paths: pathsContext,
+        });
+
+        if (archiveImport.runIds.length > 0) {
+          logOrchestratorEvent(orchLog, "ledger.import.archive", {
+            run_count: archiveImport.runIds.length,
+            imported: archiveImport.imported.length,
+            skipped: archiveImport.skipped.length,
+            skipped_runs: archiveImport.skippedRuns.length,
+          });
+        }
+
+        if (archiveImport.imported.length > 0) {
+          ledgerLoaded = false;
+          ledgerSnapshot = null;
+        }
+      }
     }
 
     const shouldSeedFromLedger = reuseCompleted && (!hadExistingState || isResume);
@@ -1479,6 +1512,74 @@ type ExternalDependencySummary = {
   externalCompleted: Set<string>;
   satisfiedByTask: Map<string, ExternalDependency[]>;
 };
+
+type ArchiveImportSummary = {
+  runIds: string[];
+  imported: string[];
+  skipped: string[];
+  skippedRuns: { runId: string; reason: string }[];
+};
+
+function collectExternalDependencies(tasks: TaskSpec[]): Set<string> {
+  const taskIds = new Set(tasks.map((task) => task.manifest.id));
+  const externalDeps = new Set<string>();
+
+  for (const task of tasks) {
+    const deps = task.manifest.dependencies ?? [];
+    for (const depId of deps) {
+      if (!taskIds.has(depId)) {
+        externalDeps.add(depId);
+      }
+    }
+  }
+
+  return externalDeps;
+}
+
+async function listArchiveRunIds(tasksRoot: string): Promise<string[]> {
+  const archiveDir = resolveTasksArchiveDir(tasksRoot);
+  const entries = await fs.readdir(archiveDir, { withFileTypes: true }).catch(() => []);
+  return entries
+    .filter((entry) => entry.isDirectory())
+    .map((entry) => entry.name)
+    .sort((a, b) => a.localeCompare(b, undefined, { numeric: true, sensitivity: "base" }));
+}
+
+async function autoImportLedgerFromArchiveRuns(args: {
+  projectName: string;
+  repoPath: string;
+  tasksRoot: string;
+  tasks: TaskSpec[];
+  paths: PathsContext;
+}): Promise<ArchiveImportSummary> {
+  const runIds = await listArchiveRunIds(args.tasksRoot);
+  const imported: string[] = [];
+  const skipped: string[] = [];
+  const skippedRuns: { runId: string; reason: string }[] = [];
+
+  for (const runId of runIds) {
+    const store = new StateStore(args.projectName, runId, args.paths);
+    if (!(await store.exists())) {
+      skippedRuns.push({ runId, reason: "run state not found" });
+      continue;
+    }
+
+    const state = await store.load();
+    const result = await importLedgerFromRunState({
+      projectName: args.projectName,
+      repoPath: args.repoPath,
+      runId,
+      tasks: args.tasks,
+      state,
+      tasksRoot: args.tasksRoot,
+      paths: args.paths,
+    });
+    imported.push(...result.imported);
+    skipped.push(...result.skipped);
+  }
+
+  return { runIds, imported, skipped, skippedRuns };
+}
 
 async function resolveTaskFingerprint(args: {
   taskId: string;
