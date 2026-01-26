@@ -7,5 +7,7 @@ if [[ "${ORCH_CANARY:-}" == "1" ]]; then
 fi
 
 npm run typecheck
+npm run lint
+npm run format:check
 npm run build
 npm test
