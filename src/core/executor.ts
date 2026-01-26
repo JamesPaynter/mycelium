@@ -8,6 +8,12 @@ import { getDefaultPathsContext, setDefaultPathsContext, type PathsContext } fro
 
 export { checkpointListsEqual, mergeCheckpointCommits } from "../app/orchestrator/run/task-engine.js";
 export type { BatchPlanEntry, RunOptions, RunResult } from "../app/orchestrator/run/run-engine.js";
+export {
+  summarizeArchitectureReport,
+  summarizeDoctorReport,
+  summarizeStyleReport,
+  summarizeTestReport,
+} from "../app/orchestrator/validation/summaries.js";
 
 
 // =============================================================================

@@ -47,7 +47,7 @@ import {
   summarizeDoctorReport,
   summarizeStyleReport,
   summarizeTestReport,
-} from "../helpers/format.js";
+} from "./summaries.js";
 import type { ValidatorRunner } from "../ports.js";
 import type { RunValidatorConfig } from "../run-context.js";
 
