@@ -39,7 +39,7 @@ budgets:
 
 # Doctor command runs on the integration branch after each batch.
 doctor: ./.mycelium/doctor.sh
-# doctor_timeout: 900
+doctor_timeout: 1200
 
 # Optional bootstrap commands executed inside each worker container before Codex runs.
 # Use npm to avoid creating pnpm lock/store files in the workspace (keeps context small).

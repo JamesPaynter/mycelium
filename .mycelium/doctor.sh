@@ -6,5 +6,6 @@ if [[ "${ORCH_CANARY:-}" == "1" ]]; then
   exit 1
 fi
 
-echo "Doctor not configured. Update .mycelium/doctor.sh"
-exit 0
+npm run typecheck
+npm run build
+npm test
