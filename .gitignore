@@ -1,6 +1,8 @@
 # Logs
 logs
 *.log
+!src/cli/commands/logs/
+!src/cli/commands/logs/**
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
