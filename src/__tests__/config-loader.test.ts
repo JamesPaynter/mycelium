@@ -255,4 +255,30 @@ control_graph:
     expect(config.control_plane.lock_mode).toBe("derived");
     expect(config.control_plane.checks.mode).toBe("enforce");
   });
+
+  it("defaults lock_mode to derived when control_graph is enabled", () => {
+    const configPath = writeConfig(
+      "control-graph-default-lock.yaml",
+      `
+repo_path: /tmp/repo
+main_branch: development-codex
+doctor: "npm test"
+resources:
+  - name: backend
+    paths: ["server/*"]
+planner:
+  provider: openai
+  model: o3
+worker:
+  model: gpt-5.1-codex-max
+control_graph:
+  enabled: true
+`,
+    );
+
+    const config = loadProjectConfig(configPath);
+
+    expect(config.control_plane.enabled).toBe(true);
+    expect(config.control_plane.lock_mode).toBe("derived");
+  });
 });

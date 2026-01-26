@@ -1208,9 +1208,7 @@ async function emitDerivedScopeReports(input: {
   orchestratorLog: JsonlLogger;
 }): Promise<Map<string, DerivedScopeReport>> {
   const reports = new Map<string, DerivedScopeReport>();
-  const shouldCompute =
-    input.controlPlaneConfig.enabled && input.controlPlaneConfig.lockMode !== "declared";
-  if (!shouldCompute) {
+  if (!input.controlPlaneConfig.enabled) {
     return reports;
   }
 

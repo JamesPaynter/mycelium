@@ -121,7 +121,7 @@ function resolveControlPlaneConfig(config: ProjectConfig): ControlPlaneRunConfig
     fallbackResource,
     resourcesMode: raw.resources_mode ?? "prefer-derived",
     scopeMode: raw.scope_mode ?? "enforce",
-    lockMode: raw.lock_mode ?? "declared",
+    lockMode: raw.lock_mode ?? (raw.enabled === true ? "derived" : "declared"),
     checks: {
       mode: rawChecks.mode ?? "off",
       commandsByComponent: rawChecks.commands_by_component ?? {},

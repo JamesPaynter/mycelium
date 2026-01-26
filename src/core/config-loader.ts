@@ -59,6 +59,26 @@ function normalizeControlGraphAlias(doc: unknown): unknown {
   return config;
 }
 
+function applyControlPlaneLockDefaults(doc: unknown): unknown {
+  if (!doc || typeof doc !== "object" || Array.isArray(doc)) {
+    return doc;
+  }
+
+  const config = { ...(doc as Record<string, unknown>) };
+  const controlPlaneRaw = config.control_plane;
+  if (!controlPlaneRaw || typeof controlPlaneRaw !== "object" || Array.isArray(controlPlaneRaw)) {
+    return config;
+  }
+
+  const controlPlane = { ...(controlPlaneRaw as Record<string, unknown>) };
+  if (controlPlane.enabled === true && !("lock_mode" in controlPlane)) {
+    controlPlane.lock_mode = "derived";
+  }
+
+  config.control_plane = controlPlane;
+  return config;
+}
+
 function formatIssues(issues: ZodIssue[]): string {
   return issues
     .map((issue) => {
@@ -103,8 +123,9 @@ export function loadProjectConfig(configPath: string): ProjectConfig {
 
   const expanded = expandEnv(doc, { file: absolutePath, trail: [] });
   const normalized = normalizeControlGraphAlias(expanded);
+  const defaultsApplied = applyControlPlaneLockDefaults(normalized);
 
-  const parsed = ProjectConfigSchema.safeParse(normalized);
+  const parsed = ProjectConfigSchema.safeParse(defaultsApplied);
   if (!parsed.success) {
     const details = formatIssues(parsed.error.issues);
     throw new ConfigError(`Invalid project config at ${absolutePath}:\n${details}`, parsed.error);
