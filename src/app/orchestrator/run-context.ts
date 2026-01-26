@@ -53,6 +53,8 @@ export type RunContextOptions = {
   cleanupOnSuccess?: boolean;
   useDocker?: boolean;
   stopContainersOnExit?: boolean;
+  useLegacyEngine?: boolean;
+  crashAfterContainerStart?: boolean;
 };
 
 export type RunValidatorConfig<TConfig> = {

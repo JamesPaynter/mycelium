@@ -5,7 +5,7 @@ import path from "node:path";
 import fse from "fs-extra";
 import { afterEach, describe, expect, it } from "vitest";
 
-import { taskLedgerPath } from "./paths.js";
+import { createPathsContext, taskLedgerPath } from "./paths.js";
 import {
   computeTaskFingerprint,
   importLedgerFromRunState,
@@ -16,7 +16,6 @@ import { createRunState } from "./state.js";
 import type { TaskSpec } from "./task-manifest.js";
 import type { TaskLedger } from "./task-ledger.js";
 
-const originalHome = process.env.MYCELIUM_HOME;
 const temporaryDirectories: string[] = [];
 
 afterEach(() => {
@@ -24,12 +23,6 @@ afterEach(() => {
     fs.rmSync(directoryPath, { recursive: true, force: true });
   }
   temporaryDirectories.length = 0;
-
-  if (originalHome === undefined) {
-    delete process.env.MYCELIUM_HOME;
-  } else {
-    process.env.MYCELIUM_HOME = originalHome;
-  }
 });
 
 
@@ -152,7 +145,7 @@ describe("task ledger fingerprint", () => {
 describe("task ledger storage", () => {
   it("roundtrips ledger load and save", async () => {
     const temporaryHomeDirectory = makeTemporaryDirectory("task-ledger-home-");
-    process.env.MYCELIUM_HOME = temporaryHomeDirectory;
+    const paths = createPathsContext({ myceliumHome: temporaryHomeDirectory });
 
     const projectName = "demo-project";
     const ledger: TaskLedger = {
@@ -172,18 +165,18 @@ describe("task ledger storage", () => {
       },
     };
 
-    await saveTaskLedger(projectName, ledger);
-    const loaded = await loadTaskLedger(projectName);
+    await saveTaskLedger(projectName, ledger, paths);
+    const loaded = await loadTaskLedger(projectName, paths);
 
     expect(loaded).toEqual(ledger);
-    expect(fs.existsSync(taskLedgerPath(projectName))).toBe(true);
+    expect(fs.existsSync(taskLedgerPath(projectName, paths))).toBe(true);
   });
 });
 
 describe("task ledger import", () => {
   it("imports completed tasks with merge and integration doctor pass", async () => {
     const temporaryHomeDirectory = makeTemporaryDirectory("task-ledger-home-");
-    process.env.MYCELIUM_HOME = temporaryHomeDirectory;
+    const paths = createPathsContext({ myceliumHome: temporaryHomeDirectory });
 
     const repoPath = makeTemporaryDirectory("task-ledger-repo-");
     const tasksRoot = path.join(repoPath, ".mycelium", "tasks");
@@ -272,13 +265,14 @@ describe("task ledger import", () => {
       runId,
       tasks: taskSpecs,
       state,
+      paths,
     });
 
     expect(result.imported.sort()).toEqual(["101", "102"]);
     expect(result.skipped).toEqual([]);
     expect(result.skippedDetails).toEqual([]);
 
-    const ledger = await loadTaskLedger(projectName);
+    const ledger = await loadTaskLedger(projectName, paths);
     expect(ledger).not.toBeNull();
 
     const alphaFingerprint = await computeTaskFingerprint({
@@ -314,7 +308,7 @@ describe("task ledger import", () => {
 
   it("skips tasks without integration doctor pass", async () => {
     const temporaryHomeDirectory = makeTemporaryDirectory("task-ledger-home-");
-    process.env.MYCELIUM_HOME = temporaryHomeDirectory;
+    const paths = createPathsContext({ myceliumHome: temporaryHomeDirectory });
 
     const repoPath = makeTemporaryDirectory("task-ledger-repo-");
     const tasksRoot = path.join(repoPath, ".mycelium", "tasks");
@@ -382,6 +376,7 @@ describe("task ledger import", () => {
       runId,
       tasks: taskSpecs,
       state,
+      paths,
     });
 
     expect(result.imported).toEqual([]);
@@ -389,6 +384,6 @@ describe("task ledger import", () => {
     expect(result.skippedDetails).toEqual([
       { taskId: "201", reason: "integration doctor did not pass" },
     ]);
-    expect(await loadTaskLedger(projectName)).toBeNull();
+    expect(await loadTaskLedger(projectName, paths)).toBeNull();
   });
 });

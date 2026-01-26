@@ -6,7 +6,8 @@ import { execa } from "execa";
 import fse from "fs-extra";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-import { taskWorkspaceDir } from "./paths.js";
+import { createPathsContext, taskWorkspaceDir } from "./paths.js";
+import type { PathsContext } from "./paths.js";
 import { prepareTaskWorkspace, removeRunWorkspace } from "./workspaces.js";
 
 describe("prepareTaskWorkspace", () => {
@@ -18,13 +19,12 @@ describe("prepareTaskWorkspace", () => {
 
   let tmpDir: string;
   let bareRepo: string;
-  let originalHome: string | undefined;
+  let paths: PathsContext;
 
   beforeEach(async () => {
-    originalHome = process.env.MYCELIUM_HOME;
     tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "workspace-manager-"));
-    process.env.MYCELIUM_HOME = path.join(tmpDir, ".mycelium-home");
-    await removeRunWorkspace(projectName, runId);
+    paths = createPathsContext({ myceliumHome: path.join(tmpDir, ".mycelium-home") });
+    await removeRunWorkspace(projectName, runId, paths);
     bareRepo = path.join(tmpDir, "source.git");
 
     await execa("git", ["init", "--bare", bareRepo]);
@@ -42,13 +42,8 @@ describe("prepareTaskWorkspace", () => {
   });
 
   afterEach(async () => {
-    await removeRunWorkspace(projectName, runId);
+    await removeRunWorkspace(projectName, runId, paths);
     await fse.remove(tmpDir);
-    if (originalHome === undefined) {
-      delete process.env.MYCELIUM_HOME;
-    } else {
-      process.env.MYCELIUM_HOME = originalHome;
-    }
   });
 
   it("clones repo and creates the task branch", async () => {
@@ -59,11 +54,12 @@ describe("prepareTaskWorkspace", () => {
       repoPath: bareRepo,
       mainBranch,
       taskBranch,
+      paths,
     });
 
     expect(result.created).toBe(true);
 
-    const workspacePath = taskWorkspaceDir(projectName, runId, taskId);
+    const workspacePath = taskWorkspaceDir(projectName, runId, taskId, paths);
     expect(result.workspacePath).toBe(workspacePath);
     expect(await fse.pathExists(workspacePath)).toBe(true);
 
@@ -81,11 +77,12 @@ describe("prepareTaskWorkspace", () => {
       repoPath: bareRepo,
       mainBranch,
       taskBranch,
+      paths,
     };
 
     await prepareTaskWorkspace(options);
 
-    const workspacePath = taskWorkspaceDir(projectName, runId, taskId);
+    const workspacePath = taskWorkspaceDir(projectName, runId, taskId, paths);
     const markerPath = path.join(workspacePath, "marker.txt");
     await fse.writeFile(markerPath, "keep");
 
@@ -107,11 +104,12 @@ describe("prepareTaskWorkspace", () => {
       repoPath: bareRepo,
       mainBranch,
       taskBranch,
+      paths,
     };
 
     await prepareTaskWorkspace(options);
 
-    const workspacePath = taskWorkspaceDir(projectName, runId, taskId);
+    const workspacePath = taskWorkspaceDir(projectName, runId, taskId, paths);
     const excludePath = path.join(workspacePath, ".git", "info", "exclude");
     const exclude = await fse.readFile(excludePath, "utf8");
 
@@ -129,11 +127,12 @@ describe("prepareTaskWorkspace", () => {
       repoPath: bareRepo,
       mainBranch,
       taskBranch,
+      paths,
     };
 
     await prepareTaskWorkspace(options);
 
-    const workspacePath = taskWorkspaceDir(projectName, runId, taskId);
+    const workspacePath = taskWorkspaceDir(projectName, runId, taskId, paths);
     const otherRepo = path.join(tmpDir, "other.git");
     await execa("git", ["init", "--bare", otherRepo]);
     await execa("git", ["remote", "set-url", "origin", otherRepo], { cwd: workspacePath });

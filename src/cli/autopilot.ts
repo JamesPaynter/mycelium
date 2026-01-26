@@ -20,6 +20,7 @@ import { StateStore, summarizeRunState } from "../core/state-store.js";
 import { defaultRunId, isoNow } from "../core/utils.js";
 
 import { planProject } from "./plan.js";
+import { resolveRunDebugFlags } from "./run-flags.js";
 import { createRunStopSignalHandler } from "./signal-handlers.js";
 
 // =============================================================================
@@ -77,6 +78,7 @@ export async function autopilotCommand(
       );
     },
   });
+  const runDebugFlags = resolveRunDebugFlags(opts);
 
   const transcriptData: Omit<AutopilotTranscriptData, keyof AutopilotTranscriptContext> = {
     turns: [],
@@ -152,6 +154,7 @@ export async function autopilotCommand(
           buildImage: opts.buildImage,
           useDocker: opts.useDocker,
           stopContainersOnExit: opts.stopContainersOnExit,
+          ...runDebugFlags,
           stopSignal: stopHandler.signal,
         },
         paths,

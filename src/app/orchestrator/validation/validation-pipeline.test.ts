@@ -12,6 +12,7 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { JsonlLogger } from "../../../core/logger.js";
+import { createPathsContext, type PathsContext } from "../../../core/paths.js";
 import type { TaskSpec } from "../../../core/task-manifest.js";
 import type { DoctorCanaryResult } from "../../../validators/doctor-validator.js";
 import type { ValidatorRunner } from "../ports.js";
@@ -51,16 +52,14 @@ function buildTaskSpec(id: string, name: string): TaskSpec {
 
 describe("ValidationPipeline", () => {
   let tmpDir: string;
-  let originalHome: string | undefined;
+  let paths: PathsContext;
 
   beforeEach(async () => {
     tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "validation-pipeline-"));
-    originalHome = process.env.MYCELIUM_HOME;
-    process.env.MYCELIUM_HOME = path.join(tmpDir, ".mycelium");
+    paths = createPathsContext({ myceliumHome: path.join(tmpDir, ".mycelium") });
   });
 
   afterEach(async () => {
-    process.env.MYCELIUM_HOME = originalHome;
     await fs.rm(tmpDir, { recursive: true, force: true });
   });
 
@@ -79,6 +78,7 @@ describe("ValidationPipeline", () => {
       runId: "run-1",
       tasksRoot: path.join(tmpDir, "tasks"),
       mainBranch: "main",
+      paths,
       validators: {
         test: {
           config: { enabled: true, mode: "warn", provider: "mock", model: "mock" },
@@ -142,6 +142,7 @@ describe("ValidationPipeline", () => {
       runId: "run-2",
       tasksRoot: path.join(tmpDir, "tasks"),
       mainBranch: "main",
+      paths,
       validators: {
         test: { config: undefined, mode: "off", enabled: false },
         style: { config: undefined, mode: "off", enabled: false },

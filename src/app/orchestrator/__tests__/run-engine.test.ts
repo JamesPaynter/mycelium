@@ -12,7 +12,7 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { ProjectConfigSchema, type ProjectConfig } from "../../../core/config.js";
-import { runSummaryReportPath } from "../../../core/paths.js";
+import { createPathsContext, runSummaryReportPath, type PathsContext } from "../../../core/paths.js";
 import { StateStore } from "../../../core/state-store.js";
 import { createRunState, startBatch } from "../../../core/state.js";
 import { buildTaskDirName, type TaskManifest } from "../../../core/task-manifest.js";
@@ -106,8 +106,14 @@ vi.mock("../../../core/workspaces.js", async () => {
       projectName: string;
       runId: string;
       taskId: string;
+      paths?: PathsContext;
     }) => {
-      const workspacePath = taskWorkspaceDir(opts.projectName, opts.runId, opts.taskId);
+      const workspacePath = taskWorkspaceDir(
+        opts.projectName,
+        opts.runId,
+        opts.taskId,
+        opts.paths,
+      );
       await ensureDir(workspacePath);
       return { workspacePath, created: true };
     },
@@ -125,11 +131,6 @@ vi.mock("../../../git/changes.js", () => ({
 // TEST SETUP
 // =============================================================================
 
-const ENV_VARS = ["MYCELIUM_HOME"] as const;
-const originalEnv: Record<(typeof ENV_VARS)[number], string | undefined> = Object.fromEntries(
-  ENV_VARS.map((key) => [key, process.env[key]]),
-) as Record<(typeof ENV_VARS)[number], string | undefined>;
-
 const temporaryDirectories: string[] = [];
 
 beforeEach(() => {
@@ -142,15 +143,6 @@ afterEach(async () => {
     await fs.rm(directoryPath, { recursive: true, force: true });
   }
   temporaryDirectories.length = 0;
-
-  for (const key of ENV_VARS) {
-    const value = originalEnv[key];
-    if (value === undefined) {
-      delete process.env[key];
-    } else {
-      process.env[key] = value;
-    }
-  }
 
   workerRunnerMocks.clearRunner();
 });
@@ -170,16 +162,16 @@ async function setupRepo(prefix: string): Promise<{
   repoPath: string;
   tasksRoot: string;
   tmpRoot: string;
+  paths: PathsContext;
 }> {
   const tmpRoot = await makeTemporaryDirectory(prefix);
   const repoPath = path.join(tmpRoot, "repo");
   await fs.mkdir(repoPath, { recursive: true });
   const tasksRoot = path.join(repoPath, "tasks");
   await fs.mkdir(tasksRoot, { recursive: true });
+  const paths = createPathsContext({ myceliumHome: path.join(tmpRoot, "mycelium-home") });
 
-  process.env.MYCELIUM_HOME = path.join(tmpRoot, "mycelium-home");
-
-  return { repoPath, tasksRoot, tmpRoot };
+  return { repoPath, tasksRoot, tmpRoot, paths };
 }
 
 function buildProjectConfig(
@@ -249,10 +241,14 @@ function buildValidatorRunner(): ValidatorRunner {
   };
 }
 
-function buildPortOverrides(input: { logsRoot: string; vcs: FakeVcs }): Partial<OrchestratorPorts> {
+function buildPortOverrides(input: {
+  logsRoot: string;
+  vcs: FakeVcs;
+  paths: PathsContext;
+}): Partial<OrchestratorPorts> {
   return {
     vcs: input.vcs,
-    stateRepository: new FakeStateRepository(),
+    stateRepository: new FakeStateRepository(input.paths),
     logSink: new FakeLogSink(input.logsRoot),
     clock: new FakeClock(),
     validatorRunner: buildValidatorRunner(),
@@ -264,11 +260,13 @@ async function buildTestContext(input: {
   config: ProjectConfig;
   options: RunOptions;
   ports: Partial<OrchestratorPorts>;
+  paths: PathsContext;
 }): Promise<RunContext<RunOptions, RunResult>> {
   return buildRunContext({
     projectName: input.projectName,
     config: input.config,
     options: input.options,
+    paths: input.paths,
     ports: input.ports,
     legacy: {
       runProject: async () => {
@@ -288,8 +286,33 @@ function useFakeRunner(runner: WorkerRunner): void {
 // =============================================================================
 
 describe("runEngine", () => {
+  it("uses explicit crashAfterContainerStart options", async () => {
+    const { repoPath, tmpRoot, paths } = await setupRepo("run-engine-crash-");
+    const config = buildProjectConfig(repoPath);
+    const projectName = "crash-run";
+    const runId = "run-crash";
+
+    const fakeVcs = new FakeVcs();
+    const context = await buildTestContext({
+      projectName,
+      config,
+      options: {
+        runId,
+        maxParallel: 1,
+        useDocker: false,
+        buildImage: false,
+        reuseCompleted: false,
+        crashAfterContainerStart: true,
+      },
+      ports: buildPortOverrides({ logsRoot: path.join(tmpRoot, "log-sink"), vcs: fakeVcs, paths }),
+      paths,
+    });
+
+    expect(context.resolved.flags.crashAfterContainerStart).toBe(true);
+  });
+
   it("runs tasks to completion with sequential batches", async () => {
-    const { repoPath, tasksRoot, tmpRoot } = await setupRepo("run-engine-basic-");
+    const { repoPath, tasksRoot, tmpRoot, paths } = await setupRepo("run-engine-basic-");
 
     await writeTaskSpec(tasksRoot, buildTaskManifest("001", "alpha"));
     await writeTaskSpec(tasksRoot, buildTaskManifest("002", "beta"));
@@ -314,7 +337,8 @@ describe("runEngine", () => {
         buildImage: false,
         reuseCompleted: false,
       },
-      ports: buildPortOverrides({ logsRoot: path.join(tmpRoot, "log-sink"), vcs: fakeVcs }),
+      ports: buildPortOverrides({ logsRoot: path.join(tmpRoot, "log-sink"), vcs: fakeVcs, paths }),
+      paths,
     });
 
     const result = await runEngine(context);
@@ -327,7 +351,7 @@ describe("runEngine", () => {
   });
 
   it("retries a running task after reset-to-pending on resume", async () => {
-    const { repoPath, tasksRoot, tmpRoot } = await setupRepo("run-engine-retry-");
+    const { repoPath, tasksRoot, tmpRoot, paths } = await setupRepo("run-engine-retry-");
 
     await writeTaskSpec(tasksRoot, buildTaskManifest("001", "retry-task"));
 
@@ -347,7 +371,7 @@ describe("runEngine", () => {
       taskIds: ["001"],
       locks: { reads: [], writes: ["repo"] },
     });
-    const store = new StateStore(projectName, runId);
+    const store = new StateStore(projectName, runId, paths);
     await store.save(state);
 
     const fakeRunner = new FakeWorkerRunner();
@@ -371,7 +395,8 @@ describe("runEngine", () => {
         buildImage: false,
         reuseCompleted: false,
       },
-      ports: buildPortOverrides({ logsRoot: path.join(tmpRoot, "log-sink"), vcs: fakeVcs }),
+      ports: buildPortOverrides({ logsRoot: path.join(tmpRoot, "log-sink"), vcs: fakeVcs, paths }),
+      paths,
     });
 
     const result = await runEngine(context);
@@ -383,7 +408,7 @@ describe("runEngine", () => {
   });
 
   it("resumes a paused run and only executes pending tasks", async () => {
-    const { repoPath, tasksRoot, tmpRoot } = await setupRepo("run-engine-resume-");
+    const { repoPath, tasksRoot, tmpRoot, paths } = await setupRepo("run-engine-resume-");
 
     await writeTaskSpec(tasksRoot, buildTaskManifest("001", "already-done"));
     await writeTaskSpec(tasksRoot, buildTaskManifest("002", "still-pending"));
@@ -404,7 +429,7 @@ describe("runEngine", () => {
     state.tasks["001"].attempts = 1;
     state.tasks["001"].completed_at = "2024-01-01T00:00:00.000Z";
 
-    const store = new StateStore(projectName, runId);
+    const store = new StateStore(projectName, runId, paths);
     await store.save(state);
 
     const fakeRunner = new FakeWorkerRunner();
@@ -423,7 +448,8 @@ describe("runEngine", () => {
         buildImage: false,
         reuseCompleted: false,
       },
-      ports: buildPortOverrides({ logsRoot: path.join(tmpRoot, "log-sink"), vcs: fakeVcs }),
+      ports: buildPortOverrides({ logsRoot: path.join(tmpRoot, "log-sink"), vcs: fakeVcs, paths }),
+      paths,
     });
 
     const result = await runEngine(context);
@@ -436,7 +462,7 @@ describe("runEngine", () => {
   });
 
   it("returns a stopped result when the stop signal is already set", async () => {
-    const { repoPath, tasksRoot, tmpRoot } = await setupRepo("run-engine-stop-");
+    const { repoPath, tasksRoot, tmpRoot, paths } = await setupRepo("run-engine-stop-");
 
     await writeTaskSpec(tasksRoot, buildTaskManifest("001", "stop-task"));
 
@@ -463,7 +489,8 @@ describe("runEngine", () => {
         stopContainersOnExit: true,
         reuseCompleted: false,
       },
-      ports: buildPortOverrides({ logsRoot: path.join(tmpRoot, "log-sink"), vcs: fakeVcs }),
+      ports: buildPortOverrides({ logsRoot: path.join(tmpRoot, "log-sink"), vcs: fakeVcs, paths }),
+      paths,
     });
 
     const result = await runEngine(context);
@@ -474,7 +501,7 @@ describe("runEngine", () => {
   });
 
   it("fails the run when budget enforcement blocks", async () => {
-    const { repoPath, tasksRoot, tmpRoot } = await setupRepo("run-engine-budget-");
+    const { repoPath, tasksRoot, tmpRoot, paths } = await setupRepo("run-engine-budget-");
 
     await writeTaskSpec(tasksRoot, buildTaskManifest("001", "budget-task"));
 
@@ -499,7 +526,8 @@ describe("runEngine", () => {
         buildImage: false,
         reuseCompleted: false,
       },
-      ports: buildPortOverrides({ logsRoot: path.join(tmpRoot, "log-sink"), vcs: fakeVcs }),
+      ports: buildPortOverrides({ logsRoot: path.join(tmpRoot, "log-sink"), vcs: fakeVcs, paths }),
+      paths,
     });
 
     const result = await runEngine(context);
@@ -509,7 +537,7 @@ describe("runEngine", () => {
   });
 
   it("rescopes and retries tasks when manifest enforcement blocks", async () => {
-    const { repoPath, tasksRoot, tmpRoot } = await setupRepo("run-engine-compliance-");
+    const { repoPath, tasksRoot, tmpRoot, paths } = await setupRepo("run-engine-compliance-");
 
     await writeTaskSpec(
       tasksRoot,
@@ -543,7 +571,8 @@ describe("runEngine", () => {
         buildImage: false,
         reuseCompleted: false,
       },
-      ports: buildPortOverrides({ logsRoot: path.join(tmpRoot, "log-sink"), vcs: fakeVcs }),
+      ports: buildPortOverrides({ logsRoot: path.join(tmpRoot, "log-sink"), vcs: fakeVcs, paths }),
+      paths,
     });
 
     const result = await runEngine(context);

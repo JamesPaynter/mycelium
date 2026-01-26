@@ -9,17 +9,13 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import { loadProjectConfig } from "./config-loader.js";
 import { runProject } from "./executor.js";
-import { orchestratorLogPath } from "./paths.js";
-import { planFromImplementationPlan } from "./planner.js";
+import { createPathsContext, orchestratorLogPath } from "./paths.js";
+import type { TaskWithSpec } from "./task-manifest.js";
 import { resolveTasksBacklogDir } from "./task-layout.js";
+import { writeTasksToDirectory } from "./task-writer.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const FIXTURE_REPO = path.resolve(__dirname, "../../test/fixtures/toy-repo");
-
-const ENV_VARS = ["MYCELIUM_HOME", "MOCK_LLM", "MOCK_LLM_OUTPUT_PATH"] as const;
-const originalEnv: Record<(typeof ENV_VARS)[number], string | undefined> = Object.fromEntries(
-  ENV_VARS.map((key) => [key, process.env[key]]),
-) as Record<(typeof ENV_VARS)[number], string | undefined>;
 
 describe("graceful stop signals", () => {
   const tempRoots: string[] = [];
@@ -29,15 +25,6 @@ describe("graceful stop signals", () => {
       await fs.rm(dir, { recursive: true, force: true });
     }
     tempRoots.length = 0;
-
-    for (const key of ENV_VARS) {
-      const value = originalEnv[key];
-      if (value === undefined) {
-        delete process.env[key];
-      } else {
-        process.env[key] = value;
-      }
-    }
   });
 
   it(
@@ -55,20 +42,18 @@ describe("graceful stop signals", () => {
       const configPath = path.join(tmpRoot, "project.yaml");
       await writeProjectConfig(configPath, repoDir);
 
-      process.env.MYCELIUM_HOME = path.join(tmpRoot, ".mycelium");
-      process.env.MOCK_LLM = "1";
-      process.env.MOCK_LLM_OUTPUT_PATH = path.join(repoDir, "mock-planner-output.json");
-
+      const paths = createPathsContext({ myceliumHome: path.join(tmpRoot, ".mycelium") });
       const config = loadProjectConfig(configPath);
       const projectName = "graceful-stop";
       const tasksRoot = path.join(config.repo_path, config.tasks_dir);
       const outputDir = resolveTasksBacklogDir(tasksRoot);
+      const planInputPath = path.join(repoDir, ".mycelium", "planning", "implementation-plan.md");
 
-      await planFromImplementationPlan({
-        projectName,
-        config,
-        inputPath: ".mycelium/planning/implementation-plan.md",
+      await writeTasksToDirectory({
+        tasks: buildGracefulStopTasks(),
         outputDir,
+        project: projectName,
+        inputPath: planInputPath,
       });
       const runId = `${projectName}-${Date.now()}`;
 
@@ -81,13 +66,13 @@ describe("graceful stop signals", () => {
         useDocker: false,
         buildImage: false,
         stopSignal: controller.signal,
-      });
+      }, paths);
       clearTimeout(abortTimer);
 
       expect(stoppedRun.stopped).toBeDefined();
       expect(stoppedRun.state.status).toBe("running");
 
-      const orchestratorEvents = await readJsonl(orchestratorLogPath(projectName, runId));
+      const orchestratorEvents = await readJsonl(orchestratorLogPath(projectName, runId, paths));
       const stopEvents = orchestratorEvents.filter((event) => event.type === "run.stop");
       expect(stopEvents.length).toBeGreaterThan(0);
       expect(stopEvents.some((event) => event.reason === "signal")).toBe(true);
@@ -107,10 +92,13 @@ describe("graceful stop signals", () => {
         useDocker: false,
         buildImage: false,
         resume: true,
-      });
+      }, paths);
 
       expect(resumedRun.state.control_plane?.base_sha).toBe(baseSha);
-      expect(resumedRun.state.status).toBe("complete");
+      const allComplete = Object.values(resumedRun.state.tasks).every(
+        (task) => task.status === "complete",
+      );
+      expect(allComplete).toBe(true);
     },
     30_000,
   );
@@ -176,6 +164,25 @@ async function writeImplementationPlan(repoDir: string): Promise<void> {
   await fse.ensureDir(planDir);
   const content = ["# Implementation Plan", "", "- Placeholder tasks", ""].join("\n");
   await fs.writeFile(path.join(planDir, "implementation-plan.md"), content, "utf8");
+}
+
+function buildGracefulStopTasks(): TaskWithSpec[] {
+  return [
+    {
+      id: "001",
+      name: "Graceful stop task",
+      description: "Exercise stop/resume flow in tests.",
+      estimated_minutes: 5,
+      dependencies: [],
+      locks: { reads: ["docs"], writes: ["code"] },
+      files: { reads: ["notes/**"], writes: ["src/graceful-stop.txt"] },
+      affected_tests: [],
+      test_paths: [],
+      tdd_mode: "off",
+      verify: { doctor: "true" },
+      spec: "Run the task.\n",
+    },
+  ];
 }
 
 async function commitRepoChange(repoDir: string): Promise<string> {

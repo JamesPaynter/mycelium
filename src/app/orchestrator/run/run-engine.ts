@@ -108,6 +108,8 @@ export type RunOptions = {
   useDocker?: boolean;
   stopSignal?: AbortSignal;
   stopContainersOnExit?: boolean;
+  useLegacyEngine?: boolean;
+  crashAfterContainerStart?: boolean;
 };
 
 export type BatchPlanEntry = {
@@ -131,7 +133,7 @@ export type RunResult = {
 export async function runEngine(
   context: RunContext<RunOptions, RunResult>,
 ): Promise<RunResult> {
-  if (shouldUseLegacyRunEngine()) {
+  if (context.options.useLegacyEngine === true) {
     return context.legacy.runProject(context.projectName, context.config, context.options);
   }
 
@@ -142,10 +144,6 @@ export async function runLegacyEngine(
   context: RunContext<RunOptions, RunResult>,
 ): Promise<RunResult> {
   return runEngineImpl(context);
-}
-
-function shouldUseLegacyRunEngine(): boolean {
-  return process.env.MYCELIUM_USE_LEGACY_RUN_ENGINE === "1";
 }
 
 async function runEngineImpl(

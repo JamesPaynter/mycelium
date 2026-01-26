@@ -16,6 +16,7 @@ import {
   RunStateSchema,
   startBatch,
 } from "./state.js";
+import { createPathsContext } from "./paths.js";
 import {
   findLatestRunId,
   loadRunState,
@@ -270,14 +271,13 @@ describe("state store", () => {
   });
 
   it("finds the latest run id and loads matching state", async () => {
-    const originalHome = process.env.MYCELIUM_HOME;
     const tmpHome = fs.mkdtempSync(path.join(os.tmpdir(), "orchestrator-home-"));
-    process.env.MYCELIUM_HOME = tmpHome;
+    const paths = createPathsContext({ myceliumHome: tmpHome });
 
     try {
       const project = "demo-project";
-      const first = new StateStore(project, "001");
-      const second = new StateStore(project, "002");
+      const first = new StateStore(project, "001", paths);
+      const second = new StateStore(project, "002", paths);
 
       const baseState = {
         project,
@@ -300,14 +300,13 @@ describe("state store", () => {
         new Date("2024-02-01T00:00:00Z"),
       );
 
-      const latest = await findLatestRunId(project);
+      const latest = await findLatestRunId(project, paths);
       expect(latest).toBe("002");
 
-      const resolved = await loadRunStateForProject(project);
+      const resolved = await loadRunStateForProject(project, undefined, paths);
       expect(resolved?.runId).toBe("002");
       expect(resolved?.state.run_id).toBe("002");
     } finally {
-      process.env.MYCELIUM_HOME = originalHome;
       fs.rmSync(tmpHome, { recursive: true, force: true });
     }
   });

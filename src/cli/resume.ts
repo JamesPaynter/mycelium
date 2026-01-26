@@ -4,6 +4,7 @@ import type { ProjectConfig } from "../core/config.js";
 import { runProject, type RunOptions } from "../core/executor.js";
 import { loadRunStateForProject } from "../core/state-store.js";
 
+import { resolveRunDebugFlags } from "./run-flags.js";
 import { createRunStopSignalHandler } from "./signal-handlers.js";
 import {
   closeUiServer,
@@ -36,6 +37,7 @@ export async function resumeCommand(
   appContext?: AppContext,
 ): Promise<void> {
   const paths = appContext?.paths ?? createAppPathsContext({ repoPath: config.repo_path });
+  const runDebugFlags = resolveRunDebugFlags(opts);
   const resolved = await loadRunStateForProject(projectName, opts.runId, paths);
   if (!resolved) {
     const notFound = opts.runId
@@ -88,6 +90,7 @@ export async function resumeCommand(
         stopContainersOnExit: opts.stopContainersOnExit,
         reuseCompleted: opts.reuseCompleted,
         importRun: opts.importRun,
+        ...runDebugFlags,
         stopSignal: stopHandler.signal,
         resume: true,
       },

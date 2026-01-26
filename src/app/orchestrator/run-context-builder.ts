@@ -186,8 +186,7 @@ export async function buildRunContextBase<RunOptions extends RunContextOptions>(
     input.options.cleanupOnSuccess ?? (cleanupConfig.containers === "on_success");
   const useDocker = input.options.useDocker ?? true;
   const stopContainersOnExit = input.options.stopContainersOnExit ?? false;
-  const crashAfterContainerStart =
-    process.env.MYCELIUM_FAKE_CRASH_AFTER_CONTAINER_START === "1";
+  const crashAfterContainerStart = input.options.crashAfterContainerStart ?? false;
 
   const tasksRootAbs = path.join(repoPath, input.config.tasks_dir);
   const tasksDirPosix = input.config.tasks_dir.split(path.sep).join(path.posix.sep);

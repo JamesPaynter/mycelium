@@ -8,6 +8,7 @@
 import path from "node:path";
 
 import { logOrchestratorEvent, type JsonObject, JsonlLogger } from "../../../core/logger.js";
+import type { PathsContext } from "../../../core/paths.js";
 import { StateStore } from "../../../core/state-store.js";
 import type { MergeResult, TaskBranchToMerge } from "../../../git/merge.js";
 import type { Clock, LogSink, StateRepository } from "../ports.js";
@@ -230,8 +231,10 @@ function normalizeSlug(input: string): string {
 export class FakeStateRepository implements StateRepository {
   private latestRunId: string | null = null;
 
+  constructor(private readonly paths?: PathsContext) {}
+
   create(projectName: string, runId: string): StateStore {
-    return new StateStore(projectName, runId);
+    return new StateStore(projectName, runId, this.paths);
   }
 
   async findLatestRunId(_projectName: string): Promise<string | null> {

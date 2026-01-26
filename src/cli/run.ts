@@ -4,6 +4,7 @@ import type { ProjectConfig } from "../core/config.js";
 import { runProject, type BatchPlanEntry, type RunOptions } from "../core/executor.js";
 import { defaultRunId } from "../core/utils.js";
 
+import { resolveRunDebugFlags } from "./run-flags.js";
 import { createRunStopSignalHandler } from "./signal-handlers.js";
 import {
   closeUiServer,
@@ -27,6 +28,10 @@ export async function runCommand(
 ): Promise<void> {
   const { ui, uiPort, uiOpen, ...runOptions } = opts;
   const runId = runOptions.runId ?? defaultRunId();
+  const runDebugFlags = resolveRunDebugFlags({
+    useLegacyEngine: runOptions.useLegacyEngine,
+    crashAfterContainerStart: runOptions.crashAfterContainerStart,
+  });
   const paths = appContext?.paths ?? createAppPathsContext({ repoPath: config.repo_path });
   const uiRuntime = resolveUiRuntimeConfig(config.ui, {
     enabled: ui,
@@ -64,6 +69,7 @@ export async function runCommand(
       config,
       {
         ...runOptions,
+        ...runDebugFlags,
         runId,
         stopSignal: stopHandler.signal,
       },

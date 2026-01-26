@@ -8,29 +8,29 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { RunContainerSummary } from "../docker/manager.js";
 
 import { buildCleanupPlan, executeCleanupPlan } from "./cleanup.js";
-import { runLogsDir, runStatePath, runWorkspaceDir } from "./paths.js";
+import { createPathsContext, runLogsDir, runStatePath, runWorkspaceDir } from "./paths.js";
+import type { PathsContext } from "./paths.js";
 
 describe("cleanup", () => {
   const projectName = "demo-project";
-  const originalHome = process.env.MYCELIUM_HOME;
   let tmpHome: string;
+  let paths: PathsContext;
 
   beforeEach(() => {
     tmpHome = fs.mkdtempSync(path.join(os.tmpdir(), "cleanup-"));
-    process.env.MYCELIUM_HOME = tmpHome;
+    paths = createPathsContext({ myceliumHome: tmpHome });
   });
 
   afterEach(async () => {
-    process.env.MYCELIUM_HOME = originalHome;
     await fse.remove(tmpHome);
   });
 
   it("builds a cleanup plan for existing run artifacts", async () => {
     const runId = "20260110-120000";
 
-    const workspace = runWorkspaceDir(projectName, runId);
-    const logs = runLogsDir(projectName, runId);
-    const stateFile = runStatePath(projectName, runId);
+    const workspace = runWorkspaceDir(projectName, runId, paths);
+    const logs = runLogsDir(projectName, runId, paths);
+    const stateFile = runStatePath(projectName, runId, paths);
 
     await fse.ensureDir(workspace);
     await fse.ensureDir(logs);
@@ -44,6 +44,7 @@ describe("cleanup", () => {
     const plan = await buildCleanupPlan(projectName, {
       removeContainers: true,
       dockerManager: fakeDocker,
+      paths,
     });
 
     expect(plan).not.toBeNull();
@@ -58,9 +59,9 @@ describe("cleanup", () => {
   it("respects keepLogs and removes artifacts with container cleanup", async () => {
     const runId = "20260110-130000";
 
-    const workspace = runWorkspaceDir(projectName, runId);
-    const logs = runLogsDir(projectName, runId);
-    const stateFile = runStatePath(projectName, runId);
+    const workspace = runWorkspaceDir(projectName, runId, paths);
+    const logs = runLogsDir(projectName, runId, paths);
+    const stateFile = runStatePath(projectName, runId, paths);
 
     await fse.ensureDir(workspace);
     await fse.ensureDir(logs);
@@ -76,6 +77,7 @@ describe("cleanup", () => {
       keepLogs: true,
       removeContainers: true,
       dockerManager: fakeDocker,
+      paths,
     });
 
     expect(plan).not.toBeNull();
@@ -106,11 +108,11 @@ describe("cleanup", () => {
 
   it("rejects cleanup targets outside the configured roots", async () => {
     const maliciousRunId = "../../../../evil";
-    const workspace = runWorkspaceDir(projectName, maliciousRunId);
+    const workspace = runWorkspaceDir(projectName, maliciousRunId, paths);
     await fse.ensureDir(workspace);
 
     await expect(
-      buildCleanupPlan(projectName, { runId: maliciousRunId, removeContainers: false }),
+      buildCleanupPlan(projectName, { runId: maliciousRunId, removeContainers: false, paths }),
     ).rejects.toThrow(/outside/i);
   });
 });
