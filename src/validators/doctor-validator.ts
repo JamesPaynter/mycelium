@@ -74,8 +74,8 @@ export type DoctorValidatorArgs = {
 // CONSTANTS
 // =============================================================================
 
-const VALIDATOR_NAME = "doctor-validator";
-const VALIDATOR_ID = "doctor";
+export const VALIDATOR_NAME = "doctor-validator";
+export const VALIDATOR_ID = "doctor";
 
 const DOCTOR_RUN_SAMPLE_LIMIT = 6;
 const DOCTOR_LOG_CHAR_LIMIT = 2_000;

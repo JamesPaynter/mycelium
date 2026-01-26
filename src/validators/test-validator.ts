@@ -58,8 +58,8 @@ export type TestValidatorArgs = {
 // CONSTANTS
 // =============================================================================
 
-const VALIDATOR_NAME = "test-validator";
-const VALIDATOR_ID = "test";
+export const VALIDATOR_NAME = "test-validator";
+export const VALIDATOR_ID = "test";
 
 const TestValidationSchema = z
   .object({

@@ -57,8 +57,8 @@ export type StyleValidatorArgs = {
 // CONSTANTS
 // =============================================================================
 
-const VALIDATOR_NAME = "style-validator";
-const VALIDATOR_ID = "style";
+export const VALIDATOR_NAME = "style-validator";
+export const VALIDATOR_ID = "style";
 
 const StyleValidationSchema = z
   .object({
