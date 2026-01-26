@@ -28,7 +28,7 @@ manifest_enforcement: off
 #   lock_mode: declared
 
 # Limits
-max_parallel: 4
+max_parallel: 1
 max_retries: 20
 timeout_minutes: 240
 
