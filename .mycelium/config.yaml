@@ -8,7 +8,7 @@
 repo_path: ..
 
 # Integration branch the orchestrator merges into
-main_branch: main
+main_branch: mycelium
 
 # Task branches are created as: <task_branch_prefix><id>-<name>
 task_branch_prefix: agent/
