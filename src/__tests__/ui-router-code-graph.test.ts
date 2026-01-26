@@ -140,9 +140,9 @@ describe("UI static routes", () => {
 
     expect(response.status).toBe(200);
     expect(response.headers.get("content-type")).toContain("text/html");
-    expect(body).toContain(">List<");
-    expect(body).toContain(">Garden<");
-    expect(body).toContain(">Map<");
+    expect(body).toMatch(/>\s*List\s*</);
+    expect(body).toMatch(/>\s*Garden\s*</);
+    expect(body).toMatch(/>\s*Map\s*</);
   });
 });
 

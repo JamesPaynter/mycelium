@@ -3,3 +3,4 @@ dist
 *.md
 docs/tasks/active
 planning-docs
+templates/**/*.toml
