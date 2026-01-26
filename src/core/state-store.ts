@@ -4,6 +4,7 @@ import { randomUUID } from "node:crypto";
 
 import fse from "fs-extra";
 
+import type { PathsContext } from "./paths.js";
 import { runStateDir, runStatePath, runStateTempPath } from "./paths.js";
 import {
   RunStateSchema,
@@ -75,11 +76,24 @@ export type TaskSpendRow = {
 };
 
 export class StateStore {
+  private readonly paths?: PathsContext;
+  private readonly statePathValue: string;
+
   constructor(
     public readonly projectName: string,
     public readonly runId: string,
-    private readonly statePathValue = runStatePath(projectName, runId),
-  ) {}
+    pathsOrStatePath?: PathsContext | string,
+    statePathOverride?: string,
+  ) {
+    const paths = typeof pathsOrStatePath === "string" ? undefined : pathsOrStatePath;
+    const statePathValue =
+      typeof pathsOrStatePath === "string"
+        ? pathsOrStatePath
+        : statePathOverride ?? runStatePath(projectName, runId, paths);
+
+    this.paths = paths;
+    this.statePathValue = statePathValue;
+  }
 
   get statePath(): string {
     return this.statePathValue;
@@ -95,7 +109,7 @@ export class StateStore {
 
   async save(state: RunState): Promise<void> {
     await saveRunState(this.statePathValue, state, this.tempPath());
-    await recordRunHistory(state, this.statePathValue).catch((err) => {
+    await recordRunHistory(state, this.statePathValue, this.paths).catch((err) => {
       const detail = err instanceof Error ? err.message : String(err);
       console.warn(`Warning: failed to update run history for ${this.runId}. ${detail}`);
     });
@@ -109,14 +123,17 @@ export class StateStore {
   }
 
   private tempPath(): string {
-    const tempBase = runStateTempPath(this.projectName, this.runId);
+    const tempBase = runStateTempPath(this.projectName, this.runId, this.paths);
     const tempName = path.basename(tempBase);
     return path.join(path.dirname(this.statePathValue), `${tempName}.${randomUUID()}`);
   }
 }
 
-export async function findLatestRunId(projectName: string): Promise<string | null> {
-  const dir = runStateDir(projectName);
+export async function findLatestRunId(
+  projectName: string,
+  paths?: PathsContext,
+): Promise<string | null> {
+  const dir = runStateDir(projectName, paths);
   if (!(await fse.pathExists(dir))) return null;
 
   const files = await fse.readdir(dir);
@@ -137,11 +154,12 @@ export async function findLatestRunId(projectName: string): Promise<string | nul
 export async function loadRunStateForProject(
   projectName: string,
   runId?: string,
+  paths?: PathsContext,
 ): Promise<{ runId: string; state: RunState } | null> {
-  const resolvedRunId = runId ?? (await findLatestRunId(projectName));
+  const resolvedRunId = runId ?? (await findLatestRunId(projectName, paths));
   if (!resolvedRunId) return null;
 
-  const store = new StateStore(projectName, resolvedRunId);
+  const store = new StateStore(projectName, resolvedRunId, paths);
   if (!(await store.exists())) return null;
 
   const state = await store.load();

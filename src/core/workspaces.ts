@@ -6,6 +6,7 @@ import { cloneRepo, checkoutBranchInClone, createBranchInClone } from "../git/br
 import { branchExists, ensureCleanWorkingTree, getRemoteUrl } from "../git/git.js";
 
 import { TaskError } from "./errors.js";
+import type { PathsContext } from "./paths.js";
 import { runWorkspaceDir, taskWorkspaceDir } from "./paths.js";
 import { ensureDir, isGitRepo, pathExists } from "./utils.js";
 
@@ -16,6 +17,7 @@ export type PrepareTaskWorkspaceOptions = {
   repoPath: string;
   mainBranch: string;
   taskBranch: string;
+  paths?: PathsContext;
 };
 
 export type PrepareTaskWorkspaceResult = {
@@ -26,7 +28,12 @@ export type PrepareTaskWorkspaceResult = {
 export async function prepareTaskWorkspace(
   opts: PrepareTaskWorkspaceOptions,
 ): Promise<PrepareTaskWorkspaceResult> {
-  const workspacePath = taskWorkspaceDir(opts.projectName, opts.runId, opts.taskId);
+  const workspacePath = taskWorkspaceDir(
+    opts.projectName,
+    opts.runId,
+    opts.taskId,
+    opts.paths,
+  );
   const exists = await pathExists(workspacePath);
 
   if (exists) {
@@ -36,7 +43,7 @@ export async function prepareTaskWorkspace(
     return { workspacePath, created: false };
   }
 
-  await ensureDir(runWorkspaceDir(opts.projectName, opts.runId));
+  await ensureDir(runWorkspaceDir(opts.projectName, opts.runId, opts.paths));
   await cloneRepo({ sourceRepo: opts.repoPath, destDir: workspacePath });
   await checkoutBranchInClone(workspacePath, opts.mainBranch);
   await createBranchInClone(workspacePath, opts.taskBranch, opts.mainBranch);
@@ -49,15 +56,20 @@ export async function removeTaskWorkspace(
   projectName: string,
   runId: string,
   taskId: string,
+  paths?: PathsContext,
 ): Promise<void> {
-  const dir = taskWorkspaceDir(projectName, runId, taskId);
+  const dir = taskWorkspaceDir(projectName, runId, taskId, paths);
   if (await pathExists(dir)) {
     await fse.remove(dir);
   }
 }
 
-export async function removeRunWorkspace(projectName: string, runId: string): Promise<void> {
-  const dir = runWorkspaceDir(projectName, runId);
+export async function removeRunWorkspace(
+  projectName: string,
+  runId: string,
+  paths?: PathsContext,
+): Promise<void> {
+  const dir = runWorkspaceDir(projectName, runId, paths);
   if (await pathExists(dir)) {
     await fse.remove(dir);
   }

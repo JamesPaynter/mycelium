@@ -11,6 +11,7 @@ import fse from "fs-extra";
 
 import type { ProjectConfig } from "../../../core/config.js";
 import { JsonlLogger, logOrchestratorEvent } from "../../../core/logger.js";
+import type { PathsContext } from "../../../core/paths.js";
 import { runLogsDir, validatorLogPath, validatorReportPath, validatorsLogsDir } from "../../../core/paths.js";
 import type { ValidatorStatus } from "../../../core/state.js";
 import type { TaskSpec } from "../../../core/task-manifest.js";
@@ -63,6 +64,7 @@ export type ValidationPipelineOptions = {
   runId: string;
   tasksRoot: string;
   mainBranch: string;
+  paths?: PathsContext;
   validators: {
     test: RunValidatorConfig<ProjectConfig["test_validator"]>;
     style: RunValidatorConfig<ProjectConfig["style_validator"]>;
@@ -132,6 +134,7 @@ export class ValidationPipeline {
   private readonly runId: string;
   private readonly tasksRoot: string;
   private readonly mainBranch: string;
+  private readonly paths?: PathsContext;
   private readonly validators: ValidationPipelineOptions["validators"];
   private readonly orchestratorLog: JsonlLogger;
   private readonly runner: ValidatorRunner;
@@ -149,6 +152,7 @@ export class ValidationPipeline {
     this.runId = options.runId;
     this.tasksRoot = options.tasksRoot;
     this.mainBranch = options.mainBranch;
+    this.paths = options.paths;
     this.validators = options.validators;
     this.orchestratorLog = options.orchestratorLog;
     this.runner = options.runner ?? DEFAULT_RUNNER;
@@ -157,25 +161,25 @@ export class ValidationPipeline {
 
     if (this.validators.test.enabled) {
       this.testLogger = new JsonlLogger(
-        validatorLogPath(this.projectName, this.runId, TEST_VALIDATOR_NAME),
+        validatorLogPath(this.projectName, this.runId, TEST_VALIDATOR_NAME, this.paths),
         { runId: this.runId },
       );
     }
     if (this.validators.style.enabled) {
       this.styleLogger = new JsonlLogger(
-        validatorLogPath(this.projectName, this.runId, STYLE_VALIDATOR_NAME),
+        validatorLogPath(this.projectName, this.runId, STYLE_VALIDATOR_NAME, this.paths),
         { runId: this.runId },
       );
     }
     if (this.validators.architecture.enabled) {
       this.architectureLogger = new JsonlLogger(
-        validatorLogPath(this.projectName, this.runId, ARCHITECTURE_VALIDATOR_NAME),
+        validatorLogPath(this.projectName, this.runId, ARCHITECTURE_VALIDATOR_NAME, this.paths),
         { runId: this.runId },
       );
     }
     if (this.validators.doctor.enabled) {
       this.doctorLogger = new JsonlLogger(
-        validatorLogPath(this.projectName, this.runId, DOCTOR_VALIDATOR_NAME),
+        validatorLogPath(this.projectName, this.runId, DOCTOR_VALIDATOR_NAME, this.paths),
         { runId: this.runId },
       );
     }
@@ -225,7 +229,7 @@ export class ValidationPipeline {
     }
 
     const reportDir = path.join(
-      validatorsLogsDir(this.projectName, this.runId),
+      validatorsLogsDir(this.projectName, this.runId, this.paths),
       DOCTOR_VALIDATOR_NAME,
     );
     const before = await listValidatorReports(reportDir);
@@ -247,6 +251,7 @@ export class ValidationPipeline {
         config: this.validators.doctor.config,
         orchestratorLog: this.orchestratorLog,
         logger: this.doctorLogger,
+        paths: this.paths,
       });
     } catch (err) {
       error = formatErrorMessage(err);
@@ -267,7 +272,7 @@ export class ValidationPipeline {
         validator: DOCTOR_VALIDATOR_ID,
         status,
         summary: summarizeDoctorReport(doctorResult, context.doctorCanary),
-        reportPath: relativeReportPath(this.projectName, this.runId, reportPath),
+        reportPath: relativeReportPath(this.projectName, this.runId, reportPath, this.paths),
         mode: this.validators.doctor.mode,
         trigger: context.trigger,
       });
@@ -279,7 +284,7 @@ export class ValidationPipeline {
       validator: DOCTOR_VALIDATOR_ID,
       status: "error",
       summary: error ?? "Doctor validator returned no result (see validator log).",
-      reportPath: relativeReportPath(this.projectName, this.runId, reportPath),
+      reportPath: relativeReportPath(this.projectName, this.runId, reportPath, this.paths),
       mode: this.validators.doctor.mode,
       trigger: context.trigger,
     });
@@ -293,6 +298,7 @@ export class ValidationPipeline {
       TEST_VALIDATOR_NAME,
       context.task.manifest.id,
       context.task.slug,
+      this.paths,
     );
 
     let result: TestValidationReport | null = null;
@@ -312,6 +318,7 @@ export class ValidationPipeline {
         config: this.validators.test.config,
         orchestratorLog: this.orchestratorLog,
         logger: this.testLogger,
+        paths: this.paths,
       });
     } catch (err) {
       error = err instanceof Error ? err.message : String(err);
@@ -329,7 +336,7 @@ export class ValidationPipeline {
       validator: TEST_VALIDATOR_ID,
       status: summary.status,
       summary: summary.summary,
-      reportPath: relativeReportPath(this.projectName, this.runId, summary.reportPath),
+      reportPath: relativeReportPath(this.projectName, this.runId, summary.reportPath, this.paths),
       mode: this.validators.test.mode,
     });
 
@@ -343,6 +350,7 @@ export class ValidationPipeline {
       STYLE_VALIDATOR_NAME,
       context.task.manifest.id,
       context.task.slug,
+      this.paths,
     );
 
     let result: StyleValidationReport | null = null;
@@ -361,6 +369,7 @@ export class ValidationPipeline {
         config: this.validators.style.config,
         orchestratorLog: this.orchestratorLog,
         logger: this.styleLogger,
+        paths: this.paths,
       });
     } catch (err) {
       error = err instanceof Error ? err.message : String(err);
@@ -378,7 +387,7 @@ export class ValidationPipeline {
       validator: STYLE_VALIDATOR_ID,
       status: summary.status,
       summary: summary.summary,
-      reportPath: relativeReportPath(this.projectName, this.runId, summary.reportPath),
+      reportPath: relativeReportPath(this.projectName, this.runId, summary.reportPath, this.paths),
       mode: this.validators.style.mode,
     });
 
@@ -394,6 +403,7 @@ export class ValidationPipeline {
       ARCHITECTURE_VALIDATOR_NAME,
       context.task.manifest.id,
       context.task.slug,
+      this.paths,
     );
 
     let result: ArchitectureValidationReport | null = null;
@@ -412,6 +422,7 @@ export class ValidationPipeline {
         config: this.validators.architecture.config,
         orchestratorLog: this.orchestratorLog,
         logger: this.architectureLogger,
+        paths: this.paths,
       });
     } catch (err) {
       error = err instanceof Error ? err.message : String(err);
@@ -429,7 +440,7 @@ export class ValidationPipeline {
       validator: ARCHITECTURE_VALIDATOR_ID,
       status: summary.status,
       summary: summary.summary,
-      reportPath: relativeReportPath(this.projectName, this.runId, summary.reportPath),
+      reportPath: relativeReportPath(this.projectName, this.runId, summary.reportPath, this.paths),
       mode: this.validators.architecture.mode,
     });
 
@@ -590,10 +601,11 @@ function relativeReportPath(
   projectName: string,
   runId: string,
   reportPath: string | null,
+  paths?: PathsContext,
 ): string | null {
   if (!reportPath) return null;
 
-  const base = runLogsDir(projectName, runId);
+  const base = runLogsDir(projectName, runId, paths);
   const relative = path.relative(base, reportPath);
   return relative.startsWith("..") ? reportPath : relative;
 }

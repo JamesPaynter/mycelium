@@ -6,7 +6,9 @@
 
 import { execa } from "execa";
 
+import type { AppContext } from "../app/context.js";
 import type { ProjectConfig, UiConfig } from "../core/config.js";
+import { createPathsContext } from "../core/paths.js";
 import { loadRunStateForProject } from "../core/state-store.js";
 import { startUiServer, type UiServerHandle } from "../ui/server.js";
 import { createRunStopSignalHandler } from "./signal-handlers.js";
@@ -48,8 +50,10 @@ export async function uiCommand(
   projectName: string,
   config: ProjectConfig,
   opts: UiCommandOptions,
+  appContext?: AppContext,
 ): Promise<void> {
-  const resolved = await loadRunStateForProject(projectName, opts.runId);
+  const paths = appContext?.paths ?? createPathsContext({ repoPath: config.repo_path });
+  const resolved = await loadRunStateForProject(projectName, opts.runId, paths);
   if (!resolved) {
     printRunNotFound(projectName, opts.runId);
     return;
@@ -68,6 +72,7 @@ export async function uiCommand(
       runId: resolved.runId,
       runtime,
       onError: "throw",
+      appContext,
     });
 
     if (!started) {
@@ -121,6 +126,7 @@ export async function launchUiServer(args: {
   runId: string;
   runtime: UiRuntimeConfig;
   onError: "warn" | "throw";
+  appContext?: AppContext;
 }): Promise<UiStartResult | null> {
   if (!args.runtime.enabled) {
     return null;
@@ -131,6 +137,7 @@ export async function launchUiServer(args: {
       project: args.projectName,
       runId: args.runId,
       port: args.runtime.port,
+      appContext: args.appContext,
     });
 
     return {

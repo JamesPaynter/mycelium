@@ -6,6 +6,7 @@ import { z } from "zod";
 
 import type { ValidatorConfig } from "../core/config.js";
 import { JsonlLogger, logOrchestratorEvent } from "../core/logger.js";
+import type { PathsContext } from "../core/paths.js";
 import { validatorLogPath, validatorReportPath } from "../core/paths.js";
 import { renderPromptTemplate } from "../core/prompts.js";
 import { resolveTaskSpecPath } from "../core/task-layout.js";
@@ -52,6 +53,7 @@ export type TestValidatorArgs = {
   orchestratorLog: JsonlLogger;
   logger?: JsonlLogger;
   llmClient?: LlmClient;
+  paths?: PathsContext;
 };
 
 // =============================================================================
@@ -131,9 +133,12 @@ export async function runTestValidator(
 
   const validatorLog =
     args.logger ??
-    new JsonlLogger(validatorLogPath(args.projectName, args.runId, VALIDATOR_NAME), {
-      runId: args.runId,
-    });
+    new JsonlLogger(
+      validatorLogPath(args.projectName, args.runId, VALIDATOR_NAME, args.paths),
+      {
+        runId: args.runId,
+      },
+    );
   const shouldCloseLog = !args.logger;
 
   logOrchestratorEvent(args.orchestratorLog, "validator.start", {
@@ -297,6 +302,7 @@ async function persistReport(
     VALIDATOR_NAME,
     args.task.manifest.id,
     args.taskSlug,
+    args.paths,
   );
 
   await writeJsonFile(reportPath, {

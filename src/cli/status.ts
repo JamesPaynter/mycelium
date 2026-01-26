@@ -1,4 +1,6 @@
+import type { AppContext } from "../app/context.js";
 import type { ProjectConfig } from "../core/config.js";
+import { createPathsContext } from "../core/paths.js";
 import {
   loadRunStateForProject,
   summarizeRunState,
@@ -9,10 +11,12 @@ import {
 
 export async function statusCommand(
   projectName: string,
-  _config: ProjectConfig,
+  config: ProjectConfig,
   opts: { runId?: string },
+  appContext?: AppContext,
 ): Promise<void> {
-  const resolved = await loadRunStateForProject(projectName, opts.runId);
+  const paths = appContext?.paths ?? createPathsContext({ repoPath: config.repo_path });
+  const resolved = await loadRunStateForProject(projectName, opts.runId, paths);
   if (!resolved) {
     printRunNotFound(projectName, opts.runId);
     return;

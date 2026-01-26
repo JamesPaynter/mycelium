@@ -16,6 +16,8 @@ import type {
   ValidatorMode,
 } from "../../core/config.js";
 import type { JsonObject } from "../../core/logger.js";
+import type { PathsContext } from "../../core/paths.js";
+import { createPathsContext } from "../../core/paths.js";
 import { defaultRunId } from "../../core/utils.js";
 import { DEFAULT_CPU_PERIOD } from "../../docker/docker.js";
 import { isMockLlmEnabled } from "../../llm/mock.js";
@@ -42,6 +44,7 @@ export type BuildRunContextBaseInput<RunOptions extends RunContextOptions> = {
   config: ProjectConfig;
   options: RunOptions;
   ports?: Partial<OrchestratorPorts>;
+  paths?: PathsContext;
 };
 
 export type BuildRunContextInput<RunOptions extends RunContextOptions, RunResult> =
@@ -154,8 +157,11 @@ function resolveValidatorContext<TConfig extends { enabled?: boolean; mode?: Val
 export async function buildRunContextBase<RunOptions extends RunContextOptions>(
   input: BuildRunContextBaseInput<RunOptions>,
 ): Promise<RunContextBase<RunOptions>> {
+  const repoPath = input.config.repo_path;
+  const paths = input.paths ?? createPathsContext({ repoPath });
+
   const ports: OrchestratorPorts = {
-    ...createDefaultPorts(input.config),
+    ...createDefaultPorts(input.config, paths),
     ...input.ports,
   };
 
@@ -183,7 +189,6 @@ export async function buildRunContextBase<RunOptions extends RunContextOptions>(
   const crashAfterContainerStart =
     process.env.MYCELIUM_FAKE_CRASH_AFTER_CONTAINER_START === "1";
 
-  const repoPath = input.config.repo_path;
   const tasksRootAbs = path.join(repoPath, input.config.tasks_dir);
   const tasksDirPosix = input.config.tasks_dir.split(path.sep).join(path.posix.sep);
   const workerImage = input.config.docker.image;
@@ -213,6 +218,7 @@ export async function buildRunContextBase<RunOptions extends RunContextOptions>(
       repoPath,
       tasksRootAbs,
       tasksDirPosix,
+      myceliumHome: paths.myceliumHome,
     },
     docker: {
       useDocker,

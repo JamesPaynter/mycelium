@@ -1,4 +1,6 @@
+import type { AppContext } from "../app/context.js";
 import type { ProjectConfig } from "../core/config.js";
+import { createPathsContext } from "../core/paths.js";
 import { runProject, type RunOptions } from "../core/executor.js";
 import { loadRunStateForProject } from "../core/state-store.js";
 import { createRunStopSignalHandler } from "./signal-handlers.js";
@@ -30,8 +32,10 @@ export async function resumeCommand(
   projectName: string,
   config: ProjectConfig,
   opts: ResumeOptions,
+  appContext?: AppContext,
 ): Promise<void> {
-  const resolved = await loadRunStateForProject(projectName, opts.runId);
+  const paths = appContext?.paths ?? createPathsContext({ repoPath: config.repo_path });
+  const resolved = await loadRunStateForProject(projectName, opts.runId, paths);
   if (!resolved) {
     const notFound = opts.runId
       ? `Run ${opts.runId} not found for project ${projectName}.`
@@ -64,6 +68,7 @@ export async function resumeCommand(
       runId: resolved.runId,
       runtime: uiRuntime,
       onError: "warn",
+      appContext,
     });
     if (uiStart) {
       console.log(`UI: ${uiStart.url}`);

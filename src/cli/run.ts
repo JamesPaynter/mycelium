@@ -1,3 +1,4 @@
+import type { AppContext } from "../app/context.js";
 import type { ProjectConfig } from "../core/config.js";
 import { runProject, type BatchPlanEntry, type RunOptions } from "../core/executor.js";
 import { defaultRunId } from "../core/utils.js";
@@ -20,6 +21,7 @@ export async function runCommand(
   projectName: string,
   config: ProjectConfig,
   opts: RunCommandOptions,
+  appContext?: AppContext,
 ): Promise<void> {
   const { ui, uiPort, uiOpen, ...runOptions } = opts;
   const runId = runOptions.runId ?? defaultRunId();
@@ -47,6 +49,7 @@ export async function runCommand(
       runId,
       runtime: uiRuntime,
       onError: "warn",
+      appContext,
     });
     if (uiStart) {
       console.log(`UI: ${uiStart.url}`);

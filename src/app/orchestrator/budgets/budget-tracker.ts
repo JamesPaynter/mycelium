@@ -15,6 +15,7 @@ import {
 } from "../../../core/budgets.js";
 import type { BudgetsConfig } from "../../../core/config.js";
 import { JsonlLogger, logOrchestratorEvent, type JsonObject } from "../../../core/logger.js";
+import type { PathsContext } from "../../../core/paths.js";
 import { taskEventsLogPath } from "../../../core/paths.js";
 import type { RunState } from "../../../core/state.js";
 import type { TaskSpec } from "../../../core/task-manifest.js";
@@ -63,6 +64,7 @@ export type BudgetTrackerOptions = {
   orchestratorLog: JsonlLogger;
   resolveEventsPath?: BudgetEventsPathResolver;
   readTaskUsage?: TaskUsageReader;
+  paths?: PathsContext;
 };
 
 
@@ -86,7 +88,10 @@ export class BudgetTracker {
     this.costPer1kTokens = options.costPer1kTokens;
     this.budgets = options.budgets;
     this.orchestratorLog = options.orchestratorLog;
-    this.resolveEventsPath = options.resolveEventsPath ?? taskEventsLogPath;
+    this.resolveEventsPath =
+      options.resolveEventsPath ??
+      ((projectName, runId, taskId, taskSlug) =>
+        taskEventsLogPath(projectName, runId, taskId, taskSlug, options.paths));
     this.readTaskUsage = options.readTaskUsage ?? parseTaskTokenUsage;
   }
 

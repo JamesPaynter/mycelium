@@ -3,7 +3,6 @@ import path from "node:path";
 
 import { Command } from "commander";
 
-import { loadProjectConfig } from "../core/config-loader.js";
 import type { LogSummaryConfig, ProjectConfig } from "../core/config.js";
 import { LogIndex, logIndexPath, type LogIndexQuery } from "../core/log-index.js";
 import { loadRunStateForProject } from "../core/state-store.js";
@@ -17,7 +16,8 @@ import {
   type JsonlFilter,
   type LogSearchResult,
 } from "../core/log-query.js";
-import { projectConfigPath, resolveRunLogsDir } from "../core/paths.js";
+import type { PathsContext } from "../core/paths.js";
+import { resolveRunLogsDir } from "../core/paths.js";
 import {
   loadRunEvents,
   listTaskEventLogs,
@@ -31,6 +31,7 @@ import { AnthropicClient } from "../llm/anthropic.js";
 import type { LlmClient } from "../llm/client.js";
 import { MockLlmClient, isMockLlmEnabled } from "../llm/mock.js";
 import { OpenAiClient } from "../llm/openai.js";
+import { loadConfigForCli } from "./config.js";
 
 type ValidatorSummaryRow = {
   validator: string;
@@ -55,14 +56,14 @@ export function registerLogsCommand(program: Command): void {
     .option("--type <glob>", "Filter by event type (supports *)")
     .option("--follow", "Follow log output", false)
     .action(async (opts, command) => {
-      const ctx = buildContext(command);
+      const ctx = await buildContext(command);
       await logsQuery(ctx.projectName, ctx.config, {
         runId: ctx.runId,
         taskId: opts.task,
         typeGlob: opts.type,
         follow: opts.follow ?? false,
         useIndex: ctx.useIndex,
-      });
+      }, ctx.paths);
     });
 
   logs
@@ -71,24 +72,24 @@ export function registerLogsCommand(program: Command): void {
     .argument("<pattern>", "String to search for")
     .option("--task <id>", "Limit search to a specific task")
     .action(async (pattern, opts, command) => {
-      const ctx = buildContext(command);
+      const ctx = await buildContext(command);
       await logsSearch(ctx.projectName, ctx.config, {
         runId: ctx.runId,
         pattern,
         taskId: opts.task,
         useIndex: ctx.useIndex,
-      });
+      }, ctx.paths);
     });
 
   logs
     .command("timeline")
     .description("Show batch/task timeline with retries and merges")
     .action(async (opts, command) => {
-      const ctx = buildContext(command);
+      const ctx = await buildContext(command);
       await logsTimeline(ctx.projectName, ctx.config, {
         runId: ctx.runId,
         useIndex: ctx.useIndex,
-      });
+      }, ctx.paths);
     });
 
   logs
@@ -96,12 +97,12 @@ export function registerLogsCommand(program: Command): void {
     .description("Summarize failures for a run")
     .option("--task <id>", "Limit to a specific task")
     .action(async (opts, command) => {
-      const ctx = buildContext(command);
+      const ctx = await buildContext(command);
       await logsFailures(ctx.projectName, ctx.config, {
         runId: ctx.runId,
         taskId: opts.task,
         useIndex: ctx.useIndex,
-      });
+      }, ctx.paths);
     });
 
   logs
@@ -110,12 +111,12 @@ export function registerLogsCommand(program: Command): void {
     .requiredOption("--task <id>", "Task ID")
     .option("--attempt <n>", "Attempt number", (v: string) => parseInt(v, 10))
     .action(async (opts, command) => {
-      const ctx = buildContext(command);
+      const ctx = await buildContext(command);
       await logsDoctor(ctx.projectName, ctx.config, {
         runId: ctx.runId,
         taskId: opts.task,
         attempt: opts.attempt,
-      });
+      }, ctx.paths);
     });
 
   logs
@@ -124,25 +125,25 @@ export function registerLogsCommand(program: Command): void {
     .requiredOption("--task <id>", "Task ID")
     .option("--llm", "Use LLM to summarize validator failures", false)
     .action(async (opts, command) => {
-      const ctx = buildContext(command);
+      const ctx = await buildContext(command);
       await logsSummarize(ctx.projectName, ctx.config, {
         runId: ctx.runId,
         taskId: opts.task,
         useLlm: opts.llm ?? false,
         useIndex: ctx.useIndex,
-      });
+      }, ctx.paths);
     });
 
   logs.action(async (opts, command) => {
-    const ctx = buildContext(command);
+    const ctx = await buildContext(command);
     if (opts.follow) {
-      await logsFollow(ctx.projectName, ctx.config, { runId: ctx.runId });
+      await logsFollow(ctx.projectName, ctx.config, { runId: ctx.runId }, ctx.paths);
       return;
     }
     await logsQuery(ctx.projectName, ctx.config, {
       runId: ctx.runId,
       useIndex: ctx.useIndex,
-    });
+    }, ctx.paths);
   });
 }
 
@@ -150,8 +151,9 @@ export async function logsQuery(
   projectName: string,
   _config: ProjectConfig,
   opts: { runId?: string; taskId?: string; typeGlob?: string; follow?: boolean; useIndex?: boolean },
+  paths?: PathsContext,
 ): Promise<void> {
-  const runLogs = resolveRunLogsOrWarn(projectName, opts.runId);
+  const runLogs = resolveRunLogsOrWarn(projectName, opts.runId, paths);
   if (!runLogs) return;
 
   const filter: JsonlFilter = {};
@@ -212,8 +214,9 @@ export async function logsFollow(
   projectName: string,
   _config: ProjectConfig,
   opts: { runId?: string },
+  paths?: PathsContext,
 ): Promise<void> {
-  const runLogs = resolveRunLogsOrWarn(projectName, opts.runId);
+  const runLogs = resolveRunLogsOrWarn(projectName, opts.runId, paths);
   if (!runLogs) return;
 
   const orchestratorPath = path.join(runLogs.dir, "orchestrator.jsonl");
@@ -277,8 +280,9 @@ export async function logsSearch(
   projectName: string,
   _config: ProjectConfig,
   opts: { runId?: string; pattern: string; taskId?: string; useIndex?: boolean },
+  paths?: PathsContext,
 ): Promise<void> {
-  const runLogs = resolveRunLogsOrWarn(projectName, opts.runId);
+  const runLogs = resolveRunLogsOrWarn(projectName, opts.runId, paths);
   if (!runLogs) return;
 
   const preferIndex = opts.useIndex ?? false;
@@ -365,8 +369,9 @@ export async function logsTimeline(
   projectName: string,
   _config: ProjectConfig,
   opts: { runId?: string; useIndex?: boolean },
+  paths?: PathsContext,
 ): Promise<void> {
-  const runLogs = resolveRunLogsOrWarn(projectName, opts.runId);
+  const runLogs = resolveRunLogsOrWarn(projectName, opts.runId, paths);
   if (!runLogs) return;
 
   const events = loadRunEvents(runLogs.runId, runLogs.dir, { useIndex: opts.useIndex });
@@ -376,7 +381,7 @@ export async function logsTimeline(
     return;
   }
 
-  const stateResolved = await loadRunStateForProject(projectName, runLogs.runId);
+  const stateResolved = await loadRunStateForProject(projectName, runLogs.runId, paths);
   const timeline = buildTimeline(events, stateResolved?.state ?? null);
 
   console.log(`Timeline for run ${runLogs.runId}:`);
@@ -407,8 +412,9 @@ export async function logsFailures(
   projectName: string,
   _config: ProjectConfig,
   opts: { runId?: string; taskId?: string; useIndex?: boolean },
+  paths?: PathsContext,
 ): Promise<void> {
-  const runLogs = resolveRunLogsOrWarn(projectName, opts.runId);
+  const runLogs = resolveRunLogsOrWarn(projectName, opts.runId, paths);
   if (!runLogs) return;
 
   const events = loadRunEvents(runLogs.runId, runLogs.dir, {
@@ -443,8 +449,9 @@ export async function logsDoctor(
   projectName: string,
   _config: ProjectConfig,
   opts: { runId?: string; taskId: string; attempt?: number },
+  paths?: PathsContext,
 ): Promise<void> {
-  const runLogs = resolveRunLogsOrWarn(projectName, opts.runId);
+  const runLogs = resolveRunLogsOrWarn(projectName, opts.runId, paths);
   if (!runLogs) return;
 
   const taskDir = findTaskLogDir(runLogs.dir, opts.taskId);
@@ -492,11 +499,12 @@ export async function logsSummarize(
   projectName: string,
   config: ProjectConfig,
   opts: { runId?: string; taskId: string; useLlm?: boolean; useIndex?: boolean },
+  paths?: PathsContext,
 ): Promise<void> {
-  const runLogs = resolveRunLogsOrWarn(projectName, opts.runId);
+  const runLogs = resolveRunLogsOrWarn(projectName, opts.runId, paths);
   if (!runLogs) return;
 
-  const stateResolved = await loadRunStateForProject(projectName, runLogs.runId);
+  const stateResolved = await loadRunStateForProject(projectName, runLogs.runId, paths);
   const taskState = stateResolved?.state.tasks[opts.taskId] ?? null;
   const events = loadRunEvents(runLogs.runId, runLogs.dir, {
     useIndex: opts.useIndex,
@@ -1440,12 +1448,13 @@ function trySearchWithIndex(
   }
 }
 
-function buildContext(command: Command): {
+async function buildContext(command: Command): Promise<{
   projectName: string;
   runId?: string;
   config: ProjectConfig;
   useIndex: boolean;
-} {
+  paths: PathsContext;
+}> {
   const opts = command.optsWithGlobals() as {
     project?: string;
     runId?: string;
@@ -1456,17 +1465,27 @@ function buildContext(command: Command): {
     throw new Error("Project name is required");
   }
 
-  const configPath = opts.config ?? projectConfigPath(opts.project);
-  const config = loadProjectConfig(configPath);
+  const { appContext, config, projectName } = await loadConfigForCli({
+    projectName: opts.project,
+    explicitConfigPath: opts.config,
+    initIfMissing: false,
+  });
 
-  return { projectName: opts.project, runId: opts.runId, config, useIndex: opts.useIndex ?? false };
+  return {
+    projectName,
+    runId: opts.runId,
+    config,
+    useIndex: opts.useIndex ?? false,
+    paths: appContext.paths,
+  };
 }
 
 function resolveRunLogsOrWarn(
   projectName: string,
   runId?: string,
+  paths?: PathsContext,
 ): { runId: string; dir: string } | null {
-  const resolved = resolveRunLogsDir(projectName, runId);
+  const resolved = resolveRunLogsDir(projectName, runId, paths);
   if (resolved) {
     return resolved;
   }

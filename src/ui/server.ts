@@ -3,8 +3,8 @@ import http from "node:http";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { resolveProjectConfigPath } from "../core/config-discovery.js";
-import { loadProjectConfig } from "../core/config-loader.js";
+import type { AppContext } from "../app/context.js";
+import { loadAppContext } from "../app/config/load-app-context.js";
 
 import { createUiRouter } from "./router.js";
 
@@ -17,6 +17,7 @@ export type StartUiServerOptions = {
   project: string;
   runId: string;
   port?: number;
+  appContext?: AppContext;
 };
 
 export type UiServerHandle = {
@@ -42,13 +43,17 @@ export async function startUiServer(options: StartUiServerOptions): Promise<UiSe
     throw new Error("Port must be a non-negative integer.");
   }
 
-  await ensureMyceliumHome(options.project);
+  const appContext = options.appContext ?? (await loadAppContext({
+    projectName: options.project,
+    initIfMissing: true,
+  })).appContext;
 
   const staticRoot = resolveUiStaticRoot();
   const router = createUiRouter({
     projectName: options.project,
     runId: options.runId,
     staticRoot,
+    paths: appContext.paths,
   });
 
   const server = http.createServer((req, res) => router(req, res));
@@ -70,20 +75,6 @@ export async function startUiServer(options: StartUiServerOptions): Promise<UiSe
 // =============================================================================
 // INTERNALS
 // =============================================================================
-
-async function ensureMyceliumHome(projectName: string): Promise<void> {
-  if (process.env.MYCELIUM_HOME) {
-    return;
-  }
-
-  const resolved = resolveProjectConfigPath({
-    projectName,
-    initIfMissing: true,
-  });
-
-  const config = loadProjectConfig(resolved.configPath);
-  process.env.MYCELIUM_HOME = path.join(config.repo_path, ".mycelium");
-}
 
 function resolveUiStaticRoot(): string {
   const packageRoot = findPackageRoot(fileURLToPath(new URL(".", import.meta.url)));

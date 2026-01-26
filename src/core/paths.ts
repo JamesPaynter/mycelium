@@ -2,69 +2,115 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
-export function orchestratorHome(): string {
-  return process.env.MYCELIUM_HOME
-    ? path.resolve(process.env.MYCELIUM_HOME)
-    : path.join(os.homedir(), ".mycelium");
+// =============================================================================
+// TYPES
+// =============================================================================
+
+export type PathsContext = {
+  myceliumHome: string;
+};
+
+export type ResolveMyceliumHomeOptions = {
+  myceliumHome?: string;
+  repoPath?: string;
+};
+
+
+// =============================================================================
+// CONTEXT
+// =============================================================================
+
+export function resolveMyceliumHome(opts: ResolveMyceliumHomeOptions = {}): string {
+  if (opts.myceliumHome) {
+    return path.resolve(opts.myceliumHome);
+  }
+
+  if (process.env.MYCELIUM_HOME) {
+    return path.resolve(process.env.MYCELIUM_HOME);
+  }
+
+  if (opts.repoPath) {
+    return path.join(path.resolve(opts.repoPath), ".mycelium");
+  }
+
+  return path.join(os.homedir(), ".mycelium");
 }
 
-export function projectsDir(): string {
-  return path.join(orchestratorHome(), "projects");
+export function createPathsContext(opts: ResolveMyceliumHomeOptions): PathsContext {
+  return { myceliumHome: resolveMyceliumHome(opts) };
 }
 
-export function projectConfigPath(projectName: string): string {
-  return path.join(projectsDir(), `${projectName}.yaml`);
+function normalizeMyceliumHome(paths?: PathsContext): string {
+  return resolveMyceliumHome({ myceliumHome: paths?.myceliumHome });
 }
 
-export function stateRootDir(): string {
-  return path.join(orchestratorHome(), "state");
+
+// =============================================================================
+// PATH HELPERS
+// =============================================================================
+
+export function orchestratorHome(paths?: PathsContext): string {
+  return normalizeMyceliumHome(paths);
 }
 
-export function stateBaseDir(projectName: string): string {
-  return path.join(stateRootDir(), projectName);
+export function projectsDir(paths?: PathsContext): string {
+  return path.join(orchestratorHome(paths), "projects");
 }
 
-export function logsBaseDir(projectName: string): string {
-  return path.join(orchestratorHome(), "logs", projectName);
+export function projectConfigPath(projectName: string, paths?: PathsContext): string {
+  return path.join(projectsDir(paths), `${projectName}.yaml`);
 }
 
-export function historyBaseDir(): string {
-  return path.join(orchestratorHome(), "history");
+export function stateRootDir(paths?: PathsContext): string {
+  return path.join(orchestratorHome(paths), "state");
 }
 
-export function runHistoryDir(projectName: string): string {
-  return path.join(historyBaseDir(), projectName);
+export function stateBaseDir(projectName: string, paths?: PathsContext): string {
+  return path.join(stateRootDir(paths), projectName);
 }
 
-export function runHistoryIndexPath(projectName: string): string {
-  return path.join(runHistoryDir(projectName), "runs.json");
+export function logsBaseDir(projectName: string, paths?: PathsContext): string {
+  return path.join(orchestratorHome(paths), "logs", projectName);
 }
 
-export function taskLedgerPath(projectName: string): string {
-  return path.join(runHistoryDir(projectName), "tasks.json");
+export function historyBaseDir(paths?: PathsContext): string {
+  return path.join(orchestratorHome(paths), "history");
 }
 
-export function runStateDir(projectName: string): string {
-  return stateBaseDir(projectName);
+export function runHistoryDir(projectName: string, paths?: PathsContext): string {
+  return path.join(historyBaseDir(paths), projectName);
 }
 
-export function runStatePath(projectName: string, runId: string): string {
-  return path.join(stateBaseDir(projectName), `run-${runId}.json`);
+export function runHistoryIndexPath(projectName: string, paths?: PathsContext): string {
+  return path.join(runHistoryDir(projectName, paths), "runs.json");
 }
 
-export function runStateTempPath(projectName: string, runId: string): string {
-  return path.join(stateBaseDir(projectName), `run-${runId}.json.tmp`);
+export function taskLedgerPath(projectName: string, paths?: PathsContext): string {
+  return path.join(runHistoryDir(projectName, paths), "tasks.json");
 }
 
-export function runLogsDir(projectName: string, runId: string): string {
-  return path.join(logsBaseDir(projectName), `run-${runId}`);
+export function runStateDir(projectName: string, paths?: PathsContext): string {
+  return stateBaseDir(projectName, paths);
+}
+
+export function runStatePath(projectName: string, runId: string, paths?: PathsContext): string {
+  return path.join(stateBaseDir(projectName, paths), `run-${runId}.json`);
+}
+
+export function runStateTempPath(projectName: string, runId: string, paths?: PathsContext): string {
+  return path.join(stateBaseDir(projectName, paths), `run-${runId}.json.tmp`);
+}
+
+export function runLogsDir(projectName: string, runId: string, paths?: PathsContext): string {
+  return path.join(logsBaseDir(projectName, paths), `run-${runId}`);
 }
 
 export function resolveRunLogsDir(
   projectName: string,
   runId?: string,
+  paths?: PathsContext,
 ): { runId: string; dir: string } | null {
-  const base = logsBaseDir(projectName);
+  const base = logsBaseDir(projectName, paths);
   if (!fs.existsSync(base)) return null;
 
   if (runId) {
@@ -92,32 +138,37 @@ export function resolveRunLogsDir(
   return { runId: latest.runId, dir: latest.dir };
 }
 
-export function workspacesRoot(): string {
-  return path.join(orchestratorHome(), "workspaces");
+export function workspacesRoot(paths?: PathsContext): string {
+  return path.join(orchestratorHome(paths), "workspaces");
 }
 
-export function projectWorkspacesDir(projectName: string): string {
-  return path.join(workspacesRoot(), projectName);
+export function projectWorkspacesDir(projectName: string, paths?: PathsContext): string {
+  return path.join(workspacesRoot(paths), projectName);
 }
 
-export function orchestratorLogPath(projectName: string, runId: string): string {
-  return path.join(runLogsDir(projectName, runId), "orchestrator.jsonl");
+export function orchestratorLogPath(
+  projectName: string,
+  runId: string,
+  paths?: PathsContext,
+): string {
+  return path.join(runLogsDir(projectName, runId, paths), "orchestrator.jsonl");
 }
 
-export function plannerLogPath(projectName: string, runId: string): string {
-  return path.join(runLogsDir(projectName, runId), "planner.jsonl");
+export function plannerLogPath(projectName: string, runId: string, paths?: PathsContext): string {
+  return path.join(runLogsDir(projectName, runId, paths), "planner.jsonl");
 }
 
-export function validatorsLogsDir(projectName: string, runId: string): string {
-  return path.join(runLogsDir(projectName, runId), "validators");
+export function validatorsLogsDir(projectName: string, runId: string, paths?: PathsContext): string {
+  return path.join(runLogsDir(projectName, runId, paths), "validators");
 }
 
 export function validatorLogPath(
   projectName: string,
   runId: string,
   validatorName: string,
+  paths?: PathsContext,
 ): string {
-  return path.join(validatorsLogsDir(projectName, runId), `${validatorName}.jsonl`);
+  return path.join(validatorsLogsDir(projectName, runId, paths), `${validatorName}.jsonl`);
 }
 
 export function validatorReportPath(
@@ -126,17 +177,27 @@ export function validatorReportPath(
   validatorName: string,
   taskId: string,
   taskSlug: string,
+  paths?: PathsContext,
 ): string {
   const safeSlug = taskSlug.length > 0 ? taskSlug : "task";
-  return path.join(validatorsLogsDir(projectName, runId), validatorName, `${taskId}-${safeSlug}.json`);
+  return path.join(
+    validatorsLogsDir(projectName, runId, paths),
+    validatorName,
+    `${taskId}-${safeSlug}.json`,
+  );
 }
 
-export function runWorkspaceDir(projectName: string, runId: string): string {
-  return path.join(projectWorkspacesDir(projectName), `run-${runId}`);
+export function runWorkspaceDir(projectName: string, runId: string, paths?: PathsContext): string {
+  return path.join(projectWorkspacesDir(projectName, paths), `run-${runId}`);
 }
 
-export function taskWorkspaceDir(projectName: string, runId: string, taskId: string): string {
-  return path.join(runWorkspaceDir(projectName, runId), `task-${taskId}`);
+export function taskWorkspaceDir(
+  projectName: string,
+  runId: string,
+  taskId: string,
+  paths?: PathsContext,
+): string {
+  return path.join(runWorkspaceDir(projectName, runId, paths), `task-${taskId}`);
 }
 
 export function taskLogsDir(
@@ -144,8 +205,13 @@ export function taskLogsDir(
   runId: string,
   taskId: string,
   taskSlug: string,
+  paths?: PathsContext,
 ): string {
-  return path.join(runLogsDir(projectName, runId), "tasks", `${taskId}-${taskSlug}`);
+  return path.join(
+    runLogsDir(projectName, runId, paths),
+    "tasks",
+    `${taskId}-${taskSlug}`,
+  );
 }
 
 export function taskEventsLogPath(
@@ -153,8 +219,9 @@ export function taskEventsLogPath(
   runId: string,
   taskId: string,
   taskSlug: string,
+  paths?: PathsContext,
 ): string {
-  return path.join(taskLogsDir(projectName, runId, taskId, taskSlug), "events.jsonl");
+  return path.join(taskLogsDir(projectName, runId, taskId, taskSlug, paths), "events.jsonl");
 }
 
 export function taskComplianceReportPath(
@@ -162,8 +229,9 @@ export function taskComplianceReportPath(
   runId: string,
   taskId: string,
   taskSlug: string,
+  paths?: PathsContext,
 ): string {
-  return path.join(taskLogsDir(projectName, runId, taskId, taskSlug), "compliance.json");
+  return path.join(taskLogsDir(projectName, runId, taskId, taskSlug, paths), "compliance.json");
 }
 
 export function taskLockDerivationReportPath(
@@ -241,8 +309,8 @@ export function runSummaryReportPath(repoPath: string, runId: string): string {
   );
 }
 
-export function plannerHomeDir(projectName: string): string {
-  return path.join(orchestratorHome(), "codex", projectName, "planner");
+export function plannerHomeDir(projectName: string, paths?: PathsContext): string {
+  return path.join(orchestratorHome(paths), "codex", projectName, "planner");
 }
 
 export function workerCodexHomeDir(
@@ -250,9 +318,10 @@ export function workerCodexHomeDir(
   runId: string,
   taskId: string,
   _taskSlug: string,
+  paths?: PathsContext,
 ): string {
   return path.join(
-    taskWorkspaceDir(projectName, runId, taskId),
+    taskWorkspaceDir(projectName, runId, taskId, paths),
     ".mycelium",
     "codex-home",
   );

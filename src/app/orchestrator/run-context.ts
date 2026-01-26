@@ -21,6 +21,7 @@ import type {
 } from "../../core/config.js";
 import { JsonlLogger, logOrchestratorEvent } from "../../core/logger.js";
 import type { JsonObject } from "../../core/logger.js";
+import type { PathsContext } from "../../core/paths.js";
 import { orchestratorLogPath } from "../../core/paths.js";
 import { StateStore, findLatestRunId } from "../../core/state-store.js";
 import { isoNow, readJsonFile } from "../../core/utils.js";
@@ -95,6 +96,7 @@ export type RunContextResolved = {
     repoPath: string;
     tasksRootAbs: string;
     tasksDirPosix: string;
+    myceliumHome: string;
   };
   docker: {
     useDocker: boolean;
@@ -142,12 +144,17 @@ export type RunContext<RunOptions = unknown, RunResult = unknown> = {
 // DEFAULT ADAPTERS
 // =============================================================================
 
-export function createDefaultPorts(config: ProjectConfig): OrchestratorPorts {
+export function createDefaultPorts(
+  config: ProjectConfig,
+  paths?: PathsContext,
+): OrchestratorPorts {
   return {
     workspaceStore: {
-      prepareTaskWorkspace,
-      removeTaskWorkspace,
-      removeRunWorkspace,
+      prepareTaskWorkspace: (opts) => prepareTaskWorkspace({ ...opts, paths }),
+      removeTaskWorkspace: (projectName, runId, taskId) =>
+        removeTaskWorkspace(projectName, runId, taskId, paths),
+      removeRunWorkspace: (projectName, runId) =>
+        removeRunWorkspace(projectName, runId, paths),
     },
     vcs: createGitVcs({ taskBranchPrefix: config.task_branch_prefix }),
     workerRunner: {
@@ -160,12 +167,12 @@ export function createDefaultPorts(config: ProjectConfig): OrchestratorPorts {
       runArchitectureValidator,
     },
     stateRepository: {
-      create: (projectName, runId) => new StateStore(projectName, runId),
-      findLatestRunId,
+      create: (projectName, runId) => new StateStore(projectName, runId, paths),
+      findLatestRunId: (projectName) => findLatestRunId(projectName, paths),
     },
     logSink: {
       createOrchestratorLogger: (projectName, runId) =>
-        new JsonlLogger(orchestratorLogPath(projectName, runId), { runId }),
+        new JsonlLogger(orchestratorLogPath(projectName, runId, paths), { runId }),
       logOrchestratorEvent,
     },
     clock: {

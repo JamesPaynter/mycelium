@@ -5,6 +5,7 @@ import { randomUUID } from "node:crypto";
 import fse from "fs-extra";
 import { z } from "zod";
 
+import type { PathsContext } from "./paths.js";
 import { stateBaseDir, runHistoryIndexPath } from "./paths.js";
 import { RunStateSchema, RunStatusSchema, type RunState, type RunStatus } from "./state.js";
 import { isoNow } from "./utils.js";
@@ -55,13 +56,17 @@ const RUN_HISTORY_SCHEMA_VERSION = 1;
 // PUBLIC API
 // =============================================================================
 
-export async function recordRunHistory(state: RunState, statePath: string): Promise<void> {
-  if (!shouldRecordRunHistory(state.project, statePath)) {
+export async function recordRunHistory(
+  state: RunState,
+  statePath: string,
+  paths?: PathsContext,
+): Promise<void> {
+  if (!shouldRecordRunHistory(state.project, statePath, paths)) {
     return;
   }
 
   const entry = buildRunHistoryEntry(state);
-  const index = await loadRunHistoryIndex(state.project);
+  const index = await loadRunHistoryIndex(state.project, paths);
   const merged = mergeRunHistoryEntries(index?.runs ?? [], entry);
   const normalized: RunHistoryIndex = {
     schemaVersion: RUN_HISTORY_SCHEMA_VERSION,
@@ -69,15 +74,16 @@ export async function recordRunHistory(state: RunState, statePath: string): Prom
     runs: sortRunHistoryEntries(merged),
   };
 
-  await writeRunHistoryIndex(state.project, normalized);
+  await writeRunHistoryIndex(state.project, normalized, paths);
 }
 
 export async function listRunHistoryEntries(
   projectName: string,
   opts: { limit?: number } = {},
+  paths?: PathsContext,
 ): Promise<RunHistoryEntry[]> {
-  const index = await loadRunHistoryIndex(projectName);
-  const stateEntries = await loadRunHistoryEntriesFromState(projectName);
+  const index = await loadRunHistoryIndex(projectName, paths);
+  const stateEntries = await loadRunHistoryEntriesFromState(projectName, paths);
 
   const merged = stateEntries.length > 0
     ? sortRunHistoryEntries(stateEntries)
@@ -90,7 +96,7 @@ export async function listRunHistoryEntries(
       schemaVersion: RUN_HISTORY_SCHEMA_VERSION,
       updatedAt,
       runs: merged,
-    });
+    }, paths);
   }
 
   return limited;
@@ -112,8 +118,11 @@ export function buildRunHistoryEntry(state: RunState): RunHistoryEntry {
 // INDEX LOAD/SAVE
 // =============================================================================
 
-async function loadRunHistoryIndex(projectName: string): Promise<RunHistoryIndex | null> {
-  const indexPath = runHistoryIndexPath(projectName);
+async function loadRunHistoryIndex(
+  projectName: string,
+  paths?: PathsContext,
+): Promise<RunHistoryIndex | null> {
+  const indexPath = runHistoryIndexPath(projectName, paths);
   const raw = await fs.readFile(indexPath, "utf8").catch((err) => {
     if (isMissingFile(err)) return null;
     throw err;
@@ -132,8 +141,12 @@ async function loadRunHistoryIndex(projectName: string): Promise<RunHistoryIndex
   }
 }
 
-async function writeRunHistoryIndex(projectName: string, index: RunHistoryIndex): Promise<void> {
-  const indexPath = runHistoryIndexPath(projectName);
+async function writeRunHistoryIndex(
+  projectName: string,
+  index: RunHistoryIndex,
+  paths?: PathsContext,
+): Promise<void> {
+  const indexPath = runHistoryIndexPath(projectName, paths);
   await writeJsonFileAtomic(indexPath, index);
 }
 
@@ -142,8 +155,11 @@ async function writeRunHistoryIndex(projectName: string, index: RunHistoryIndex)
 // STATE BACKFILL
 // =============================================================================
 
-async function loadRunHistoryEntriesFromState(projectName: string): Promise<RunHistoryEntry[]> {
-  const dir = stateBaseDir(projectName);
+async function loadRunHistoryEntriesFromState(
+  projectName: string,
+  paths?: PathsContext,
+): Promise<RunHistoryEntry[]> {
+  const dir = stateBaseDir(projectName, paths);
   const entries = await fs.readdir(dir, { withFileTypes: true }).catch((err) => {
     if (isMissingFile(err)) return null;
     throw err;
@@ -258,8 +274,12 @@ function applyLimit(entries: RunHistoryEntry[], limit?: number): RunHistoryEntry
 // UTILITIES
 // =============================================================================
 
-function shouldRecordRunHistory(projectName: string, statePath: string): boolean {
-  const baseDir = path.resolve(stateBaseDir(projectName));
+function shouldRecordRunHistory(
+  projectName: string,
+  statePath: string,
+  paths?: PathsContext,
+): boolean {
+  const baseDir = path.resolve(stateBaseDir(projectName, paths));
   const resolved = path.resolve(statePath);
   const relative = path.relative(baseDir, resolved);
 

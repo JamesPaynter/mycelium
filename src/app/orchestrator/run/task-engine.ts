@@ -30,6 +30,7 @@ import {
   taskWorkspaceDir,
   workerCodexHomeDir,
 } from "../../../core/paths.js";
+import type { PathsContext } from "../../../core/paths.js";
 import type { StateStore } from "../../../core/state-store.js";
 import type { CheckpointCommit, RunState } from "../../../core/state.js";
 import { moveTaskDir, resolveTaskDir } from "../../../core/task-layout.js";
@@ -78,6 +79,7 @@ export type TaskEngineContext = {
   stateStore: StateStore;
   tasksRootAbs: string;
   repoPath: string;
+  paths?: PathsContext;
   workerRunner: WorkerRunner;
   vcs: Vcs;
   orchestratorLog: JsonlLogger;
@@ -163,9 +165,10 @@ export function createTaskEngine(context: TaskEngineContext): TaskEngine {
     const branchName =
       taskState.branch ?? context.vcs.buildTaskBranchName(taskId, task.manifest.name);
     const workspace =
-      taskState.workspace ?? taskWorkspaceDir(context.projectName, context.runId, taskId);
+      taskState.workspace ?? taskWorkspaceDir(context.projectName, context.runId, taskId, context.paths);
     const logsDir =
-      taskState.logs_dir ?? taskLogsDir(context.projectName, context.runId, taskId, task.slug);
+      taskState.logs_dir ??
+      taskLogsDir(context.projectName, context.runId, taskId, task.slug, context.paths);
 
     taskState.branch = branchName;
     taskState.workspace = workspace;
@@ -282,7 +285,13 @@ export function createTaskEngine(context: TaskEngineContext): TaskEngine {
 
     await ensureTaskActiveStage(task);
     await syncWorkerStateIntoTask(taskId, meta.workspace);
-    const taskEventsPath = taskEventsLogPath(context.projectName, context.runId, taskId, task.slug);
+    const taskEventsPath = taskEventsLogPath(
+      context.projectName,
+      context.runId,
+      taskId,
+      task.slug,
+      context.paths,
+    );
     await ensureDir(path.dirname(taskEventsPath));
     const taskEvents = new JsonlLogger(taskEventsPath, { runId: context.runId, taskId });
 
@@ -391,9 +400,21 @@ export function createTaskEngine(context: TaskEngineContext): TaskEngine {
 
     const doctorCommand = policyResult ? policyResult.doctorCommand : defaultDoctorCommand;
 
-    const workspace = taskWorkspaceDir(context.projectName, context.runId, taskId);
-    const tLogsDir = taskLogsDir(context.projectName, context.runId, taskId, taskSlug);
-    const codexHome = workerCodexHomeDir(context.projectName, context.runId, taskId, taskSlug);
+    const workspace = taskWorkspaceDir(context.projectName, context.runId, taskId, context.paths);
+    const tLogsDir = taskLogsDir(
+      context.projectName,
+      context.runId,
+      taskId,
+      taskSlug,
+      context.paths,
+    );
+    const codexHome = workerCodexHomeDir(
+      context.projectName,
+      context.runId,
+      taskId,
+      taskSlug,
+      context.paths,
+    );
     const codexConfigPath = path.join(codexHome, "config.toml");
     const codexReasoningEffort = resolveCodexReasoningEffort(
       context.config.worker.model,
@@ -420,6 +441,7 @@ export function createTaskEngine(context: TaskEngineContext): TaskEngine {
       repoPath: context.repoPath,
       mainBranch: context.config.main_branch,
       taskBranch: branchName,
+      paths: context.paths,
     });
     logOrchestratorEvent(context.orchestratorLog, "workspace.prepare.complete", {
       taskId,
@@ -463,7 +485,7 @@ export function createTaskEngine(context: TaskEngineContext): TaskEngine {
 
     // Prepare per-task logger.
     const taskEvents = new JsonlLogger(
-      taskEventsLogPath(context.projectName, context.runId, taskId, taskSlug),
+      taskEventsLogPath(context.projectName, context.runId, taskId, taskSlug, context.paths),
       { runId: context.runId, taskId },
     );
 

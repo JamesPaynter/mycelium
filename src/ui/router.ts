@@ -3,6 +3,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 
 import { findTaskLogDir, readJsonlFromCursor, taskEventsLogPathForId } from "../core/log-query.js";
+import type { PathsContext } from "../core/paths.js";
 import { resolveRunLogsDir } from "../core/paths.js";
 import { readDoctorLogSnippet } from "../core/run-logs.js";
 import { listRunHistoryEntries } from "../core/run-history.js";
@@ -18,6 +19,7 @@ export type UiRouterOptions = {
   projectName: string;
   runId: string;
   staticRoot: string;
+  paths?: PathsContext;
 };
 
 type ResolvedUiRouterOptions = UiRouterOptions & {
@@ -141,42 +143,42 @@ async function handleApiRequest(
   }
 
   if (route.type === "runs_list") {
-    await handleRunsListRequest(res, method, url, route);
+    await handleRunsListRequest(res, method, url, route, options);
     return;
   }
 
   if (route.type === "summary") {
-    await handleSummaryRequest(res, method, route);
+    await handleSummaryRequest(res, method, route, options);
     return;
   }
 
   if (route.type === "code_graph") {
-    await handleCodeGraphRequest(res, method, url, route);
+    await handleCodeGraphRequest(res, method, url, route, options);
     return;
   }
 
   if (route.type === "orchestrator_events") {
-    await handleOrchestratorEventsRequest(res, method, url, route);
+    await handleOrchestratorEventsRequest(res, method, url, route, options);
     return;
   }
 
   if (route.type === "task_events") {
-    await handleTaskEventsRequest(res, method, url, route);
+    await handleTaskEventsRequest(res, method, url, route, options);
     return;
   }
 
   if (route.type === "task_doctor") {
-    await handleDoctorRequest(res, method, url, route);
+    await handleDoctorRequest(res, method, url, route, options);
     return;
   }
 
   if (route.type === "task_compliance") {
-    await handleComplianceRequest(res, method, route);
+    await handleComplianceRequest(res, method, route, options);
     return;
   }
 
   if (route.type === "validator_report") {
-    await handleValidatorReportRequest(res, method, route);
+    await handleValidatorReportRequest(res, method, route, options);
     return;
   }
 
@@ -233,6 +235,7 @@ async function handleRunsListRequest(
   method: string,
   url: URL,
   route: { projectName: string },
+  options: ResolvedUiRouterOptions,
 ): Promise<void> {
   const limitResult = parseOptionalPositiveInteger(url.searchParams.get("limit"));
   if (!limitResult.ok) {
@@ -240,9 +243,13 @@ async function handleRunsListRequest(
     return;
   }
 
-  const runs = await listRunHistoryEntries(route.projectName, {
-    limit: limitResult.value ?? undefined,
-  });
+  const runs = await listRunHistoryEntries(
+    route.projectName,
+    {
+      limit: limitResult.value ?? undefined,
+    },
+    options.paths,
+  );
 
   sendApiOk(res, { runs }, method === "HEAD");
 }
@@ -251,8 +258,9 @@ async function handleSummaryRequest(
   res: ServerResponse,
   method: string,
   route: { projectName: string; runId: string },
+  options: ResolvedUiRouterOptions,
 ): Promise<void> {
-  const resolved = await loadRunStateForProject(route.projectName, route.runId);
+  const resolved = await loadRunStateForProject(route.projectName, route.runId, options.paths);
   if (!resolved) {
     sendApiError(
       res,
@@ -273,9 +281,10 @@ async function handleCodeGraphRequest(
   method: string,
   url: URL,
   route: { projectName: string; runId: string },
+  options: ResolvedUiRouterOptions,
 ): Promise<void> {
   const baseSha = parseOptionalString(url.searchParams.get("baseSha")) ?? null;
-  const resolved = await loadRunStateForProject(route.projectName, route.runId);
+  const resolved = await loadRunStateForProject(route.projectName, route.runId, options.paths);
   if (!resolved) {
     sendApiError(
       res,
@@ -306,6 +315,7 @@ async function handleOrchestratorEventsRequest(
   method: string,
   url: URL,
   route: { projectName: string; runId: string },
+  options: ResolvedUiRouterOptions,
 ): Promise<void> {
   const cursorResult = parseCursorParam(url.searchParams.get("cursor"));
   if (!cursorResult.ok) {
@@ -322,7 +332,7 @@ async function handleOrchestratorEventsRequest(
   const typeGlob = parseOptionalString(url.searchParams.get("typeGlob"));
   const taskId = parseOptionalString(url.searchParams.get("taskId"));
 
-  const resolved = resolveRunLogsDir(route.projectName, route.runId);
+  const resolved = resolveRunLogsDir(route.projectName, route.runId, options.paths);
   if (!resolved) {
     sendApiError(res, 404, "not_found", "Run logs not found.", method === "HEAD");
     return;
@@ -361,6 +371,7 @@ async function handleTaskEventsRequest(
   method: string,
   url: URL,
   route: { projectName: string; runId: string; taskId: string },
+  options: ResolvedUiRouterOptions,
 ): Promise<void> {
   const cursorResult = parseCursorParam(url.searchParams.get("cursor"));
   if (!cursorResult.ok) {
@@ -376,7 +387,7 @@ async function handleTaskEventsRequest(
 
   const typeGlob = parseOptionalString(url.searchParams.get("typeGlob"));
 
-  const resolved = resolveRunLogsDir(route.projectName, route.runId);
+  const resolved = resolveRunLogsDir(route.projectName, route.runId, options.paths);
   if (!resolved) {
     sendApiError(res, 404, "not_found", "Run logs not found.", method === "HEAD");
     return;
@@ -414,6 +425,7 @@ async function handleDoctorRequest(
   method: string,
   url: URL,
   route: { projectName: string; runId: string; taskId: string },
+  options: ResolvedUiRouterOptions,
 ): Promise<void> {
   const attemptResult = parseOptionalPositiveInteger(url.searchParams.get("attempt"));
   if (!attemptResult.ok) {
@@ -439,7 +451,7 @@ async function handleDoctorRequest(
     return;
   }
 
-  const resolved = resolveRunLogsDir(route.projectName, route.runId);
+  const resolved = resolveRunLogsDir(route.projectName, route.runId, options.paths);
   if (!resolved) {
     sendApiError(res, 404, "not_found", "Run logs not found.", method === "HEAD");
     return;
@@ -465,8 +477,9 @@ async function handleComplianceRequest(
   res: ServerResponse,
   method: string,
   route: { projectName: string; runId: string; taskId: string },
+  options: ResolvedUiRouterOptions,
 ): Promise<void> {
-  const resolved = resolveRunLogsDir(route.projectName, route.runId);
+  const resolved = resolveRunLogsDir(route.projectName, route.runId, options.paths);
   if (!resolved) {
     sendApiError(res, 404, "not_found", "Run logs not found.", method === "HEAD");
     return;
@@ -509,8 +522,9 @@ async function handleValidatorReportRequest(
   res: ServerResponse,
   method: string,
   route: { projectName: string; runId: string; validator: string; taskId: string },
+  options: ResolvedUiRouterOptions,
 ): Promise<void> {
-  const resolved = resolveRunLogsDir(route.projectName, route.runId);
+  const resolved = resolveRunLogsDir(route.projectName, route.runId, options.paths);
   if (!resolved) {
     sendApiError(res, 404, "not_found", "Run logs not found.", method === "HEAD");
     return;

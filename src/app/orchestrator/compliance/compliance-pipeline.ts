@@ -25,6 +25,7 @@ import {
   describeManifestViolations,
   type RescopeComputation,
 } from "../../../core/manifest-rescope.js";
+import type { PathsContext } from "../../../core/paths.js";
 import { taskComplianceReportPath } from "../../../core/paths.js";
 import { markTaskRescopeRequired, resetTaskToPending, type RunState } from "../../../core/state.js";
 import { resolveTaskManifestPath } from "../../../core/task-layout.js";
@@ -53,6 +54,7 @@ export type CompliancePipelineOptions = {
   mainBranch: string;
   resourceContext: ComplianceResourceContext;
   orchestratorLog: JsonlLogger;
+  paths?: PathsContext;
 };
 
 export type CompliancePipelineTaskContext = {
@@ -213,6 +215,7 @@ export class CompliancePipeline {
   private readonly mainBranch: string;
   private readonly resourceContext: ComplianceResourceContext;
   private readonly orchestratorLog: JsonlLogger;
+  private readonly paths?: PathsContext;
 
   constructor(options: CompliancePipelineOptions) {
     this.projectName = options.projectName;
@@ -221,6 +224,7 @@ export class CompliancePipeline {
     this.mainBranch = options.mainBranch;
     this.resourceContext = options.resourceContext;
     this.orchestratorLog = options.orchestratorLog;
+    this.paths = options.paths;
   }
 
   async runForTask(input: CompliancePipelineTaskContext): Promise<CompliancePipelineOutcome> {
@@ -237,6 +241,7 @@ export class CompliancePipeline {
       this.runId,
       input.taskResult.taskId,
       input.taskResult.taskSlug,
+      this.paths,
     );
 
     const compliance = await runManifestCompliance({

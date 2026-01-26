@@ -6,6 +6,7 @@ import { z } from "zod";
 
 import type { DoctorValidatorConfig } from "../core/config.js";
 import { JsonlLogger, logOrchestratorEvent } from "../core/logger.js";
+import type { PathsContext } from "../core/paths.js";
 import { runLogsDir, validatorLogPath, validatorsLogsDir } from "../core/paths.js";
 import { renderPromptTemplate } from "../core/prompts.js";
 import { writeJsonFile } from "../core/utils.js";
@@ -68,6 +69,7 @@ export type DoctorValidatorArgs = {
   orchestratorLog: JsonlLogger;
   logger?: JsonlLogger;
   llmClient?: LlmClient;
+  paths?: PathsContext;
 };
 
 // =============================================================================
@@ -166,9 +168,12 @@ export async function runDoctorValidator(
 
   const validatorLog =
     args.logger ??
-    new JsonlLogger(validatorLogPath(args.projectName, args.runId, VALIDATOR_NAME), {
-      runId: args.runId,
-    });
+    new JsonlLogger(
+      validatorLogPath(args.projectName, args.runId, VALIDATOR_NAME, args.paths),
+      {
+        runId: args.runId,
+      },
+    );
   const shouldCloseLog = !args.logger;
 
   logOrchestratorEvent(args.orchestratorLog, "validator.start", {
@@ -252,7 +257,7 @@ export async function runDoctorValidator(
 // =============================================================================
 
 async function buildValidationContext(args: DoctorValidatorArgs): Promise<ValidationContext> {
-  const runLogs = runLogsDir(args.projectName, args.runId);
+  const runLogs = runLogsDir(args.projectName, args.runId, args.paths);
 
   const [diffSummary, doctorRuns] = await Promise.all([
     readDiffSummary(args.repoPath, args.mainBranch),
@@ -461,7 +466,7 @@ async function persistReport(
 ): Promise<void> {
   const label = `${context.trigger}-${Date.now()}`;
   const reportPath = path.join(
-    validatorsLogsDir(args.projectName, args.runId),
+    validatorsLogsDir(args.projectName, args.runId, args.paths),
     VALIDATOR_NAME,
     `${label}.json`,
   );

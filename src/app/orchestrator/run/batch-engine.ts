@@ -47,6 +47,7 @@ import {
   type ValidatorResult,
 } from "../../../core/state.js";
 import type { TaskSpec } from "../../../core/task-manifest.js";
+import type { PathsContext } from "../../../core/paths.js";
 import {
   resolveTaskManifestPath,
   resolveTaskSpecPath,
@@ -75,6 +76,7 @@ export type BatchEngineContext = {
   runId: string;
   repoPath: string;
   tasksRootAbs: string;
+  paths?: PathsContext;
   config: ProjectConfig;
   state: RunState;
   stateStore: StateStore;
@@ -213,7 +215,7 @@ export function createBatchEngine(
     if (context.cleanupWorkspacesOnSuccess) {
       for (const task of args.successfulTasks) {
         try {
-          await removeTaskWorkspace(context.projectName, context.runId, task.taskId);
+          await removeTaskWorkspace(context.projectName, context.runId, task.taskId, context.paths);
           logOrchestratorEvent(context.orchestratorLog, "workspace.cleanup", {
             taskId: task.taskId,
             workspace: task.workspace,
@@ -676,16 +678,20 @@ export function createBatchEngine(
           try {
             const fingerprint = await computeTaskFingerprint({ manifestPath, specPath });
             const completedAt = context.state.tasks[taskId]?.completed_at ?? isoNow();
-            await upsertLedgerEntry(context.projectName, {
-              taskId,
-              status: context.state.tasks[taskId].status === "skipped" ? "skipped" : "complete",
-              fingerprint,
-              mergeCommit: batchMergeCommit,
-              integrationDoctorPassed: true,
-              completedAt,
-              runId: context.runId,
-              source: "executor",
-            });
+            await upsertLedgerEntry(
+              context.projectName,
+              {
+                taskId,
+                status: context.state.tasks[taskId].status === "skipped" ? "skipped" : "complete",
+                fingerprint,
+                mergeCommit: batchMergeCommit,
+                integrationDoctorPassed: true,
+                completedAt,
+                runId: context.runId,
+                source: "executor",
+              },
+              context.paths,
+            );
             ledgerCompleted.push(taskId);
           } catch (error) {
             logOrchestratorEvent(context.orchestratorLog, "ledger.write.error", {

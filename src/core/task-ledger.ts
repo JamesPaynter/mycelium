@@ -5,6 +5,7 @@ import { createHash, randomUUID } from "node:crypto";
 import fse from "fs-extra";
 import { z } from "zod";
 
+import type { PathsContext } from "./paths.js";
 import { taskLedgerPath } from "./paths.js";
 import { TaskManifestSchema, normalizeTaskManifest, type TaskSpec } from "./task-manifest.js";
 import { resolveTaskManifestPath, resolveTaskSpecPath } from "./task-layout.js";
@@ -77,8 +78,11 @@ const TASK_LEDGER_SCHEMA_VERSION = 1;
 // PUBLIC API
 // =============================================================================
 
-export async function loadTaskLedger(projectName: string): Promise<TaskLedger | null> {
-  const ledgerPath = taskLedgerPath(projectName);
+export async function loadTaskLedger(
+  projectName: string,
+  paths?: PathsContext,
+): Promise<TaskLedger | null> {
+  const ledgerPath = taskLedgerPath(projectName, paths);
   const raw = await fs.readFile(ledgerPath, "utf8").catch((error) => {
     if (isMissingFile(error)) return null;
     throw error;
@@ -96,25 +100,30 @@ export async function loadTaskLedger(projectName: string): Promise<TaskLedger | 
   }
 }
 
-export async function saveTaskLedger(projectName: string, ledger: TaskLedger): Promise<void> {
+export async function saveTaskLedger(
+  projectName: string,
+  ledger: TaskLedger,
+  paths?: PathsContext,
+): Promise<void> {
   const parsed = TaskLedgerSchema.safeParse(ledger);
   if (!parsed.success) {
     throw new Error(`Cannot save task ledger: ${parsed.error.toString()}`);
   }
 
-  await writeJsonFileAtomic(taskLedgerPath(projectName), parsed.data);
+  await writeJsonFileAtomic(taskLedgerPath(projectName, paths), parsed.data);
 }
 
 export async function upsertLedgerEntry(
   projectName: string,
   entry: TaskLedgerEntry,
+  paths?: PathsContext,
 ): Promise<TaskLedger> {
   const parsedEntry = TaskLedgerEntrySchema.safeParse(entry);
   if (!parsedEntry.success) {
     throw new Error(`Cannot upsert task ledger entry: ${parsedEntry.error.toString()}`);
   }
 
-  const existingLedger = await loadTaskLedger(projectName);
+  const existingLedger = await loadTaskLedger(projectName, paths);
   const tasks = {
     ...(existingLedger?.tasks ?? {}),
     [parsedEntry.data.taskId]: parsedEntry.data,
@@ -126,7 +135,7 @@ export async function upsertLedgerEntry(
     tasks,
   };
 
-  await saveTaskLedger(projectName, ledger);
+  await saveTaskLedger(projectName, ledger, paths);
   return ledger;
 }
 
@@ -137,6 +146,7 @@ export async function importLedgerFromRunState(opts: {
   runId: string;
   tasks: TaskSpec[];
   state: RunState;
+  paths?: PathsContext;
 }): Promise<TaskLedgerImportResult> {
   const tasksById = new Map(opts.tasks.map((task) => [task.manifest.id, task]));
   const tasksRoot = opts.tasksRoot ?? path.join(opts.repoPath, ".mycelium", "tasks");
@@ -209,7 +219,9 @@ export async function importLedgerFromRunState(opts: {
     }
 
     try {
-      await upsertLedgerEntry(opts.projectName, {
+      await upsertLedgerEntry(
+        opts.projectName,
+        {
         taskId,
         status: taskState.status,
         fingerprint,
@@ -218,7 +230,9 @@ export async function importLedgerFromRunState(opts: {
         completedAt: taskState.completed_at ?? isoNow(),
         runId: opts.runId,
         source: "import-run",
-      });
+        },
+        opts.paths,
+      );
       imported.push(taskId);
     } catch (error) {
       const detail = error instanceof Error ? error.message : String(error);

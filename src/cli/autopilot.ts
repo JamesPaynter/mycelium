@@ -2,6 +2,7 @@ import path from "node:path";
 import { createInterface } from "node:readline/promises";
 import { stdin as input, stdout as output } from "node:process";
 
+import type { AppContext } from "../app/context.js";
 import type { ProjectConfig } from "../core/config.js";
 import {
   runAutopilotSession,
@@ -13,6 +14,8 @@ import {
 } from "../core/autopilot.js";
 import { runProject } from "../core/executor.js";
 import { createPlannerClient } from "../core/planner.js";
+import type { PathsContext } from "../core/paths.js";
+import { createPathsContext } from "../core/paths.js";
 import { StateStore, summarizeRunState } from "../core/state-store.js";
 import { isoNow, defaultRunId } from "../core/utils.js";
 import { planProject } from "./plan.js";
@@ -37,7 +40,9 @@ export async function autopilotCommand(
     useDocker?: boolean;
     stopContainersOnExit?: boolean;
   },
+  appContext?: AppContext,
 ): Promise<void> {
+  const paths = appContext?.paths ?? createPathsContext({ repoPath: config.repo_path });
   const sessionId = opts.runId ?? defaultRunId();
   const startedAt = isoNow();
 
@@ -59,7 +64,7 @@ export async function autopilotCommand(
     startedAt,
   };
 
-  const client = createPlannerClient(config.planner, projectName, config.repo_path);
+  const client = createPlannerClient(config.planner, projectName, config.repo_path, undefined, paths);
   const io = new ConsoleAutopilotIo();
   const stopHandler = createRunStopSignalHandler({
     onSignal: (signal) => {
@@ -107,7 +112,7 @@ export async function autopilotCommand(
       output: opts.planOutput,
       dryRun: false,
       runId: sessionId,
-    });
+    }, appContext);
     transcriptData.plan = {
       tasksPlanned: planResult.tasks.length,
       outputDir: planResult.outputDir,
@@ -134,7 +139,7 @@ export async function autopilotCommand(
       return;
     }
 
-    const stopReporter = startRunProgressReporter(projectName, sessionId);
+    const stopReporter = startRunProgressReporter(projectName, sessionId, paths);
     try {
       const runResult = await runProject(projectName, config, {
         runId: sessionId,
@@ -231,8 +236,13 @@ class ConsoleAutopilotIo implements AutopilotIo {
   }
 }
 
-function startRunProgressReporter(projectName: string, runId: string, intervalMs = 5000): () => void {
-  const store = new StateStore(projectName, runId);
+function startRunProgressReporter(
+  projectName: string,
+  runId: string,
+  paths: PathsContext,
+  intervalMs = 5000,
+): () => void {
+  const store = new StateStore(projectName, runId, paths);
   let stopped = false;
   let running = false;
 

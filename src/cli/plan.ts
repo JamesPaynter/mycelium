@@ -1,8 +1,9 @@
 import path from "node:path";
 
+import type { AppContext } from "../app/context.js";
 import type { ProjectConfig } from "../core/config.js";
 import { JsonlLogger } from "../core/logger.js";
-import { plannerLogPath } from "../core/paths.js";
+import { createPathsContext, plannerLogPath } from "../core/paths.js";
 import { planFromImplementationPlan, type PlanResult } from "../core/planner.js";
 import { resolveTasksBacklogDir } from "../core/task-layout.js";
 import { defaultRunId } from "../core/utils.js";
@@ -16,10 +17,12 @@ export async function planProject(
     dryRun?: boolean;
     runId?: string;
   },
+  appContext?: AppContext,
 ): Promise<PlanResult> {
   const runId = opts.runId ?? defaultRunId();
   const logRunId = `plan-${runId}`;
-  const log = new JsonlLogger(plannerLogPath(projectName, logRunId), { runId: logRunId });
+  const paths = appContext?.paths ?? createPathsContext({ repoPath: config.repo_path });
+  const log = new JsonlLogger(plannerLogPath(projectName, logRunId, paths), { runId: logRunId });
 
   try {
     const tasksRoot = path.join(config.repo_path, config.tasks_dir);
@@ -36,6 +39,7 @@ export async function planProject(
       outputDir,
       dryRun: opts.dryRun,
       log,
+      paths,
     });
 
     if (opts.dryRun) {

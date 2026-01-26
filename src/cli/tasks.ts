@@ -4,6 +4,8 @@ import { Command } from "commander";
 
 import type { ProjectConfig } from "../core/config.js";
 import { TaskError } from "../core/errors.js";
+import type { PathsContext } from "../core/paths.js";
+import { createPathsContext } from "../core/paths.js";
 import { loadTaskSpecs } from "../core/task-loader.js";
 import {
   importLedgerFromRunState,
@@ -58,8 +60,8 @@ export function registerTasksCommand(program: Command): void {
     .argument("<runId>", "Run ID to import")
     .option("--project <name>", "Project name (default: repo folder name)")
     .action(async (runId: string, opts, command) => {
-      const { config, projectName } = await resolveProjectContext(command, opts.project);
-      await tasksImportRunCommand(projectName, config, { runId });
+      const { config, projectName, paths } = await resolveProjectContext(command, opts.project);
+      await tasksImportRunCommand(projectName, config, { runId }, paths);
     });
 
   tasks
@@ -71,7 +73,7 @@ export function registerTasksCommand(program: Command): void {
     .option("--force", "Allow overriding running tasks", false)
     .option("--project <name>", "Project name (default: repo folder name)")
     .action(async (taskId: string, opts, command) => {
-      const { config, projectName } = await resolveProjectContext(command, opts.project);
+      const { config, projectName, paths } = await resolveProjectContext(command, opts.project);
       const parsedStatus = parseOverrideStatus(opts.status);
       if (!parsedStatus) {
         console.log("Status must be one of: pending, complete, skipped.");
@@ -84,7 +86,7 @@ export function registerTasksCommand(program: Command): void {
         taskId,
         status: parsedStatus,
         force: opts.force ?? false,
-      });
+      }, paths);
     });
 
   const ledger = tasks
@@ -97,8 +99,8 @@ export function registerTasksCommand(program: Command): void {
     .description("List ledger entries")
     .option("--project <name>", "Project name (default: repo folder name)")
     .action(async (opts, command) => {
-      const { config, projectName } = await resolveProjectContext(command, opts.project);
-      await tasksLedgerListCommand(projectName, config);
+      const { config, projectName, paths } = await resolveProjectContext(command, opts.project);
+      await tasksLedgerListCommand(projectName, config, paths);
     });
 
   ledger
@@ -107,13 +109,13 @@ export function registerTasksCommand(program: Command): void {
     .argument("<taskId>", "Task ID")
     .option("--project <name>", "Project name (default: repo folder name)")
     .action(async (taskId: string, opts, command) => {
-      const { config, projectName } = await resolveProjectContext(command, opts.project);
-      await tasksLedgerGetCommand(projectName, config, { taskId });
+      const { config, projectName, paths } = await resolveProjectContext(command, opts.project);
+      await tasksLedgerGetCommand(projectName, config, { taskId }, paths);
     });
 
   ledger.action(async (opts, command) => {
-    const { config, projectName } = await resolveProjectContext(command, opts.project);
-    await tasksLedgerListCommand(projectName, config);
+    const { config, projectName, paths } = await resolveProjectContext(command, opts.project);
+    await tasksLedgerListCommand(projectName, config, paths);
   });
 }
 
@@ -126,8 +128,10 @@ export async function tasksImportRunCommand(
   projectName: string,
   config: ProjectConfig,
   opts: TaskImportOptions,
+  paths?: PathsContext,
 ): Promise<void> {
-  const store = new StateStore(projectName, opts.runId);
+  const resolvedPaths = resolvePathsContext(config, paths);
+  const store = new StateStore(projectName, opts.runId, resolvedPaths);
   if (!(await store.exists())) {
     console.log(`Run ${opts.runId} not found for project ${projectName}.`);
     process.exitCode = 1;
@@ -145,6 +149,7 @@ export async function tasksImportRunCommand(
     tasks,
     state,
     tasksRoot: resolveTasksRoot(config),
+    paths: resolvedPaths,
   });
 
   printImportSummary(opts.runId, result);
@@ -152,10 +157,12 @@ export async function tasksImportRunCommand(
 
 export async function tasksSetStatusCommand(
   projectName: string,
-  _config: ProjectConfig,
+  config: ProjectConfig,
   opts: TaskSetStatusOptions,
+  paths?: PathsContext,
 ): Promise<void> {
-  const resolved = await loadRunStateForProject(projectName, opts.runId);
+  const resolvedPaths = resolvePathsContext(config, paths);
+  const resolved = await loadRunStateForProject(projectName, opts.runId, resolvedPaths);
   if (!resolved) {
     const notFound = opts.runId
       ? `Run ${opts.runId} not found for project ${projectName}.`
@@ -185,7 +192,7 @@ export async function tasksSetStatusCommand(
     return;
   }
 
-  const store = new StateStore(projectName, resolved.runId);
+  const store = new StateStore(projectName, resolved.runId, resolvedPaths);
   await store.save(resolved.state);
 
   console.log(
@@ -195,9 +202,11 @@ export async function tasksSetStatusCommand(
 
 export async function tasksLedgerListCommand(
   projectName: string,
-  _config: ProjectConfig,
+  config: ProjectConfig,
+  paths?: PathsContext,
 ): Promise<void> {
-  const ledger = await loadTaskLedger(projectName);
+  const resolvedPaths = resolvePathsContext(config, paths);
+  const ledger = await loadTaskLedger(projectName, resolvedPaths);
   if (!ledger || Object.keys(ledger.tasks).length === 0) {
     console.log(`No ledger entries found for project ${projectName}.`);
     return;
@@ -209,10 +218,12 @@ export async function tasksLedgerListCommand(
 
 export async function tasksLedgerGetCommand(
   projectName: string,
-  _config: ProjectConfig,
+  config: ProjectConfig,
   opts: { taskId: string },
+  paths?: PathsContext,
 ): Promise<void> {
-  const ledger = await loadTaskLedger(projectName);
+  const resolvedPaths = resolvePathsContext(config, paths);
+  const ledger = await loadTaskLedger(projectName, resolvedPaths);
   if (!ledger) {
     console.log(`No ledger found for project ${projectName}.`);
     process.exitCode = 1;
@@ -321,21 +332,25 @@ function printLedgerRows(projectName: string, rows: TaskLedgerListRow[]): void {
 async function resolveProjectContext(
   command: Command,
   projectOption?: string,
-): Promise<{ config: ProjectConfig; projectName: string }> {
+): Promise<{ config: ProjectConfig; projectName: string; paths: PathsContext }> {
   const globals = command.optsWithGlobals() as { config?: string; project?: string };
-  const { config, projectName } = await loadConfigForCli({
+  const { appContext, config, projectName } = await loadConfigForCli({
     projectName: projectOption ?? globals.project,
     explicitConfigPath: globals.config,
     initIfMissing: true,
   });
 
-  return { config, projectName };
+  return { config, projectName, paths: appContext.paths };
 }
 
 function parseOverrideStatus(raw: string): TaskOverrideStatus | null {
   const normalized = raw.trim().toLowerCase();
   const parsed = TaskOverrideStatusSchema.safeParse(normalized);
   return parsed.success ? parsed.data : null;
+}
+
+function resolvePathsContext(config: ProjectConfig, paths?: PathsContext): PathsContext {
+  return paths ?? createPathsContext({ repoPath: config.repo_path });
 }
 
 function resolveTasksRoot(config: ProjectConfig): string {

@@ -1,8 +1,10 @@
 import { stdin as input, stdout as output } from "node:process";
 import { createInterface } from "node:readline/promises";
 
+import type { AppContext } from "../app/context.js";
 import type { ProjectConfig } from "../core/config.js";
 import { buildCleanupPlan, executeCleanupPlan, type CleanupPlan } from "../core/cleanup.js";
+import { createPathsContext } from "../core/paths.js";
 import { DockerManager } from "../docker/manager.js";
 
 type CleanOptions = {
@@ -15,11 +17,13 @@ type CleanOptions = {
 
 export async function cleanCommand(
   projectName: string,
-  _config: ProjectConfig,
+  config: ProjectConfig,
   opts: CleanOptions,
+  appContext?: AppContext,
 ): Promise<void> {
   const removeContainers = opts.removeContainers !== false;
   const dockerManager = removeContainers ? new DockerManager() : undefined;
+  const paths = appContext?.paths ?? createPathsContext({ repoPath: config.repo_path });
 
   let plan: CleanupPlan | null;
   try {
@@ -28,6 +32,7 @@ export async function cleanCommand(
       keepLogs: opts.keepLogs,
       removeContainers,
       dockerManager,
+      paths,
     });
   } catch (err) {
     const detail = err instanceof Error ? err.message : String(err);

@@ -4,13 +4,10 @@ import path from "node:path";
 
 import { afterEach, describe, expect, it } from "vitest";
 
+import { createAppContext, type AppContext } from "../app/context.js";
+import { ProjectConfigSchema } from "../core/config.js";
 import { createRunState } from "../core/state.js";
 import { startUiServer, type UiServerHandle } from "../ui/server.js";
-
-const ENV_VARS = ["MYCELIUM_HOME"] as const;
-const originalEnv: Record<(typeof ENV_VARS)[number], string | undefined> = Object.fromEntries(
-  ENV_VARS.map((key) => [key, process.env[key]]),
-) as Record<(typeof ENV_VARS)[number], string | undefined>;
 
 const tempDirs: string[] = [];
 const servers: UiServerHandle[] = [];
@@ -26,14 +23,6 @@ afterEach(async () => {
   }
   tempDirs.length = 0;
 
-  for (const key of ENV_VARS) {
-    const value = originalEnv[key];
-    if (value === undefined) {
-      delete process.env[key];
-    } else {
-      process.env[key] = value;
-    }
-  }
 });
 
 
@@ -93,8 +82,29 @@ function writeJsonlFile(filePath: string, lines: string[]): void {
   fs.writeFileSync(filePath, content, "utf8");
 }
 
-async function startServer(options: { project: string; runId: string }): Promise<{ baseUrl: string }> {
-  const server = await startUiServer({ ...options, port: 0 });
+function buildAppContext(root: string, projectName: string): AppContext {
+  const config = ProjectConfigSchema.parse({
+    repo_path: root,
+    doctor: "npm test",
+    resources: [{ name: "repo", paths: ["**/*"] }],
+    planner: { provider: "mock", model: "mock" },
+    worker: { model: "mock" },
+  });
+
+  return createAppContext({
+    projectName,
+    configPath: path.join(root, "config.yaml"),
+    config,
+    myceliumHome: root,
+  });
+}
+
+async function startServer(options: {
+  project: string;
+  runId: string;
+  appContext: AppContext;
+}): Promise<{ baseUrl: string }> {
+  const server = await startUiServer({ ...options, port: 0, appContext: options.appContext });
   servers.push(server);
   return { baseUrl: server.url };
 }
@@ -145,12 +155,11 @@ function buildTaskEventsUrl(
 describe("UI server", () => {
   it("serves summary and cursor-based event endpoints", async () => {
     const root = makeTempDir();
-    process.env.MYCELIUM_HOME = root;
-
     const projectName = "demo-project";
     const runId = "run-300";
     const taskId = "task-1";
     const taskSlug = "bootstrap";
+    const appContext = buildAppContext(root, projectName);
 
     writeRunState(root, projectName, runId, [taskId]);
 
@@ -170,7 +179,7 @@ describe("UI server", () => {
     ];
     writeJsonlFile(taskEventsPath, taskLines);
 
-    const { baseUrl } = await startServer({ project: projectName, runId });
+    const { baseUrl } = await startServer({ project: projectName, runId, appContext });
 
     const summaryResponse = await fetch(buildSummaryUrl(baseUrl, projectName, runId));
     const summaryPayload = await summaryResponse.json();
@@ -228,12 +237,11 @@ describe("UI server", () => {
 
   it("blocks traversal attempts on static and API paths", async () => {
     const root = makeTempDir();
-    process.env.MYCELIUM_HOME = root;
-
     const projectName = "demo-project";
     const runId = "run-301";
+    const appContext = buildAppContext(root, projectName);
 
-    const { baseUrl } = await startServer({ project: projectName, runId });
+    const { baseUrl } = await startServer({ project: projectName, runId, appContext });
 
     const staticUrl = new URL("/%2e%2e/%2e%2e/etc/passwd", baseUrl);
     const staticResponse = await fetch(staticUrl);

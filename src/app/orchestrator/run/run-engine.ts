@@ -49,6 +49,7 @@ import {
   type JsonObject,
 } from "../../../core/logger.js";
 import type { ResourceOwnershipResolver } from "../../../core/manifest-compliance.js";
+import type { PathsContext } from "../../../core/paths.js";
 import {
   orchestratorHome,
   orchestratorLogPath,
@@ -164,7 +165,7 @@ async function runEngineImpl(
           workspacesOnSuccess: cleanupWorkspacesOnSuccess,
           containersOnSuccess: cleanupContainersOnSuccess,
         },
-        paths: { repoPath, tasksRootAbs, tasksDirPosix },
+        paths: { repoPath, tasksRootAbs, tasksDirPosix, myceliumHome },
         docker: {
           useDocker,
           stopContainersOnExit,
@@ -202,6 +203,7 @@ async function runEngineImpl(
       },
     } = context;
 
+    const pathsContext: PathsContext = { myceliumHome };
     let controlPlaneConfig = context.resolved.controlPlane.config;
     const plannedBatches: BatchPlanEntry[] = [];
     const workerRunner = createWorkerRunner({
@@ -220,9 +222,9 @@ async function runEngineImpl(
     let state!: RunState;
 
     // Prepare directories
-    await ensureDir(orchestratorHome());
-    const stateStore = new StateStore(projectName, runId);
-    const orchLog = new JsonlLogger(orchestratorLogPath(projectName, runId), { runId });
+    await ensureDir(orchestratorHome(pathsContext));
+    const stateStore = new StateStore(projectName, runId, pathsContext);
+    const orchLog = new JsonlLogger(orchestratorLogPath(projectName, runId, pathsContext), { runId });
     let validationPipeline: ValidationPipeline | null = null;
     const closeValidationPipeline = (): void => {
       validationPipeline?.close();
@@ -387,6 +389,7 @@ async function runEngineImpl(
       runId,
       tasksRoot: tasksRootAbs,
       mainBranch: config.main_branch,
+      paths: pathsContext,
       validators: {
         test: {
           config: testValidatorConfig,
@@ -433,6 +436,7 @@ async function runEngineImpl(
         resourcesMode: resourceContext.resourcesMode,
       },
       orchestratorLog: orchLog,
+      paths: pathsContext,
     });
     const budgetTracker = new BudgetTracker({
       projectName,
@@ -440,6 +444,7 @@ async function runEngineImpl(
       costPer1kTokens,
       budgets: config.budgets,
       orchestratorLog: orchLog,
+      paths: pathsContext,
     });
 
     logOrchestratorEvent(orchLog, "run.tasks_loaded", {
@@ -496,7 +501,7 @@ async function runEngineImpl(
 
     const ensureLedgerContext = async (): Promise<LedgerContext> => {
       if (!ledgerLoaded) {
-        ledgerSnapshot = await loadTaskLedger(projectName);
+        ledgerSnapshot = await loadTaskLedger(projectName, pathsContext);
         ledgerLoaded = true;
       }
       if (!ledgerHeadSha) {
@@ -518,7 +523,7 @@ async function runEngineImpl(
 
     if (importRunId) {
       logOrchestratorEvent(orchLog, "ledger.import.start", { run_id: importRunId });
-      const importStore = new StateStore(projectName, importRunId);
+      const importStore = new StateStore(projectName, importRunId, pathsContext);
       if (!(await importStore.exists())) {
         logOrchestratorEvent(orchLog, "ledger.import.error", {
           run_id: importRunId,
@@ -535,6 +540,7 @@ async function runEngineImpl(
         runId: importRunId,
         tasks: taskCatalog,
         state: importState,
+        paths: pathsContext,
       });
       logOrchestratorEvent(orchLog, "ledger.import.complete", {
         run_id: importRunId,
@@ -644,6 +650,7 @@ async function runEngineImpl(
       stateStore,
       tasksRootAbs,
       repoPath,
+      paths: pathsContext,
       workerRunner,
       vcs,
       orchestratorLog: orchLog,
@@ -661,6 +668,7 @@ async function runEngineImpl(
         runId,
         repoPath,
         tasksRootAbs,
+        paths: pathsContext,
         config,
         state,
         stateStore,

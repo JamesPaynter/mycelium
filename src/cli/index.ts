@@ -1,5 +1,6 @@
 import { Command } from "commander";
 
+import type { AppContext } from "../app/context.js";
 import type { ProjectConfig } from "../core/config.js";
 import { loadConfigForCli } from "./config.js";
 
@@ -22,8 +23,14 @@ export function buildCli(): Command {
   const resolveConfig = async (
     projectName: string | undefined,
     explicitConfig?: string,
-  ): Promise<{ config: ProjectConfig; projectName: string }> => {
-    const { config, configPath, created, projectName: resolvedProjectName } = await loadConfigForCli({
+  ): Promise<{ appContext: AppContext; config: ProjectConfig; projectName: string }> => {
+    const {
+      appContext,
+      config,
+      configPath,
+      created,
+      projectName: resolvedProjectName,
+    } = await loadConfigForCli({
       projectName,
       explicitConfigPath: explicitConfig,
       initIfMissing: true,
@@ -34,7 +41,7 @@ export function buildCli(): Command {
       console.log(`Edit ${configPath} to set doctor, resources, and models.`);
     }
 
-    return { config, projectName: resolvedProjectName };
+    return { appContext, config, projectName: resolvedProjectName };
   };
 
   program
@@ -86,7 +93,7 @@ export function buildCli(): Command {
     )
     .action(async (opts) => {
       const globals = program.opts();
-      const { config, projectName } = await resolveConfig(opts.project, globals.config);
+      const { appContext, config, projectName } = await resolveConfig(opts.project, globals.config);
       await autopilotCommand(projectName, config, {
         planInput: opts.planInput,
         planOutput: opts.planOutput,
@@ -98,7 +105,7 @@ export function buildCli(): Command {
         buildImage: opts.buildImage,
         useDocker: !opts.localWorker,
         stopContainersOnExit: opts.stopContainersOnExit,
-      });
+      }, appContext);
     });
 
   program
@@ -112,12 +119,12 @@ export function buildCli(): Command {
     .option("--dry-run", "Do not write tasks; just print JSON", false)
     .action(async (opts) => {
       const globals = program.opts();
-      const { config, projectName } = await resolveConfig(opts.project, globals.config);
+      const { appContext, config, projectName } = await resolveConfig(opts.project, globals.config);
       await planProject(projectName, config, {
         input: opts.input,
         output: opts.output,
         dryRun: opts.dryRun,
-      });
+      }, appContext);
     });
 
   program
@@ -153,7 +160,7 @@ export function buildCli(): Command {
     )
     .action(async (opts) => {
       const globals = program.opts();
-      const { config, projectName } = await resolveConfig(opts.project, globals.config);
+      const { appContext, config, projectName } = await resolveConfig(opts.project, globals.config);
       await runCommand(projectName, config, {
         runId: opts.runId,
         tasks: opts.tasks,
@@ -167,7 +174,7 @@ export function buildCli(): Command {
         ui: opts.ui,
         uiPort: opts.uiPort,
         uiOpen: opts.uiOpen,
-      });
+      }, appContext);
     });
 
   program
@@ -197,7 +204,7 @@ export function buildCli(): Command {
     )
     .action(async (opts) => {
       const globals = program.opts();
-      const { config, projectName } = await resolveConfig(opts.project, globals.config);
+      const { appContext, config, projectName } = await resolveConfig(opts.project, globals.config);
       await resumeCommand(projectName, config, {
         runId: opts.runId,
         maxParallel: opts.maxParallel,
@@ -210,7 +217,7 @@ export function buildCli(): Command {
         ui: opts.ui,
         uiPort: opts.uiPort,
         uiOpen: opts.uiOpen,
-      });
+      }, appContext);
     });
 
   program
@@ -223,12 +230,12 @@ export function buildCli(): Command {
     .option("--no-open", "Do not open the UI in a browser")
     .action(async (opts) => {
       const globals = program.opts();
-      const { config, projectName } = await resolveConfig(opts.project, globals.config);
+      const { appContext, config, projectName } = await resolveConfig(opts.project, globals.config);
       await uiCommand(projectName, config, {
         runId: opts.runId,
         port: opts.port,
         openBrowser: opts.open,
-      });
+      }, appContext);
     });
 
   program
@@ -237,8 +244,8 @@ export function buildCli(): Command {
     .option("--run-id <id>", "Run ID (default: latest)")
     .action(async (opts) => {
       const globals = program.opts();
-      const { config, projectName } = await resolveConfig(opts.project, globals.config);
-      await statusCommand(projectName, config, { runId: opts.runId });
+      const { appContext, config, projectName } = await resolveConfig(opts.project, globals.config);
+      await statusCommand(projectName, config, { runId: opts.runId }, appContext);
     });
 
   program
@@ -251,14 +258,14 @@ export function buildCli(): Command {
     .option("--no-containers", "Skip Docker container cleanup", false)
     .action(async (opts) => {
       const globals = program.opts();
-      const { config, projectName } = await resolveConfig(opts.project, globals.config);
+      const { appContext, config, projectName } = await resolveConfig(opts.project, globals.config);
       await cleanCommand(projectName, config, {
         runId: opts.runId,
         keepLogs: opts.keepLogs,
         dryRun: opts.dryRun,
         force: opts.force,
         removeContainers: opts.containers,
-      });
+      }, appContext);
     });
 
   return program;

@@ -8,6 +8,7 @@ import { z } from "zod";
 import { ensureCodexAuthForHome } from "./codexAuth.js";
 import type { PlannerConfig, ProjectConfig, ResourceConfig } from "./config.js";
 import { JsonlLogger } from "./logger.js";
+import type { PathsContext } from "./paths.js";
 import { plannerHomeDir } from "./paths.js";
 import { renderPromptTemplate } from "./prompts.js";
 import {
@@ -119,6 +120,7 @@ export async function planFromImplementationPlan(args: {
   outputDir: string;
   dryRun?: boolean;
   log?: JsonlLogger;
+  paths?: PathsContext;
 }): Promise<PlanResult> {
   const { projectName, config, outputDir, dryRun } = args;
   const repoPath = config.repo_path;
@@ -145,7 +147,7 @@ export async function planFromImplementationPlan(args: {
 
     log?.log({ type: "planner.start", payload: { project: projectName, input: inputAbs } });
 
-    const client = createPlannerClient(config.planner, projectName, repoPath, log);
+    const client = createPlannerClient(config.planner, projectName, repoPath, log, args.paths);
     const completion = await client.complete<PlannerOutput>(prompt, {
       schema: PlannerOutputJsonSchema,
       temperature: config.planner.temperature,
@@ -319,6 +321,7 @@ export function createPlannerClient(
   projectName: string,
   repoPath: string,
   log?: JsonlLogger,
+  paths?: PathsContext,
 ): LlmClient {
   if (isMockLlmEnabled() || cfg.provider === "mock") {
     return new MockLlmClient();
@@ -343,7 +346,7 @@ export function createPlannerClient(
   }
 
   if (cfg.provider === "codex") {
-    const codexHome = plannerHomeDir(projectName);
+    const codexHome = plannerHomeDir(projectName, paths);
     return new CodexPlannerClient({
       model: cfg.model,
       codexHome,

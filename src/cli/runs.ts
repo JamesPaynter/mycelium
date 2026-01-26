@@ -1,6 +1,8 @@
 import { Command } from "commander";
 
+import type { AppContext } from "../app/context.js";
 import type { ProjectConfig } from "../core/config.js";
+import { createPathsContext } from "../core/paths.js";
 import { listRunHistoryEntries, type RunHistoryEntry } from "../core/run-history.js";
 import { loadConfigForCli } from "./config.js";
 
@@ -32,7 +34,7 @@ export function registerRunsCommand(program: Command): void {
     .option("--json", "Emit JSON output", false)
     .action(async (opts, command) => {
       const globals = command.optsWithGlobals() as { config?: string };
-      const { config, projectName } = await loadConfigForCli({
+      const { appContext, config, projectName } = await loadConfigForCli({
         projectName: opts.project,
         explicitConfigPath: globals.config,
         initIfMissing: true,
@@ -48,7 +50,7 @@ export function registerRunsCommand(program: Command): void {
       await runsListCommand(projectName, config, {
         limit: limit.value,
         json: opts.json ?? false,
-      });
+      }, appContext);
     });
 }
 
@@ -59,10 +61,12 @@ export function registerRunsCommand(program: Command): void {
 
 export async function runsListCommand(
   projectName: string,
-  _config: ProjectConfig,
+  config: ProjectConfig,
   opts: { limit?: number; json?: boolean },
+  appContext?: AppContext,
 ): Promise<void> {
-  const runs = await listRunHistoryEntries(projectName, { limit: opts.limit });
+  const paths = appContext?.paths ?? createPathsContext({ repoPath: config.repo_path });
+  const runs = await listRunHistoryEntries(projectName, { limit: opts.limit }, paths);
 
   if (opts.json) {
     console.log(JSON.stringify(runs, null, 2));
