@@ -101,6 +101,14 @@ export async function checkout(cwd: string, branch: string): Promise<void> {
   await git(cwd, ["checkout", branch]);
 }
 
+export async function checkoutOrCreateBranch(cwd: string, branch: string): Promise<void> {
+  try {
+    await checkout(cwd, branch);
+  } catch {
+    await git(cwd, ["checkout", "-b", branch]);
+  }
+}
+
 export async function checkoutNewBranch(
   cwd: string,
   branch: string,

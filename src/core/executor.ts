@@ -1,6 +1,6 @@
 import path from "node:path";
 
-import { execa, execaCommand } from "execa";
+import { execaCommand } from "execa";
 import fg from "fast-glob";
 import fse from "fs-extra";
 
@@ -10,6 +10,7 @@ import {
 } from "../app/orchestrator/run-context-builder.js";
 import type { ControlPlaneRunConfig } from "../app/orchestrator/run-context.js";
 import { runEngine } from "../app/orchestrator/run-engine.js";
+import type { Vcs } from "../app/orchestrator/vcs/vcs.js";
 import { formatErrorMessage, normalizeAbortReason } from "../app/orchestrator/helpers/errors.js";
 import { DockerWorkerRunner } from "../app/orchestrator/workers/docker-worker-runner.js";
 import { LocalWorkerRunner } from "../app/orchestrator/workers/local-worker-runner.js";
@@ -25,10 +26,6 @@ import {
 } from "../app/orchestrator/helpers/format.js";
 import { averageRounded, secondsFromMs } from "../app/orchestrator/helpers/time.js";
 import type { ContainerSpec } from "../docker/docker.js";
-import { ensureCleanWorkingTree, checkout, resolveRunBaseSha, headSha, isAncestor } from "../git/git.js";
-import { mergeTaskBranches } from "../git/merge.js";
-import { buildTaskBranchName } from "../git/branches.js";
-import { listChangedFiles } from "../git/changes.js";
 import { ensureCodexAuthForHome } from "./codexAuth.js";
 import { resolveCodexReasoningEffort } from "./codex-reasoning.js";
 
@@ -546,9 +543,10 @@ async function emitBlastRadiusReport(input: {
   task: TaskSpec;
   workspacePath: string;
   blastContext: BlastRadiusContext;
+  vcs: Vcs;
   orchestratorLog: JsonlLogger;
 }): Promise<ControlPlaneBlastRadiusReport | null> {
-  const changedFiles = await listChangedFiles(
+  const changedFiles = await input.vcs.listChangedFiles(
     input.workspacePath,
     input.blastContext.baseSha,
   );
@@ -859,6 +857,7 @@ async function runProjectLegacy(
       },
     } = runContext.resolved;
     let controlPlaneConfig = runContext.resolved.controlPlane.config;
+    const { vcs } = runContext.ports;
     const plannedBatches: BatchPlanEntry[] = [];
     const workerRunner = createWorkerRunner({
       useDocker,
@@ -904,14 +903,8 @@ async function runProjectLegacy(
     });
 
     // Ensure repo is clean and on integration branch.
-    await ensureCleanWorkingTree(repoPath);
-    await checkout(repoPath, config.main_branch).catch(async () => {
-      // If branch doesn't exist, create it from current HEAD.
-      await execa("git", ["checkout", "-b", config.main_branch], {
-        cwd: repoPath,
-        stdio: "pipe",
-      });
-    });
+    await vcs.ensureCleanWorkingTree(repoPath);
+    await vcs.checkoutOrCreateBranch(repoPath, config.main_branch);
 
   const runResumeReason = isResume ? "resume_command" : "existing_state";
   const hadExistingState = await stateStore.exists();
@@ -943,7 +936,7 @@ async function runProjectLegacy(
     : undefined;
   const snapshotEnabled = controlPlaneSnapshot?.enabled ?? controlPlaneConfig.enabled;
   if (!controlPlaneSnapshot?.base_sha) {
-    const baseSha = await resolveRunBaseSha(repoPath, config.main_branch);
+    const baseSha = await vcs.resolveRunBaseSha(repoPath, config.main_branch);
     controlPlaneSnapshot = {
       enabled: snapshotEnabled,
       base_sha: baseSha,
@@ -1181,7 +1174,7 @@ async function runProjectLegacy(
       ledgerLoaded = true;
     }
     if (!ledgerHeadSha) {
-      ledgerHeadSha = await headSha(repoPath);
+      ledgerHeadSha = await vcs.headSha(repoPath);
     }
     if (!taskFileIndex) {
       taskFileIndex = await buildTaskFileIndex({
@@ -1233,6 +1226,7 @@ async function runProjectLegacy(
       ledger: ledgerContext.ledger,
       repoPath,
       headSha: ledgerContext.headSha,
+      vcs,
       taskFileIndex: ledgerContext.taskFileIndex,
       eligibilityCache: ledgerEligibilityCache,
       reachabilityCache: ledgerReachabilityCache,
@@ -1348,8 +1342,7 @@ async function runProjectLegacy(
     }
 
     const branchName =
-      taskState.branch ??
-      buildTaskBranchName(config.task_branch_prefix, taskId, task.manifest.name);
+      taskState.branch ?? vcs.buildTaskBranchName(taskId, task.manifest.name);
     const workspace = taskState.workspace ?? taskWorkspaceDir(projectName, runId, taskId);
     const logsDir = taskState.logs_dir ?? taskLogsDir(projectName, runId, taskId, task.slug);
 
@@ -1689,6 +1682,7 @@ async function runProjectLegacy(
             task: taskSpec,
             workspacePath: r.workspace,
             blastContext,
+            vcs,
             orchestratorLog: orchLog,
           });
           if (report) {
@@ -2155,7 +2149,7 @@ async function runProjectLegacy(
         tasks: successfulTasks.map((r) => r.taskId),
       });
 
-      const mergeResult = await mergeTaskBranches({
+      const mergeResult = await vcs.mergeTaskBranches({
         repoPath,
         mainBranch: config.main_branch,
         branches: successfulTasks.map((r) => ({
@@ -2638,6 +2632,7 @@ async function runProjectLegacy(
         ledger: ledgerContext.ledger,
         repoPath,
         headSha: ledgerContext.headSha,
+        vcs,
         taskFileIndex: ledgerContext.taskFileIndex,
         eligibilityCache: ledgerEligibilityCache,
         reachabilityCache: ledgerReachabilityCache,
@@ -2763,11 +2758,7 @@ async function runProjectLegacy(
         const taskId = task.manifest.id;
         const taskSlug = task.slug;
         await ensureTaskActiveStage(task);
-        const branchName = buildTaskBranchName(
-          config.task_branch_prefix,
-          taskId,
-          task.manifest.name,
-        );
+        const branchName = vcs.buildTaskBranchName(taskId, task.manifest.name);
         const defaultDoctorCommand = task.manifest.verify?.doctor ?? config.doctor;
         const defaultLintCommand = task.manifest.verify?.lint ?? config.lint;
         const lintCommand = defaultLintCommand?.trim() || undefined;
@@ -3424,12 +3415,13 @@ async function isMergeCommitReachable(args: {
   repoPath: string;
   mergeCommit: string;
   headSha: string;
+  vcs: Vcs;
   reachabilityCache: Map<string, boolean>;
 }): Promise<boolean> {
   const cached = args.reachabilityCache.get(args.mergeCommit);
   if (cached !== undefined) return cached;
 
-  const reachable = await isAncestor(args.repoPath, args.mergeCommit, args.headSha);
+  const reachable = await args.vcs.isAncestor(args.repoPath, args.mergeCommit, args.headSha);
   args.reachabilityCache.set(args.mergeCommit, reachable);
   return reachable;
 }
@@ -3439,6 +3431,7 @@ async function resolveLedgerEligibility(args: {
   ledger: TaskLedger | null;
   repoPath: string;
   headSha: string;
+  vcs: Vcs;
   taskFileIndex: Map<string, TaskFileLocation>;
   eligibilityCache: Map<string, LedgerEligibilityResult>;
   reachabilityCache: Map<string, boolean>;
@@ -3476,6 +3469,7 @@ async function resolveLedgerEligibility(args: {
     repoPath: args.repoPath,
     mergeCommit: entry.mergeCommit,
     headSha: args.headSha,
+    vcs: args.vcs,
     reachabilityCache: args.reachabilityCache,
   });
   if (!isReachable) {
@@ -3514,6 +3508,7 @@ async function seedRunFromLedger(args: {
   ledger: TaskLedger | null;
   repoPath: string;
   headSha: string;
+  vcs: Vcs;
   taskFileIndex: Map<string, TaskFileLocation>;
   eligibilityCache: Map<string, LedgerEligibilityResult>;
   reachabilityCache: Map<string, boolean>;
@@ -3537,6 +3532,7 @@ async function seedRunFromLedger(args: {
       ledger: args.ledger,
       repoPath: args.repoPath,
       headSha: args.headSha,
+      vcs: args.vcs,
       taskFileIndex: args.taskFileIndex,
       eligibilityCache: args.eligibilityCache,
       reachabilityCache: args.reachabilityCache,
@@ -3561,6 +3557,7 @@ async function resolveExternalCompletedDeps(args: {
   ledger: TaskLedger | null;
   repoPath: string;
   headSha: string;
+  vcs: Vcs;
   taskFileIndex: Map<string, TaskFileLocation>;
   eligibilityCache: Map<string, LedgerEligibilityResult>;
   reachabilityCache: Map<string, boolean>;
@@ -3587,6 +3584,7 @@ async function resolveExternalCompletedDeps(args: {
         ledger: args.ledger,
         repoPath: args.repoPath,
         headSha: args.headSha,
+        vcs: args.vcs,
         taskFileIndex: args.taskFileIndex,
         eligibilityCache: args.eligibilityCache,
         reachabilityCache: args.reachabilityCache,

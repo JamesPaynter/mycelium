@@ -155,7 +155,7 @@ export async function buildRunContextBase<RunOptions extends RunContextOptions>(
   input: BuildRunContextBaseInput<RunOptions>,
 ): Promise<RunContextBase<RunOptions>> {
   const ports: OrchestratorPorts = {
-    ...createDefaultPorts(),
+    ...createDefaultPorts(input.config),
     ...input.ports,
   };
 

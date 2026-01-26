@@ -16,11 +16,12 @@ import type {
   PrepareTaskWorkspaceOptions,
   PrepareTaskWorkspaceResult,
 } from "../../core/workspaces.js";
-import type { TaskBranchToMerge, MergeResult } from "../../git/merge.js";
 import type { ArchitectureValidationReport, ArchitectureValidatorArgs } from "../../validators/architecture-validator.js";
 import type { DoctorValidationReport, DoctorValidatorArgs } from "../../validators/doctor-validator.js";
 import type { StyleValidationReport, StyleValidatorArgs } from "../../validators/style-validator.js";
 import type { TestValidationReport, TestValidatorArgs } from "../../validators/test-validator.js";
+
+import type { Vcs } from "./vcs/vcs.js";
 
 
 // =============================================================================
@@ -33,21 +34,6 @@ export interface WorkspaceStore {
   ): Promise<PrepareTaskWorkspaceResult>;
   removeTaskWorkspace(projectName: string, runId: string, taskId: string): Promise<void>;
   removeRunWorkspace(projectName: string, runId: string): Promise<void>;
-}
-
-export interface Vcs {
-  ensureCleanWorkingTree(repoPath: string): Promise<void>;
-  checkout(repoPath: string, branch: string): Promise<void>;
-  resolveRunBaseSha(repoPath: string, mainBranch: string): Promise<string>;
-  headSha(repoPath: string): Promise<string>;
-  isAncestor(repoPath: string, ancestorSha: string, descendantSha: string): Promise<boolean>;
-  mergeTaskBranches(options: {
-    repoPath: string;
-    mainBranch: string;
-    branches: TaskBranchToMerge[];
-  }): Promise<MergeResult>;
-  buildTaskBranchName(taskId: string): string;
-  listChangedFiles(cwd: string, baseRef: string): Promise<string[]>;
 }
 
 export interface WorkerRunner {

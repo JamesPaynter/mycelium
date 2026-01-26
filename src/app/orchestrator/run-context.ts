@@ -26,16 +26,13 @@ import { StateStore, findLatestRunId } from "../../core/state-store.js";
 import { isoNow, readJsonFile } from "../../core/utils.js";
 import { removeRunWorkspace, removeTaskWorkspace, prepareTaskWorkspace } from "../../core/workspaces.js";
 import type { ContainerSpec } from "../../docker/docker.js";
-import { buildTaskBranchName } from "../../git/branches.js";
-import { listChangedFiles } from "../../git/changes.js";
-import { ensureCleanWorkingTree, checkout, resolveRunBaseSha, headSha, isAncestor } from "../../git/git.js";
-import { mergeTaskBranches } from "../../git/merge.js";
 import { runArchitectureValidator } from "../../validators/architecture-validator.js";
 import { runDoctorValidator } from "../../validators/doctor-validator.js";
 import { runStyleValidator } from "../../validators/style-validator.js";
 import { runTestValidator } from "../../validators/test-validator.js";
 
 import type { OrchestratorPorts } from "./ports.js";
+import { createGitVcs } from "./vcs/git-vcs.js";
 
 
 // =============================================================================
@@ -145,23 +142,14 @@ export type RunContext<RunOptions = unknown, RunResult = unknown> = {
 // DEFAULT ADAPTERS
 // =============================================================================
 
-export function createDefaultPorts(): OrchestratorPorts {
+export function createDefaultPorts(config: ProjectConfig): OrchestratorPorts {
   return {
     workspaceStore: {
       prepareTaskWorkspace,
       removeTaskWorkspace,
       removeRunWorkspace,
     },
-    vcs: {
-      ensureCleanWorkingTree,
-      checkout,
-      resolveRunBaseSha,
-      headSha,
-      isAncestor,
-      mergeTaskBranches,
-      buildTaskBranchName,
-      listChangedFiles,
-    },
+    vcs: createGitVcs({ taskBranchPrefix: config.task_branch_prefix }),
     workerRunner: {
       runWorker,
     },
