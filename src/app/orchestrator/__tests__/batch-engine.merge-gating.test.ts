@@ -12,39 +12,40 @@ import path from "node:path";
 import fse from "fs-extra";
 import { describe, expect, it } from "vitest";
 
-import type { ControlPlaneRunConfig } from "../run-context.js";
-import { createBatchEngine } from "../run/batch-engine.js";
-import { createTaskEngine, type TaskRunResult } from "../run/task-engine.js";
-import type { CompliancePipeline } from "../compliance/compliance-pipeline.js";
-import type {
-  BudgetTracker,
-  BudgetTrackingOutcome,
-  BudgetUsageSnapshot,
-} from "../budgets/budget-tracker.js";
-import { FakeVcs, FakeWorkerRunner } from "./fakes.js";
-import { createRunState, startBatch, type RunState } from "../../../core/state.js";
-import { StateStore } from "../../../core/state-store.js";
-import { createPathsContext, type PathsContext } from "../../../core/paths.js";
-import { JsonlLogger } from "../../../core/logger.js";
 import {
   ProjectConfigSchema,
   type ManifestEnforcementPolicy,
   type ProjectConfig,
 } from "../../../core/config.js";
-import {
-  buildTaskDirName,
-  buildTaskSlug,
-  type TaskManifest,
-  type TaskSpec,
-} from "../../../core/task-manifest.js";
+import { JsonlLogger } from "../../../core/logger.js";
+import type { ManifestComplianceResult } from "../../../core/manifest-compliance.js";
+import { createPathsContext, type PathsContext } from "../../../core/paths.js";
+import { StateStore } from "../../../core/state-store.js";
+import { createRunState, startBatch, type RunState } from "../../../core/state.js";
 import {
   resolveTaskArchivePath,
   resolveTaskDir,
   type TaskStage,
 } from "../../../core/task-layout.js";
 import { loadTaskLedger } from "../../../core/task-ledger.js";
-import type { CompliancePipelineOutcome } from "../compliance/compliance-pipeline.js";
-import type { ManifestComplianceResult } from "../../../core/manifest-compliance.js";
+import {
+  buildTaskDirName,
+  buildTaskSlug,
+  type TaskManifest,
+  type TaskSpec,
+} from "../../../core/task-manifest.js";
+import type {
+  BudgetTracker,
+  BudgetTrackingOutcome,
+  BudgetUsageSnapshot,
+} from "../budgets/budget-tracker.js";
+import type { CompliancePipeline , CompliancePipelineOutcome } from "../compliance/compliance-pipeline.js";
+import { createBatchEngine } from "../run/batch-engine.js";
+import { createTaskEngine, type TaskRunResult } from "../run/task-engine.js";
+import type { ControlPlaneRunConfig } from "../run-context.js";
+
+import { FakeVcs, FakeWorkerRunner } from "./fakes.js";
+
 
 // =============================================================================
 // TESTS
@@ -173,7 +174,11 @@ async function setupBatchEngineFixture(input: {
 
   const config = buildProjectConfig(repoPath, {
     doctor: input.doctorCommand,
-    doctor_canary: { mode: "off" },
+    doctor_canary: {
+      mode: "off",
+      env_var: "ORCH_CANARY",
+      warn_on_unexpected_pass: true,
+    },
   });
 
   const manifest = buildTaskManifest(taskId, "merge gating");
