@@ -1,4 +1,5 @@
 import { resolveCodexReasoningEffort } from "../../../core/codex-reasoning.js";
+import type { TaskFailurePolicy } from "../../../core/config.js";
 import type { TaskSpec } from "../../../core/task-manifest.js";
 import type { WorkerRunnerResult } from "../workers/worker-runner.js";
 
@@ -42,7 +43,7 @@ function buildFailureResult(input: {
   branchName: string;
   workspace: string;
   logsDir: string;
-  failurePolicy: string;
+  failurePolicy: TaskFailurePolicy;
   attemptResult: WorkerRunnerResult;
 }): TaskRunResult {
   const shouldResetAttempt = shouldResetTaskToPending({
@@ -68,7 +69,7 @@ function buildFailureResult(input: {
 
 export async function runTaskAttempt(
   context: TaskEngineContext,
-  failurePolicy: string,
+  failurePolicy: TaskFailurePolicy,
   task: TaskSpec,
 ): Promise<TaskRunResult> {
   const taskId = task.manifest.id;

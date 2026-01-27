@@ -33,6 +33,8 @@ import {
   logComplianceEvents,
   resolveCompliancePolicyForScope,
   resolveCompliancePolicyForTier,
+  type ComplianceRescopePlan,
+  type ComplianceScopeViolations,
 } from "./compliance-helpers.js";
 
 export { buildComplianceRescopePlan, resolveCompliancePolicyForTier } from "./compliance-helpers.js";

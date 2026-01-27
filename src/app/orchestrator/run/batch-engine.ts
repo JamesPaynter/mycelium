@@ -67,7 +67,12 @@ import type { Vcs } from "../vcs/vcs.js";
 import type { WorkerRunner } from "../workers/worker-runner.js";
 
 import type { RunMetrics } from "./run-engine.js";
-import type { TaskEngine, TaskRunResult, TaskSuccessResult } from "./task-engine.js";
+import type {
+  TaskEngine,
+  TaskFailureResult,
+  TaskRunResult,
+  TaskSuccessResult,
+} from "./task-engine.js";
 
 
 // =============================================================================
@@ -376,7 +381,7 @@ export function createBatchEngine(
     return context.buildStatusSets(context.state);
   };
 
-  const handleFailedResult = (result: TaskRunResult): void => {
+  const handleFailedResult = (result: TaskFailureResult): void => {
     if (result.resetToPending) {
       const reason = result.errorMessage ?? "Task reset to pending";
       resetTaskToPending(context.state, result.taskId, reason);
@@ -1169,7 +1174,7 @@ export function createBatchEngine(
       state: context.state,
       snapshot: usageSnapshot,
     });
-    let stopReason = budgetOutcome.stopReason;
+    let stopReason: BatchStopReason | undefined = budgetOutcome.stopReason;
 
     await runDoctorCadenceValidation({
       batchTasks: params.batchTasks,

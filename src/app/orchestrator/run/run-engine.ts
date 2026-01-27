@@ -25,6 +25,7 @@ import type {
   ControlPlaneLockMode,
   ControlPlaneResourcesMode,
   ControlPlaneScopeMode,
+  ManifestEnforcementPolicy,
   ProjectConfig,
   ResourceConfig,
 } from "../../../core/config.js";
@@ -149,7 +150,7 @@ async function runEngineImpl(context: RunContext<RunOptions, RunResult>): Promis
       options,
       ports: { vcs },
       resolved: {
-        run: { runId, isResume, reuseCompleted, importRunId, maxParallel },
+        run: { runId, isResume, reuseCompleted, importRunId: rawImportRunId, maxParallel },
         cleanup: {
           workspacesOnSuccess: cleanupWorkspacesOnSuccess,
           containersOnSuccess: cleanupContainersOnSuccess,
@@ -192,6 +193,7 @@ async function runEngineImpl(context: RunContext<RunOptions, RunResult>): Promis
       },
     } = context;
 
+    const importRunId = rawImportRunId ?? null;
     const pathsContext: PathsContext = { myceliumHome };
     let controlPlaneConfig = context.resolved.controlPlane.config;
     const plannedBatches: BatchPlanEntry[] = [];
@@ -1231,6 +1233,10 @@ async function initializeRunStateAndSnapshot(
     await input.stateStore.save(state);
   }
 
+  if (!state) {
+    throw new Error(`Run state missing after initialization for ${input.runId}.`);
+  }
+
   if (shouldBuildControlPlaneSnapshot(controlPlaneSnapshot)) {
     controlPlaneSnapshot = await buildControlPlaneSnapshot({
       repoPath: input.repoPath,
@@ -1250,7 +1256,7 @@ async function initializeRunStateAndSnapshot(
   }
 
   return {
-    state: state as RunState,
+    state,
     hadExistingState,
     controlPlaneSnapshot,
     controlPlaneConfig,

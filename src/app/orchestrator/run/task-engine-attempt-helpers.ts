@@ -2,6 +2,7 @@ import path from "node:path";
 
 import fse from "fs-extra";
 
+import type { CodexReasoningEffort } from "../../../core/codex-reasoning.js";
 import { ensureCodexAuthForHome } from "../../../core/codexAuth.js";
 import { logOrchestratorEvent } from "../../../core/logger.js";
 import {
@@ -187,7 +188,7 @@ export async function prepareCodexEnvironment(input: {
   taskId: string;
   codexHome: string;
   codexConfigPath: string;
-  codexReasoningEffort: string;
+  codexReasoningEffort?: CodexReasoningEffort;
 }): Promise<void> {
   await ensureDir(input.codexHome);
   await writeCodexConfig(input.codexConfigPath, {

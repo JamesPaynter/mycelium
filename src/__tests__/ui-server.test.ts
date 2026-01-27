@@ -7,7 +7,9 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import { createAppContext, type AppContext } from "../app/context.js";
 import { ProjectConfigSchema } from "../core/config.js";
+import type { RunHistoryEntry } from "../core/run-history.js";
 import { createRunState } from "../core/state.js";
+import type { RunStatusSummary } from "../core/state-store.js";
 import { startUiServer, type StartUiServerOptions, type UiServerHandle } from "../ui/server.js";
 
 const tempDirs: string[] = [];
@@ -142,6 +144,18 @@ type OkApiResponse<T> = {
   result: T;
 };
 
+type RunsApiResult = {
+  runs: RunHistoryEntry[];
+};
+
+type JsonlCursorApiResult = {
+  file: string;
+  cursor: number;
+  nextCursor: number;
+  truncated: boolean;
+  lines: string[];
+};
+
 async function fetchOkPayload<T = unknown>(url: URL): Promise<OkApiResponse<T>> {
   const response = await fetch(url);
   const payload = (await response.json()) as OkApiResponse<T>;
@@ -214,12 +228,16 @@ describe("UI server", () => {
 
     const { baseUrl } = await startServer({ project: projectName, runId, appContext });
 
-    const summaryPayload = await fetchOkPayload(buildSummaryUrl(baseUrl, projectName, runId));
+    const summaryPayload = await fetchOkPayload<RunStatusSummary>(
+      buildSummaryUrl(baseUrl, projectName, runId),
+    );
     expect(summaryPayload.result.runId).toBe(runId);
     expect(summaryPayload.result.status).toBe("running");
     expect(summaryPayload.result.tasks[0].id).toBe(taskId);
 
-    const runsPayload = await fetchOkPayload(buildRunsUrl(baseUrl, projectName));
+    const runsPayload = await fetchOkPayload<RunsApiResult>(
+      buildRunsUrl(baseUrl, projectName),
+    );
     expect(runsPayload.result.runs).toEqual(
       expect.arrayContaining([expect.objectContaining({ runId })]),
     );
@@ -227,7 +245,7 @@ describe("UI server", () => {
     const eventsUrl = buildOrchestratorEventsUrl(baseUrl, projectName, runId);
     eventsUrl.searchParams.set("cursor", "0");
 
-    const eventsPayload = await fetchOkPayload(eventsUrl);
+    const eventsPayload = await fetchOkPayload<JsonlCursorApiResult>(eventsUrl);
     expect(eventsPayload.result.lines).toEqual(orchestratorLines);
 
     const expectedNextCursor = Buffer.byteLength(orchestratorLines.join("\n") + "\n", "utf8");
@@ -236,7 +254,7 @@ describe("UI server", () => {
     const followUrl = buildOrchestratorEventsUrl(baseUrl, projectName, runId);
     followUrl.searchParams.set("cursor", String(eventsPayload.result.nextCursor));
 
-    const followPayload = await fetchOkPayload(followUrl);
+    const followPayload = await fetchOkPayload<JsonlCursorApiResult>(followUrl);
     expect(followPayload.result.lines).toEqual([]);
     expect(followPayload.result.nextCursor).toBe(expectedNextCursor);
 
@@ -244,7 +262,7 @@ describe("UI server", () => {
     taskUrl.searchParams.set("cursor", "0");
     taskUrl.searchParams.set("typeGlob", "bootstrap.*");
 
-    const taskPayload = await fetchOkPayload(taskUrl);
+    const taskPayload = await fetchOkPayload<JsonlCursorApiResult>(taskUrl);
     expect(taskPayload.result.lines).toEqual(taskLines.slice(0, 2));
   });
 
