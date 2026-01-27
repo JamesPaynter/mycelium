@@ -10,6 +10,7 @@ import type { ContainerSpec } from "../../../docker/docker.js";
 import { buildWorkerImage } from "../../../docker/image.js";
 import { DockerManager } from "../../../docker/manager.js";
 import type { LogStreamHandle } from "../../../docker/streams.js";
+
 import {
   buildContainerEnv,
   buildContainerLabels,
@@ -22,7 +23,6 @@ import {
   cleanupTaskContainer,
   stopRunContainers,
 } from "./docker-worker-runner-cleanup.js";
-
 import type {
   WorkerCleanupInput,
   WorkerPrepareInput,

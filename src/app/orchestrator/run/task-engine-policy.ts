@@ -6,9 +6,8 @@ import {
   type ChecksetReport,
 } from "../../../control-plane/policy/eval.js";
 import type { PolicyDecision, SurfacePatternSet } from "../../../control-plane/policy/types.js";
-
-import type { ControlPlaneRunConfig } from "../run-context.js";
 import type { TaskSpec } from "../../../core/task-manifest.js";
+import type { ControlPlaneRunConfig } from "../run-context.js";
 
 // =============================================================================
 // TYPES

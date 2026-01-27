@@ -7,8 +7,9 @@ import {
   type ProjectConfig,
 } from "../../../core/config.js";
 import type { ManifestComplianceResult } from "../../../core/manifest-compliance.js";
-import { buildTaskDirName, buildTaskSlug, type TaskManifest, type TaskSpec } from "../../../core/task-manifest.js";
+import type { RunState } from "../../../core/state.js";
 import type { TaskStage } from "../../../core/task-layout.js";
+import { buildTaskDirName, buildTaskSlug, type TaskManifest, type TaskSpec } from "../../../core/task-manifest.js";
 import type {
   BudgetTracker,
   BudgetTrackingOutcome,
@@ -18,7 +19,6 @@ import type {
   CompliancePipeline,
   CompliancePipelineOutcome,
 } from "../compliance/compliance-pipeline.js";
-import type { RunState } from "../../../core/state.js";
 
 // =============================================================================
 // CONFIG + TASK BUILDERS

@@ -3,12 +3,13 @@ import fs from "node:fs/promises";
 import path from "node:path";
 
 import { execa } from "execa";
-import { dockerClient } from "../docker/docker.js";
+
 import {
   detectTasksLayout,
   resolveTasksActiveDir,
   resolveTasksBacklogDir,
 } from "../core/task-layout.js";
+import { dockerClient } from "../docker/docker.js";
 
 type JsonlEvent = { type?: string; [key: string]: unknown };
 

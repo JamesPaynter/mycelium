@@ -20,14 +20,14 @@ import { formatErrorMessage } from "../helpers/errors.js";
 import type { WorkerRunnerResult } from "../workers/worker-runner.js";
 
 import { shouldResetTaskToPending } from "./failure-policy.js";
-import type { TaskEngineContext, TaskRunResult } from "./task-engine.js";
-import { computeTaskPolicyDecision } from "./task-engine-policy.js";
 import {
   createTaskEventLogger,
   ensureTaskActiveStage,
   syncWorkerStateIntoTask,
   writeCodexConfig,
 } from "./task-engine-helpers.js";
+import { computeTaskPolicyDecision } from "./task-engine-policy.js";
+import type { TaskEngineContext, TaskRunResult } from "./task-engine.js";
 
 export async function runTaskAttempt(
   context: TaskEngineContext,

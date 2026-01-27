@@ -9,8 +9,8 @@ import {
   taskLogsDir,
   taskWorkspaceDir,
 } from "../../../core/paths.js";
-import { moveTaskDir } from "../../../core/task-layout.js";
 import type { CheckpointCommit } from "../../../core/state.js";
+import { moveTaskDir } from "../../../core/task-layout.js";
 import type { TaskSpec } from "../../../core/task-manifest.js";
 import { ensureDir } from "../../../core/utils.js";
 

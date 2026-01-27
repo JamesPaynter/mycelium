@@ -10,6 +10,7 @@ import { describe, expect, it } from "vitest";
 
 import { resolveTaskArchivePath, resolveTaskDir } from "../../../core/task-layout.js";
 import { loadTaskLedger } from "../../../core/task-ledger.js";
+
 import { setupBatchEngineFixture } from "./batch-engine.merge-gating.fixtures.js";
 
 // =============================================================================

@@ -22,8 +22,8 @@ import {
   buildValidatedTaskSummaries,
   ensureTaskActiveStage,
 } from "./task-engine-helpers.js";
-import { resumeRunningTask, runTaskAttempt } from "./task-engine-run.js";
 import type { BlastRadiusContext } from "./task-engine-policy.js";
+import { resumeRunningTask, runTaskAttempt } from "./task-engine-run.js";
 
 // =============================================================================
 // TYPES

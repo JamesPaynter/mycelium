@@ -3,13 +3,13 @@ import type { TaskSpec } from "../../../core/task-manifest.js";
 import type { WorkerRunnerResult } from "../workers/worker-runner.js";
 
 import { shouldResetTaskToPending } from "./failure-policy.js";
-import type { TaskEngineContext, TaskRunResult } from "./task-engine.js";
 import {
   createTaskEventLogger,
   ensureTaskActiveStage,
   resolveTaskMeta,
   syncWorkerStateIntoTask,
 } from "./task-engine-helpers.js";
+import type { TaskEngineContext, TaskRunResult } from "./task-engine.js";
 
 export async function resumeRunningTask(
   context: TaskEngineContext,

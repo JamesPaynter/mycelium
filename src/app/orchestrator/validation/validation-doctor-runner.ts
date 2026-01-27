@@ -1,7 +1,7 @@
 import path from "node:path";
 
-import type { ValidatorStatus } from "../../../core/state.js";
 import { validatorsLogsDir } from "../../../core/paths.js";
+import type { ValidatorStatus } from "../../../core/state.js";
 import type {
   DoctorValidationReport,
 } from "../../../validators/doctor-validator.js";
@@ -11,8 +11,8 @@ import {
 } from "../../../validators/doctor-validator.js";
 import { formatErrorMessage } from "../helpers/errors.js";
 
-import type { DoctorValidationOutcome, ValidationResult } from "./types.js";
 import { summarizeDoctorReport } from "./summaries.js";
+import type { DoctorValidationOutcome, ValidationResult } from "./types.js";
 import { buildBlockResult } from "./validation-blocks.js";
 import {
   findLatestReport,

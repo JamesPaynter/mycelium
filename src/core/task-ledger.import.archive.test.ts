@@ -10,8 +10,8 @@ import {
   importLedgerFromRunState,
   loadTaskLedger,
 } from "./task-ledger.js";
-import type { TaskSpec } from "./task-manifest.js";
 import { makeTemporaryDirectory, registerTaskLedgerTempCleanup } from "./task-ledger.test-helpers.js";
+import type { TaskSpec } from "./task-manifest.js";
 
 registerTaskLedgerTempCleanup();
 

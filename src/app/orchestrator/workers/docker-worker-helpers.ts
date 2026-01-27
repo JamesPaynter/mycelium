@@ -1,6 +1,7 @@
 import path from "node:path";
 
 import type { DockerManager, ListedContainer } from "../../../docker/manager.js";
+
 import type { WorkerRunAttemptInput } from "./worker-runner.js";
 
 const LABEL_PREFIX = "mycelium";

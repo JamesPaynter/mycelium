@@ -1,9 +1,9 @@
 import {
-  validatorReportPath,
-} from "../../../core/paths.js";
-import {
   logOrchestratorEvent,
 } from "../../../core/logger.js";
+import {
+  validatorReportPath,
+} from "../../../core/paths.js";
 import {
   type ArchitectureValidationReport,
   VALIDATOR_ID as ARCHITECTURE_VALIDATOR_ID,

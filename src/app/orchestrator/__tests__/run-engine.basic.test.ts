@@ -2,6 +2,7 @@ import path from "node:path";
 
 import { describe, expect, it } from "vitest";
 
+import { FakeVcs, FakeWorkerRunner } from "./fakes.js";
 import {
   buildPortOverrides,
   buildProjectConfig,
@@ -13,7 +14,6 @@ import {
   useFakeRunner,
   writeTaskSpec,
 } from "./run-engine.test-kit.js";
-import { FakeVcs, FakeWorkerRunner } from "./fakes.js";
 
 registerRunEngineTestHooks();
 

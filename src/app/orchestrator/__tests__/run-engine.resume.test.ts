@@ -4,6 +4,8 @@ import { describe, expect, it } from "vitest";
 
 import { StateStore } from "../../../core/state-store.js";
 import { createRunState, startBatch } from "../../../core/state.js";
+
+import { FakeVcs, FakeWorkerRunner } from "./fakes.js";
 import {
   buildPortOverrides,
   buildProjectConfig,
@@ -15,7 +17,6 @@ import {
   useFakeRunner,
   writeTaskSpec,
 } from "./run-engine.test-kit.js";
-import { FakeVcs, FakeWorkerRunner } from "./fakes.js";
 
 registerRunEngineTestHooks();
 

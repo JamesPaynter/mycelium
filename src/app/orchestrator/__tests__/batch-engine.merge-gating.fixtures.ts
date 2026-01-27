@@ -17,7 +17,6 @@ import { createBatchEngine } from "../run/batch-engine.js";
 import { createTaskEngine, type TaskRunResult } from "../run/task-engine.js";
 import type { ControlPlaneRunConfig } from "../run-context.js";
 
-import { FakeVcs, FakeWorkerRunner } from "./fakes.js";
 import {
   buildProjectConfig,
   buildStatusSets,
@@ -27,6 +26,7 @@ import {
   createCompliancePipeline,
   writeTaskSpec,
 } from "./batch-engine.merge-gating.builders.js";
+import { FakeVcs, FakeWorkerRunner } from "./fakes.js";
 
 // =============================================================================
 // TYPES

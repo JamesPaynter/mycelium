@@ -9,9 +9,9 @@ import { createPathsContext, type PathsContext } from "../../../core/paths.js";
 import { buildTaskDirName, type TaskManifest } from "../../../core/task-manifest.js";
 import type { listChangedFiles } from "../../../git/changes.js";
 import type { OrchestratorPorts, ValidatorRunner } from "../ports.js";
+import type { RunOptions, RunResult } from "../run/run-engine.js";
 import { buildRunContext } from "../run-context-builder.js";
 import type { RunContext } from "../run-context.js";
-import type { RunOptions, RunResult } from "../run/run-engine.js";
 import type {
   WorkerCleanupInput,
   WorkerPrepareInput,
