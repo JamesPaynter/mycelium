@@ -11,7 +11,6 @@ import { resolveSurfacePatterns } from "../../control-plane/policy/surface-detec
 import { DEFAULT_COST_PER_1K_TOKENS } from "../../core/budgets.js";
 import type {
   ControlPlaneSurfacePatternsConfig,
-  ManifestEnforcementPolicy,
   ProjectConfig,
   ValidatorMode,
 } from "../../core/config.js";
@@ -104,6 +103,34 @@ function buildContainerSecurityPayload(config: ProjectConfig["docker"]): JsonObj
   return payload;
 }
 
+function resolveControlPlaneFallbackResource(
+  raw: Partial<ProjectConfig["control_plane"]>,
+): string {
+  const fallbackResourceRaw = raw.fallback_resource ?? "repo-root";
+  const trimmed = fallbackResourceRaw.trim();
+  return trimmed.length > 0 ? trimmed : "repo-root";
+}
+
+function resolveControlPlaneLockMode(
+  raw: Partial<ProjectConfig["control_plane"]>,
+): ControlPlaneRunConfig["lockMode"] {
+  if (raw.lock_mode) {
+    return raw.lock_mode;
+  }
+  return raw.enabled === true ? "derived" : "declared";
+}
+
+function resolveControlPlaneChecks(
+  rawChecks: Partial<ProjectConfig["control_plane"]["checks"]>,
+): ControlPlaneRunConfig["checks"] {
+  return {
+    mode: rawChecks.mode ?? "off",
+    commandsByComponent: rawChecks.commands_by_component ?? {},
+    maxComponentsForScoped: rawChecks.max_components_for_scoped ?? 3,
+    fallbackCommand: rawChecks.fallback_command,
+  };
+}
+
 function resolveControlPlaneConfig(config: ProjectConfig): ControlPlaneRunConfig {
   const raw = (config.control_plane ?? {}) as Partial<ProjectConfig["control_plane"]>;
   const rawChecks = (raw.checks ?? {}) as Partial<ProjectConfig["control_plane"]["checks"]>;
@@ -111,23 +138,15 @@ function resolveControlPlaneConfig(config: ProjectConfig): ControlPlaneRunConfig
   const rawSurfaceLocks = (raw.surface_locks ?? {}) as Partial<
     ProjectConfig["control_plane"]["surface_locks"]
   >;
-  const fallbackResourceRaw = raw.fallback_resource ?? "repo-root";
-  const fallbackResource =
-    fallbackResourceRaw.trim().length > 0 ? fallbackResourceRaw.trim() : "repo-root";
 
   return {
     enabled: raw.enabled === true,
     componentResourcePrefix: raw.component_resource_prefix ?? "component:",
-    fallbackResource,
+    fallbackResource: resolveControlPlaneFallbackResource(raw),
     resourcesMode: raw.resources_mode ?? "prefer-derived",
     scopeMode: raw.scope_mode ?? "enforce",
-    lockMode: raw.lock_mode ?? (raw.enabled === true ? "derived" : "declared"),
-    checks: {
-      mode: rawChecks.mode ?? "off",
-      commandsByComponent: rawChecks.commands_by_component ?? {},
-      maxComponentsForScoped: rawChecks.max_components_for_scoped ?? 3,
-      fallbackCommand: rawChecks.fallback_command,
-    },
+    lockMode: resolveControlPlaneLockMode(raw),
+    checks: resolveControlPlaneChecks(rawChecks),
     surfacePatterns: resolveSurfacePatterns(rawSurfacePatterns),
     surfaceLocksEnabled: rawSurfaceLocks.enabled ?? false,
   };
@@ -150,6 +169,102 @@ function resolveValidatorContext<
   };
 }
 
+async function resolveRunSettings<RunOptions extends RunContextOptions>(
+  input: BuildRunContextBaseInput<RunOptions>,
+  ports: OrchestratorPorts,
+): Promise<RunContextResolved["run"]> {
+  const isResume = input.options.resume ?? false;
+  let runId = input.options.runId;
+
+  if (isResume && !runId) {
+    const latestRunId = await ports.stateRepository.findLatestRunId(input.projectName);
+    runId = latestRunId ?? undefined;
+  }
+  if (isResume && !runId) {
+    throw new Error(`No runs found to resume for project ${input.projectName}.`);
+  }
+  if (!isResume) {
+    runId = runId ?? defaultRunId();
+  }
+  if (!runId) {
+    throw new Error("Run id could not be resolved.");
+  }
+
+  return {
+    runId,
+    isResume,
+    reuseCompleted: input.options.reuseCompleted ?? !isResume,
+    importRunId: input.options.importRun,
+    maxParallel: input.options.maxParallel ?? input.config.max_parallel,
+  };
+}
+
+function resolveCleanupSettings<RunOptions extends RunContextOptions>(
+  config: ProjectConfig,
+  options: RunOptions,
+): RunContextResolved["cleanup"] {
+  const cleanupConfig = config.cleanup ?? { workspaces: "never", containers: "never" };
+
+  return {
+    workspacesOnSuccess: cleanupConfig.workspaces === "on_success",
+    containersOnSuccess: options.cleanupOnSuccess ?? cleanupConfig.containers === "on_success",
+  };
+}
+
+function resolvePathsConfig(
+  repoPath: string,
+  tasksDir: string,
+  paths: PathsContext,
+): RunContextResolved["paths"] {
+  return {
+    repoPath,
+    tasksRootAbs: path.join(repoPath, tasksDir),
+    tasksDirPosix: tasksDir.split(path.sep).join(path.posix.sep),
+    myceliumHome: paths.myceliumHome,
+  };
+}
+
+function resolveDockerSettings<RunOptions extends RunContextOptions>(
+  config: ProjectConfig,
+  options: RunOptions,
+): RunContextResolved["docker"] {
+  return {
+    useDocker: options.useDocker ?? true,
+    stopContainersOnExit: options.stopContainersOnExit ?? false,
+    workerImage: config.docker.image,
+    containerResources: buildContainerResources(config.docker),
+    containerSecurityPayload: buildContainerSecurityPayload(config.docker),
+    networkMode: config.docker.network_mode,
+    containerUser: config.docker.user,
+  };
+}
+
+function resolvePolicySettings(config: ProjectConfig): RunContextResolved["policy"] {
+  return {
+    manifestPolicy: config.manifest_enforcement ?? "warn",
+    costPer1kTokens: DEFAULT_COST_PER_1K_TOKENS,
+    mockLlmMode: isMockLlmEnabled() || config.worker.model === "mock",
+  };
+}
+
+function resolveRunFlags<RunOptions extends RunContextOptions>(
+  options: RunOptions,
+): RunContextResolved["flags"] {
+  return {
+    crashAfterContainerStart: options.crashAfterContainerStart ?? false,
+  };
+}
+
+function resolveValidatorSettings(config: ProjectConfig): RunContextResolved["validators"] {
+  return {
+    test: resolveValidatorContext(config.test_validator),
+    style: resolveValidatorContext(config.style_validator),
+    architecture: resolveValidatorContext(config.architecture_validator),
+    doctor: resolveValidatorContext(config.doctor_validator),
+    doctorCanary: config.doctor_canary,
+  };
+}
+
 // =============================================================================
 // PUBLIC API
 // =============================================================================
@@ -165,90 +280,26 @@ export async function buildRunContextBase<RunOptions extends RunContextOptions>(
     ...input.ports,
   };
 
-  const isResume = input.options.resume ?? false;
-  let runId = input.options.runId;
-  if (isResume && !runId) {
-    const latestRunId = await ports.stateRepository.findLatestRunId(input.projectName);
-    runId = latestRunId ?? undefined;
-  }
-  if (isResume && !runId) {
-    throw new Error(`No runs found to resume for project ${input.projectName}.`);
-  }
-  if (!isResume) {
-    runId = runId ?? defaultRunId();
-  }
-  if (!runId) {
-    throw new Error("Run id could not be resolved.");
-  }
-
-  const reuseCompleted = input.options.reuseCompleted ?? !isResume;
-  const importRunId = input.options.importRun;
-  const maxParallel = input.options.maxParallel ?? input.config.max_parallel;
-  const cleanupConfig = input.config.cleanup ?? { workspaces: "never", containers: "never" };
-  const cleanupWorkspacesOnSuccess = cleanupConfig.workspaces === "on_success";
-  const cleanupContainersOnSuccess =
-    input.options.cleanupOnSuccess ?? cleanupConfig.containers === "on_success";
-  const useDocker = input.options.useDocker ?? true;
-  const stopContainersOnExit = input.options.stopContainersOnExit ?? false;
-  const crashAfterContainerStart = input.options.crashAfterContainerStart ?? false;
-
-  const tasksRootAbs = path.join(repoPath, input.config.tasks_dir);
-  const tasksDirPosix = input.config.tasks_dir.split(path.sep).join(path.posix.sep);
-  const workerImage = input.config.docker.image;
-  const containerResources = buildContainerResources(input.config.docker);
-  const containerSecurityPayload = buildContainerSecurityPayload(input.config.docker);
-  const networkMode = input.config.docker.network_mode;
-  const containerUser = input.config.docker.user;
+  const run = await resolveRunSettings(input, ports);
+  const cleanup = resolveCleanupSettings(input.config, input.options);
+  const pathsConfig = resolvePathsConfig(repoPath, input.config.tasks_dir, paths);
+  const docker = resolveDockerSettings(input.config, input.options);
   const controlPlaneConfig = resolveControlPlaneConfig(input.config);
-  const manifestPolicy: ManifestEnforcementPolicy = input.config.manifest_enforcement ?? "warn";
-  const costPer1kTokens = DEFAULT_COST_PER_1K_TOKENS;
-  const mockLlmMode = isMockLlmEnabled() || input.config.worker.model === "mock";
+  const policy = resolvePolicySettings(input.config);
+  const flags = resolveRunFlags(input.options);
+  const validators = resolveValidatorSettings(input.config);
 
   const resolved: RunContextResolved = {
-    run: {
-      runId,
-      isResume,
-      reuseCompleted,
-      importRunId,
-      maxParallel,
-    },
-    cleanup: {
-      workspacesOnSuccess: cleanupWorkspacesOnSuccess,
-      containersOnSuccess: cleanupContainersOnSuccess,
-    },
-    paths: {
-      repoPath,
-      tasksRootAbs,
-      tasksDirPosix,
-      myceliumHome: paths.myceliumHome,
-    },
-    docker: {
-      useDocker,
-      stopContainersOnExit,
-      workerImage,
-      containerResources,
-      containerSecurityPayload,
-      networkMode,
-      containerUser,
-    },
+    run,
+    cleanup,
+    paths: pathsConfig,
+    docker,
     controlPlane: {
       config: controlPlaneConfig,
     },
-    policy: {
-      manifestPolicy,
-      costPer1kTokens,
-      mockLlmMode,
-    },
-    flags: {
-      crashAfterContainerStart,
-    },
-    validators: {
-      test: resolveValidatorContext(input.config.test_validator),
-      style: resolveValidatorContext(input.config.style_validator),
-      architecture: resolveValidatorContext(input.config.architecture_validator),
-      doctor: resolveValidatorContext(input.config.doctor_validator),
-      doctorCanary: input.config.doctor_canary,
-    },
+    policy,
+    flags,
+    validators,
   };
 
   return {

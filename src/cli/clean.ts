@@ -25,33 +25,10 @@ export async function cleanCommand(
   const dockerManager = removeContainers ? new DockerManager() : undefined;
   const paths = appContext?.paths ?? createAppPathsContext({ repoPath: config.repo_path });
 
-  let plan: CleanupPlan | null;
-  try {
-    plan = await buildCleanupPlan(projectName, {
-      runId: opts.runId,
-      keepLogs: opts.keepLogs,
-      removeContainers,
-      dockerManager,
-      paths,
-    });
-  } catch (err) {
-    const detail = err instanceof Error ? err.message : String(err);
-    console.error(`Failed to build cleanup plan: ${detail}`);
-    if (removeContainers) {
-      console.error("Hint: rerun with --no-containers if Docker is unavailable.");
-    }
-    process.exitCode = 1;
-    return;
-  }
-
-  if (!plan) {
-    console.log(`No runs found for project ${projectName}.`);
-    return;
-  }
-
-  if (plan.targets.length === 0 && plan.containers.length === 0) {
-    const suffix = removeContainers ? "" : " Containers were not checked (--no-containers).";
-    console.log(`Nothing to clean for run ${plan.runId}.${suffix}`);
+  const plan = await resolveCleanupPlan(projectName, opts, removeContainers, dockerManager, paths);
+  if (!plan) return;
+  if (isPlanEmpty(plan)) {
+    logEmptyPlan(plan, removeContainers);
     return;
   }
 
@@ -62,25 +39,84 @@ export async function cleanCommand(
     return;
   }
 
-  if (!(opts.force ?? false)) {
-    const confirmed = await confirmCleanup(plan.runId);
-    if (!confirmed) {
-      console.log("Cleanup cancelled.");
-      return;
-    }
-  }
+  const confirmed = await confirmCleanupOrAbort(plan.runId, opts);
+  if (!confirmed) return;
 
+  const didCleanup = await executeCleanupPlanOrReport(plan, dockerManager);
+  if (didCleanup) {
+    console.log("Cleanup complete.");
+  }
+}
+
+async function resolveCleanupPlan(
+  projectName: string,
+  opts: CleanOptions,
+  removeContainers: boolean,
+  dockerManager: DockerManager | undefined,
+  paths: AppContext["paths"],
+): Promise<CleanupPlan | null> {
+  try {
+    const plan = await buildCleanupPlan(projectName, {
+      runId: opts.runId,
+      keepLogs: opts.keepLogs,
+      removeContainers,
+      dockerManager,
+      paths,
+    });
+    if (!plan) {
+      console.log(`No runs found for project ${projectName}.`);
+    }
+    return plan;
+  } catch (err) {
+    const detail = err instanceof Error ? err.message : String(err);
+    console.error(`Failed to build cleanup plan: ${detail}`);
+    if (removeContainers) {
+      console.error("Hint: rerun with --no-containers if Docker is unavailable.");
+    }
+    process.exitCode = 1;
+    return null;
+  }
+}
+
+function isPlanEmpty(plan: CleanupPlan): boolean {
+  return plan.targets.length === 0 && plan.containers.length === 0;
+}
+
+function logEmptyPlan(plan: CleanupPlan, removeContainers: boolean): void {
+  const suffix = removeContainers ? "" : " Containers were not checked (--no-containers).";
+  console.log(`Nothing to clean for run ${plan.runId}.${suffix}`);
+}
+
+async function confirmCleanupOrAbort(
+  runId: string,
+  opts: CleanOptions,
+): Promise<boolean> {
+  if (opts.force ?? false) {
+    return true;
+  }
+  const confirmed = await confirmCleanup(runId);
+  if (!confirmed) {
+    console.log("Cleanup cancelled.");
+  }
+  return confirmed;
+}
+
+async function executeCleanupPlanOrReport(
+  plan: CleanupPlan,
+  dockerManager: DockerManager | undefined,
+): Promise<boolean> {
   try {
     await executeCleanupPlan(plan, {
       dryRun: false,
       log: (msg) => console.log(msg),
       dockerManager,
     });
-    console.log("Cleanup complete.");
+    return true;
   } catch (err) {
     const detail = err instanceof Error ? err.message : String(err);
     console.error(`Cleanup failed: ${detail}`);
     process.exitCode = 1;
+    return false;
   }
 }
 

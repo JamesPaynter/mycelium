@@ -137,6 +137,21 @@ function buildTaskEventsUrl(
   );
 }
 
+type OkApiResponse<T> = {
+  ok: true;
+  result: T;
+};
+
+async function fetchOkPayload<T = unknown>(url: URL): Promise<OkApiResponse<T>> {
+  const response = await fetch(url);
+  const payload = (await response.json()) as OkApiResponse<T>;
+
+  expect(response.status).toBe(200);
+  expect(payload.ok).toBe(true);
+
+  return payload;
+}
+
 // =============================================================================
 // TESTS
 // =============================================================================
@@ -199,20 +214,12 @@ describe("UI server", () => {
 
     const { baseUrl } = await startServer({ project: projectName, runId, appContext });
 
-    const summaryResponse = await fetch(buildSummaryUrl(baseUrl, projectName, runId));
-    const summaryPayload = await summaryResponse.json();
-
-    expect(summaryResponse.status).toBe(200);
-    expect(summaryPayload.ok).toBe(true);
+    const summaryPayload = await fetchOkPayload(buildSummaryUrl(baseUrl, projectName, runId));
     expect(summaryPayload.result.runId).toBe(runId);
     expect(summaryPayload.result.status).toBe("running");
     expect(summaryPayload.result.tasks[0].id).toBe(taskId);
 
-    const runsResponse = await fetch(buildRunsUrl(baseUrl, projectName));
-    const runsPayload = await runsResponse.json();
-
-    expect(runsResponse.status).toBe(200);
-    expect(runsPayload.ok).toBe(true);
+    const runsPayload = await fetchOkPayload(buildRunsUrl(baseUrl, projectName));
     expect(runsPayload.result.runs).toEqual(
       expect.arrayContaining([expect.objectContaining({ runId })]),
     );
@@ -220,11 +227,7 @@ describe("UI server", () => {
     const eventsUrl = buildOrchestratorEventsUrl(baseUrl, projectName, runId);
     eventsUrl.searchParams.set("cursor", "0");
 
-    const eventsResponse = await fetch(eventsUrl);
-    const eventsPayload = await eventsResponse.json();
-
-    expect(eventsResponse.status).toBe(200);
-    expect(eventsPayload.ok).toBe(true);
+    const eventsPayload = await fetchOkPayload(eventsUrl);
     expect(eventsPayload.result.lines).toEqual(orchestratorLines);
 
     const expectedNextCursor = Buffer.byteLength(orchestratorLines.join("\n") + "\n", "utf8");
@@ -233,11 +236,7 @@ describe("UI server", () => {
     const followUrl = buildOrchestratorEventsUrl(baseUrl, projectName, runId);
     followUrl.searchParams.set("cursor", String(eventsPayload.result.nextCursor));
 
-    const followResponse = await fetch(followUrl);
-    const followPayload = await followResponse.json();
-
-    expect(followResponse.status).toBe(200);
-    expect(followPayload.ok).toBe(true);
+    const followPayload = await fetchOkPayload(followUrl);
     expect(followPayload.result.lines).toEqual([]);
     expect(followPayload.result.nextCursor).toBe(expectedNextCursor);
 
@@ -245,11 +244,7 @@ describe("UI server", () => {
     taskUrl.searchParams.set("cursor", "0");
     taskUrl.searchParams.set("typeGlob", "bootstrap.*");
 
-    const taskResponse = await fetch(taskUrl);
-    const taskPayload = await taskResponse.json();
-
-    expect(taskResponse.status).toBe(200);
-    expect(taskPayload.ok).toBe(true);
+    const taskPayload = await fetchOkPayload(taskUrl);
     expect(taskPayload.result.lines).toEqual(taskLines.slice(0, 2));
   });
 

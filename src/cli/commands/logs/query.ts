@@ -56,58 +56,21 @@ export async function runLogsQuery(
   const runLogs = ctx.resolveRunLogsOrWarn(opts.runId);
   if (!runLogs) return;
 
-  const filter: JsonlFilter = {};
-  if (opts.taskId) filter.taskId = opts.taskId;
-  if (opts.typeGlob) filter.typeGlob = opts.typeGlob;
+  const filter = buildJsonlFilter(opts);
+  if (handleIndexQuery(ctx, runLogs, filter, opts)) return;
 
-  const preferIndex = opts.useIndex ?? false;
-  if (preferIndex && opts.follow) {
-    console.log("--use-index is ignored when --follow is set; streaming from log file instead.");
-  }
-
-  if (preferIndex && !opts.follow) {
-    const indexedLines = ctx.logQueryService.queryLogsFromIndex(runLogs, filter);
-    if (indexedLines.status === "ok") {
-      for (const line of indexedLines.lines) {
-        console.log(line);
-      }
-      return;
-    }
-    console.log(indexedLines.message);
-  }
-
-  const target =
-    opts.taskId === undefined
-      ? path.join(runLogs.dir, "orchestrator.jsonl")
-      : taskEventsLogPathForId(runLogs.dir, opts.taskId);
-
+  const target = resolveLogTarget(runLogs.dir, opts.taskId);
   if (!target) {
     console.log(`No logs found for task ${opts.taskId} in run ${runLogs.runId}.`);
     process.exitCode = 1;
     return;
   }
+  if (!ensureLogFileExists(target)) return;
 
-  if (!fs.existsSync(target)) {
-    console.log(`Log file not found: ${target}`);
-    process.exitCode = 1;
-    return;
-  }
-
-  const lines = readJsonlFile(target, filter);
-  for (const line of lines) {
-    console.log(line);
-  }
+  printLines(readJsonlFile(target, filter));
 
   if (opts.follow) {
-    console.log(`\nFollowing ${target} (Ctrl+C to stop)...`);
-    const stop = followJsonlFile(target, filter, (newLines) => {
-      for (const line of newLines) {
-        console.log(line);
-      }
-    });
-
-    attachExitHandlers(stop);
-    await waitIndefinitely();
+    await followLogFile(target, filter);
   }
 }
 
@@ -178,6 +141,68 @@ export async function runLogsFollow(
 // =============================================================================
 // INTERNAL HELPERS
 // =============================================================================
+
+type RunLogsInfo = NonNullable<ReturnType<LogsCommandContext["resolveRunLogsOrWarn"]>>;
+
+function buildJsonlFilter(opts: { taskId?: string; typeGlob?: string }): JsonlFilter {
+  const filter: JsonlFilter = {};
+  if (opts.taskId) filter.taskId = opts.taskId;
+  if (opts.typeGlob) filter.typeGlob = opts.typeGlob;
+  return filter;
+}
+
+function handleIndexQuery(
+  ctx: LogsCommandContext,
+  runLogs: RunLogsInfo,
+  filter: JsonlFilter,
+  opts: { follow?: boolean; useIndex?: boolean },
+): boolean {
+  const preferIndex = opts.useIndex ?? false;
+  if (preferIndex && opts.follow) {
+    console.log("--use-index is ignored when --follow is set; streaming from log file instead.");
+  }
+  if (!preferIndex || opts.follow) {
+    return false;
+  }
+
+  const indexedLines = ctx.logQueryService.queryLogsFromIndex(runLogs, filter);
+  if (indexedLines.status === "ok") {
+    printLines(indexedLines.lines);
+    return true;
+  }
+  console.log(indexedLines.message);
+  return false;
+}
+
+function resolveLogTarget(runLogsDir: string, taskId?: string): string | null {
+  if (taskId === undefined) {
+    return path.join(runLogsDir, "orchestrator.jsonl");
+  }
+  return taskEventsLogPathForId(runLogsDir, taskId);
+}
+
+function ensureLogFileExists(target: string): boolean {
+  if (fs.existsSync(target)) return true;
+  console.log(`Log file not found: ${target}`);
+  process.exitCode = 1;
+  return false;
+}
+
+function printLines(lines: string[]): void {
+  for (const line of lines) {
+    console.log(line);
+  }
+}
+
+async function followLogFile(target: string, filter: JsonlFilter): Promise<void> {
+  console.log(`\nFollowing ${target} (Ctrl+C to stop)...`);
+  const stop = followJsonlFile(target, filter, (newLines) => {
+    printLines(newLines);
+  });
+
+  attachExitHandlers(stop);
+  await waitIndefinitely();
+}
 
 function attachExitHandlers(cleanup: () => void): void {
   const signals: NodeJS.Signals[] = ["SIGINT", "SIGTERM"];
