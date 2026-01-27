@@ -2,11 +2,11 @@
 set -euo pipefail
 
 QUEUE="${QUEUE:-scripts/lint-queue.tsv}"
-PROMPT_DIR="${PROMPT_DIR:-scripts/lint-prompts}"
 MAX_ITERS="${MAX_ITERS:-999}"
 CODEX_CMD="${CODEX_CMD:-}"
 LINT_CMD="${LINT_CMD:-npx eslint}"
 SKIP_LINT="${SKIP_LINT:-1}"
+ALLOW_DIRTY="${ALLOW_DIRTY:-0}"
 
 if [[ -z "$CODEX_CMD" ]]; then
   echo "Set CODEX_CMD to the command that launches Codex and reads prompt from STDIN." >&2
@@ -19,12 +19,10 @@ if [[ ! -f "$QUEUE" ]]; then
   exit 1
 fi
 
-if [[ -n "$(git status --porcelain)" ]]; then
-  echo "Working tree is not clean. Commit or stash changes before running the loop." >&2
+if [[ "$ALLOW_DIRTY" != "1" ]] && [[ -n "$(git status --porcelain)" ]]; then
+  echo "Working tree is not clean. Set ALLOW_DIRTY=1 to proceed." >&2
   exit 1
 fi
-
-mkdir -p "$PROMPT_DIR"
 
 for _ in $(seq 1 "$MAX_ITERS"); do
   line="$(awk -F $'\t' '$1=="todo" {print; exit}' "$QUEUE" || true)"
@@ -37,28 +35,24 @@ for _ in $(seq 1 "$MAX_ITERS"); do
   IFS=',' read -ra file_list <<< "$files"
   lint_targets="${file_list[*]}"
 
-  prompt_path="${PROMPT_DIR}/${task_id}.md"
-  {
-    echo "You are in the repo at $(pwd)."
-    echo
-    echo "Fix ESLint warnings for the following file(s) only:"
-    for f in "${file_list[@]}"; do
-      echo "- $f"
-    done
-    echo
-    echo "Target rules: ${rules}"
-    echo
-    echo "Constraints:"
-    echo "- Only edit the files listed above."
-    echo "- Do not change behavior."
-    echo "- Do not commit."
-    echo
-    echo "Goal: remove the lint warnings for these files."
-    echo "No need to run lint; the loop is running in fast mode."
-  } > "$prompt_path"
-
   echo "Starting Codex for ${task_id} (${files})"
-  if ! eval "$CODEX_CMD" < "$prompt_path"; then
+  if ! cat <<EOF | eval "$CODEX_CMD"
+You are in the repo at $(pwd).
+
+Fix ESLint warnings for the following file(s) only:
+$(printf -- "- %s\n" "${file_list[@]}")
+
+Target rules: ${rules}
+
+Constraints:
+- Only edit the files listed above.
+- Do not change behavior.
+- Do not commit.
+
+Goal: remove the lint warnings for these files.
+No need to run lint; the loop is running in fast mode.
+EOF
+  then
     echo "Codex command failed." >&2
     exit 1
   fi
