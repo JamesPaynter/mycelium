@@ -1,33 +1,70 @@
-import path from "node:path";
-
-import fse from "fs-extra";
-
 import { resolveCodexReasoningEffort } from "../../../core/codex-reasoning.js";
-import { ensureCodexAuthForHome } from "../../../core/codexAuth.js";
-import { logOrchestratorEvent } from "../../../core/logger.js";
-import {
-  taskChecksetReportPath,
-  taskLogsDir,
-  taskPolicyReportPath,
-  taskWorkspaceDir,
-  workerCodexHomeDir,
-} from "../../../core/paths.js";
-import { resolveTaskDir } from "../../../core/task-layout.js";
 import type { TaskSpec } from "../../../core/task-manifest.js";
-import { ensureDir, writeJsonFile } from "../../../core/utils.js";
-import { prepareTaskWorkspace } from "../../../core/workspaces.js";
-import { formatErrorMessage } from "../helpers/errors.js";
 import type { WorkerRunnerResult } from "../workers/worker-runner.js";
 
 import { shouldResetTaskToPending } from "./failure-policy.js";
 import {
+  buildTaskAttemptPaths,
+  copyTaskDefinitions,
+  persistTaskAttemptState,
+  prepareCodexEnvironment,
+  prepareWorkspace,
+  resolveTaskPolicyInputs,
+  writeTaskPolicyReports,
+} from "./task-engine-attempt-helpers.js";
+import {
   createTaskEventLogger,
   ensureTaskActiveStage,
   syncWorkerStateIntoTask,
-  writeCodexConfig,
 } from "./task-engine-helpers.js";
-import { computeTaskPolicyDecision } from "./task-engine-policy.js";
 import type { TaskEngineContext, TaskRunResult } from "./task-engine.js";
+
+function buildSuccessResult(input: {
+  taskId: string;
+  taskSlug: string;
+  branchName: string;
+  workspace: string;
+  logsDir: string;
+}): TaskRunResult {
+  return {
+    taskId: input.taskId,
+    taskSlug: input.taskSlug,
+    branchName: input.branchName,
+    workspace: input.workspace,
+    logsDir: input.logsDir,
+    success: true as const,
+  };
+}
+
+function buildFailureResult(input: {
+  taskId: string;
+  taskSlug: string;
+  branchName: string;
+  workspace: string;
+  logsDir: string;
+  failurePolicy: string;
+  attemptResult: WorkerRunnerResult;
+}): TaskRunResult {
+  const shouldResetAttempt = shouldResetTaskToPending({
+    policy: input.failurePolicy,
+    result: input.attemptResult,
+  });
+
+  return {
+    taskId: input.taskId,
+    taskSlug: input.taskSlug,
+    branchName: input.branchName,
+    workspace: input.workspace,
+    logsDir: input.logsDir,
+    errorMessage: input.attemptResult.errorMessage,
+    success: false as const,
+    ...(shouldResetAttempt ? { resetToPending: true } : {}),
+  };
+}
+
+// =============================================================================
+// TASK ATTEMPT
+// =============================================================================
 
 export async function runTaskAttempt(
   context: TaskEngineContext,
@@ -37,123 +74,34 @@ export async function runTaskAttempt(
   const taskId = task.manifest.id;
   const taskSlug = task.slug;
   await ensureTaskActiveStage(context, task);
+
   const branchName = context.vcs.buildTaskBranchName(taskId, task.manifest.name);
-  const defaultDoctorCommand = task.manifest.verify?.doctor ?? context.config.doctor;
-  const defaultLintCommand = task.manifest.verify?.lint ?? context.config.lint;
-  const lintCommand = defaultLintCommand?.trim() || undefined;
-  const policyResult = context.controlPlaneConfig.enabled
-    ? computeTaskPolicyDecision({
-        task,
-        derivedScopeReports: context.derivedScopeReports,
-        componentResourcePrefix: context.controlPlaneConfig.componentResourcePrefix,
-        blastContext: context.blastContext,
-        checksConfig: context.controlPlaneConfig.checks,
-        defaultDoctorCommand,
-        surfacePatterns: context.controlPlaneConfig.surfacePatterns,
-        fallbackResource: context.controlPlaneConfig.fallbackResource,
-      })
-    : null;
+  const { policyResult, lintCommand, doctorCommand } = resolveTaskPolicyInputs(context, task);
+  await writeTaskPolicyReports(context, taskId, taskSlug, policyResult);
 
-  if (policyResult) {
-    context.policyDecisions.set(taskId, policyResult.policyDecision);
-    const policyReportPath = taskPolicyReportPath(context.repoPath, context.runId, taskId);
-    try {
-      await writeJsonFile(policyReportPath, policyResult.policyDecision);
-    } catch (error) {
-      logOrchestratorEvent(context.orchestratorLog, "task.policy.error", {
-        taskId,
-        task_slug: taskSlug,
-        message: formatErrorMessage(error),
-      });
-    }
-
-    const reportPath = taskChecksetReportPath(context.repoPath, context.runId, taskId);
-    try {
-      await writeJsonFile(reportPath, policyResult.checksetReport);
-    } catch (error) {
-      logOrchestratorEvent(context.orchestratorLog, "task.checkset.error", {
-        taskId,
-        task_slug: taskSlug,
-        message: formatErrorMessage(error),
-      });
-    }
-  }
-
-  const doctorCommand = policyResult ? policyResult.doctorCommand : defaultDoctorCommand;
-
-  const workspace = taskWorkspaceDir(context.projectName, context.runId, taskId, context.paths);
-  const tLogsDir = taskLogsDir(context.projectName, context.runId, taskId, taskSlug, context.paths);
-  const codexHome = workerCodexHomeDir(context.projectName, context.runId, taskId, taskSlug, context.paths);
-  const codexConfigPath = path.join(codexHome, "config.toml");
+  const attemptPaths = buildTaskAttemptPaths(context, task, taskId, taskSlug);
   const codexReasoningEffort = resolveCodexReasoningEffort(
     context.config.worker.model,
     context.config.worker.reasoning_effort,
   );
-  const taskAbsoluteDir = resolveTaskDir({
-    tasksRoot: context.tasksRootAbs,
-    stage: task.stage,
-    taskDirName: task.taskDirName,
-  });
-  const taskRelativeDir = path.relative(context.tasksRootAbs, taskAbsoluteDir);
-  const taskRelativeDirPosix = taskRelativeDir.split(path.sep).join(path.posix.sep);
 
-  await ensureDir(tLogsDir);
-
-  logOrchestratorEvent(context.orchestratorLog, "workspace.prepare.start", {
+  await prepareWorkspace({
+    context,
     taskId,
-    workspace,
+    branchName,
+    workspace: attemptPaths.workspace,
+    logsDir: attemptPaths.logsDir,
+    failurePolicy,
   });
-  const workspacePrep = await prepareTaskWorkspace({
-    projectName: context.projectName,
-    runId: context.runId,
+  await prepareCodexEnvironment({
+    context,
     taskId,
-    repoPath: context.repoPath,
-    mainBranch: context.config.main_branch,
-    taskBranch: branchName,
-    paths: context.paths,
-    recoverDirtyWorkspace: failurePolicy === "retry",
+    codexHome: attemptPaths.codexHome,
+    codexConfigPath: attemptPaths.codexConfigPath,
+    codexReasoningEffort,
   });
-  logOrchestratorEvent(context.orchestratorLog, "workspace.prepare.complete", {
-    taskId,
-    workspace,
-    created: workspacePrep.created,
-  });
-  if (workspacePrep.recovered) {
-    logOrchestratorEvent(context.orchestratorLog, "workspace.recovered", {
-      taskId,
-      workspace,
-      method: "git_reset_clean",
-    });
-  }
-
-  await ensureDir(codexHome);
-  await writeCodexConfig(codexConfigPath, {
-    model: context.config.worker.model,
-    modelReasoningEffort: codexReasoningEffort,
-    approvalPolicy: "never",
-    sandboxMode: "danger-full-access",
-  });
-  if (!context.mockLlmMode) {
-    const auth = await ensureCodexAuthForHome(codexHome);
-    logOrchestratorEvent(context.orchestratorLog, "codex.auth", {
-      taskId,
-      mode: auth.mode,
-      source: auth.mode === "env" ? auth.var : "auth.json",
-    });
-  } else {
-    logOrchestratorEvent(context.orchestratorLog, "codex.auth", {
-      taskId,
-      mode: "mock",
-      source: "MOCK_LLM",
-    });
-  }
-
-  const srcTasksDir = path.join(context.repoPath, context.config.tasks_dir);
-  const destTasksDir = path.join(workspace, context.config.tasks_dir);
-  await fse.remove(destTasksDir);
-  await fse.copy(srcTasksDir, destTasksDir);
-
-  await syncWorkerStateIntoTask(context, taskId, workspace);
+  await copyTaskDefinitions(context, attemptPaths.workspace);
+  await syncWorkerStateIntoTask(context, taskId, attemptPaths.workspace);
 
   const taskEvents = await createTaskEventLogger({
     projectName: context.projectName,
@@ -163,18 +111,13 @@ export async function runTaskAttempt(
     paths: context.paths,
   });
 
-  context.state.tasks[taskId].branch = branchName;
-  context.state.tasks[taskId].workspace = workspace;
-  context.state.tasks[taskId].logs_dir = tLogsDir;
-  await context.stateStore.save(context.state);
-
-  const manifestPath = path.join(
-    workspace,
-    context.config.tasks_dir,
-    taskRelativeDir,
-    "manifest.json",
-  );
-  const specPath = path.join(workspace, context.config.tasks_dir, taskRelativeDir, "spec.md");
+  await persistTaskAttemptState({
+    context,
+    taskId,
+    branchName,
+    workspace: attemptPaths.workspace,
+    logsDir: attemptPaths.logsDir,
+  });
 
   let attemptResult: WorkerRunnerResult;
   try {
@@ -182,11 +125,11 @@ export async function runTaskAttempt(
       taskId,
       taskSlug,
       taskBranch: branchName,
-      workspace,
+      workspace: attemptPaths.workspace,
       taskPaths: {
-        manifestPath,
-        specPath,
-        taskRelativeDirPosix,
+        manifestPath: attemptPaths.manifestPath,
+        specPath: attemptPaths.specPath,
+        taskRelativeDirPosix: attemptPaths.taskRelativeDirPosix,
       },
       lintCommand,
       lintTimeoutSeconds: context.config.lint_timeout,
@@ -194,8 +137,8 @@ export async function runTaskAttempt(
       doctorTimeoutSeconds: context.config.doctor_timeout,
       maxRetries: context.config.max_retries,
       bootstrapCmds: context.config.bootstrap,
-      runLogsDir: tLogsDir,
-      codexHome,
+      runLogsDir: attemptPaths.logsDir,
+      codexHome: attemptPaths.codexHome,
       codexModel: context.config.worker.model,
       codexModelReasoningEffort: codexReasoningEffort,
       checkpointCommits: context.config.worker.checkpoint_commits,
@@ -217,32 +160,25 @@ export async function runTaskAttempt(
     context.state.tasks[taskId].container_id = attemptResult.containerId;
   }
 
-  await syncWorkerStateIntoTask(context, taskId, workspace);
+  await syncWorkerStateIntoTask(context, taskId, attemptPaths.workspace);
 
   if (attemptResult.success) {
-    return {
+    return buildSuccessResult({
       taskId,
       taskSlug,
       branchName,
-      workspace,
-      logsDir: tLogsDir,
-      success: true as const,
-    };
+      workspace: attemptPaths.workspace,
+      logsDir: attemptPaths.logsDir,
+    });
   }
 
-  const shouldResetAttempt = shouldResetTaskToPending({
-    policy: failurePolicy,
-    result: attemptResult,
-  });
-
-  return {
+  return buildFailureResult({
     taskId,
     taskSlug,
     branchName,
-    workspace,
-    logsDir: tLogsDir,
-    errorMessage: attemptResult.errorMessage,
-    success: false as const,
-    ...(shouldResetAttempt ? { resetToPending: true } : {}),
-  };
+    workspace: attemptPaths.workspace,
+    logsDir: attemptPaths.logsDir,
+    failurePolicy,
+    attemptResult,
+  });
 }

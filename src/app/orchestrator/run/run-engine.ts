@@ -6,7 +6,6 @@
  */
 
 import fs from "node:fs/promises";
-import path from "node:path";
 
 import {
   createDerivedScopeSnapshot,
@@ -208,106 +207,39 @@ async function runEngineImpl(context: RunContext<RunOptions, RunResult>): Promis
       networkMode,
       containerUser,
     });
-    let stopRequested: StopRequest | null = null;
-    let state!: RunState;
-
-    // Prepare directories
-    await ensureDir(orchestratorHome(pathsContext));
-    const stateStore = new StateStore(projectName, runId, pathsContext);
-    const orchLog = new JsonlLogger(orchestratorLogPath(projectName, runId, pathsContext), {
-      runId,
-    });
     let validationPipeline: ValidationPipeline | null = null;
     const closeValidationPipeline = (): void => {
       validationPipeline?.close();
     };
 
-    logOrchestratorEvent(orchLog, "run.start", {
-      project: projectName,
-      repo_path: repoPath,
+    const { stateStore, orchLog } = await createRunInfrastructure({
+      projectName,
+      runId,
+      repoPath,
+      paths: pathsContext,
     });
 
-    // Ensure repo is clean and on integration branch.
-    await vcs.ensureCleanWorkingTree(repoPath);
-    await vcs.checkoutOrCreateBranch(repoPath, config.main_branch);
-
     const runResumeReason = isResume ? "resume_command" : "existing_state";
-    const hadExistingState = await stateStore.exists();
-    if (hadExistingState) {
-      state = await stateStore.load();
+    const initResult = await initializeRunStateAndSnapshot({
+      projectName,
+      runId,
+      repoPath,
+      config,
+      isResume,
+      runResumeReason,
+      controlPlaneConfig,
+      stateStore,
+      orchLog,
+      plannedBatches,
+      vcs,
+      closeValidationPipeline,
+    });
+    if ("earlyResult" in initResult) return initResult.earlyResult;
 
-      const canResume = state.status === "running" || (isResume && state.status === "paused");
-      if (!canResume) {
-        logRunResume(orchLog, { status: state.status, reason: runResumeReason });
-        logOrchestratorEvent(orchLog, "run.resume.blocked", { reason: "state_not_running" });
-        closeValidationPipeline();
-        orchLog.close();
-        return { runId, state, plan: plannedBatches };
-      }
-
-      if (state.status === "paused" && isResume) {
-        state.status = "running";
-        await stateStore.save(state);
-      }
-    } else if (isResume) {
-      logOrchestratorEvent(orchLog, "run.resume.blocked", { reason: "state_missing" });
-      orchLog.close();
-      throw new Error(`Cannot resume run ${runId}: state file not found.`);
-    }
-
-    let controlPlaneSnapshot: ControlPlaneSnapshot | undefined = hadExistingState
-      ? state.control_plane
-      : undefined;
-    const snapshotEnabled = controlPlaneSnapshot?.enabled ?? controlPlaneConfig.enabled;
-    if (!controlPlaneSnapshot?.base_sha) {
-      const baseSha = await vcs.resolveRunBaseSha(repoPath, config.main_branch);
-      controlPlaneSnapshot = {
-        enabled: snapshotEnabled,
-        base_sha: baseSha,
-      };
-
-      if (hadExistingState) {
-        state.control_plane = controlPlaneSnapshot;
-        await stateStore.save(state);
-      } else {
-        state = createRunState({
-          runId,
-          project: projectName,
-          repoPath,
-          mainBranch: config.main_branch,
-          taskIds: [],
-          controlPlane: controlPlaneSnapshot,
-        });
-        await stateStore.save(state);
-      }
-    } else if (!hadExistingState) {
-      state = createRunState({
-        runId,
-        project: projectName,
-        repoPath,
-        mainBranch: config.main_branch,
-        taskIds: [],
-        controlPlane: controlPlaneSnapshot,
-      });
-      await stateStore.save(state);
-    }
-
-    if (shouldBuildControlPlaneSnapshot(controlPlaneSnapshot)) {
-      controlPlaneSnapshot = await buildControlPlaneSnapshot({
-        repoPath,
-        baseSha: controlPlaneSnapshot.base_sha,
-        enabled: true,
-      });
-      state.control_plane = controlPlaneSnapshot;
-      await stateStore.save(state);
-    }
-
-    if (controlPlaneSnapshot && controlPlaneSnapshot.enabled !== controlPlaneConfig.enabled) {
-      controlPlaneConfig = {
-        ...controlPlaneConfig,
-        enabled: controlPlaneSnapshot.enabled,
-      };
-    }
+    const state = initResult.state;
+    const hadExistingState = initResult.hadExistingState;
+    const controlPlaneSnapshot = initResult.controlPlaneSnapshot;
+    controlPlaneConfig = initResult.controlPlaneConfig;
 
     heartbeat = startRunHeartbeat({
       state,
@@ -319,75 +251,40 @@ async function runEngineImpl(context: RunContext<RunOptions, RunResult>): Promis
     const lockMode = resolveEffectiveLockMode(controlPlaneConfig);
     const scopeComplianceMode = resolveScopeComplianceMode(controlPlaneConfig);
 
-    const resourceContext = await buildResourceResolutionContext({
+    const resourcesResult = await prepareRunResources({
       repoPath,
-      controlPlaneConfig,
-      controlPlaneSnapshot,
-      staticResources: config.resources,
-    });
-
-    // Load tasks.
-    let tasks: TaskSpec[];
-    let taskCatalog: TaskSpec[];
-    try {
-      const res = await loadTaskSpecs(repoPath, config.tasks_dir, {
-        knownResources: resourceContext.knownResources,
-      });
-      tasks = res.tasks;
-      taskCatalog = res.tasks;
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      logOrchestratorEvent(orchLog, "run.tasks_invalid", { message });
-      closeValidationPipeline();
-      orchLog.close();
-      throw error;
-    }
-    if (options.tasks && options.tasks.length > 0) {
-      const allow = new Set(options.tasks);
-      tasks = tasks.filter((t) => allow.has(t.manifest.id));
-    }
-
-    if (tasks.length === 0) {
-      logOrchestratorEvent(orchLog, "run.no_tasks");
-      closeValidationPipeline();
-      orchLog.close();
-      return {
-        runId,
-        state,
-        plan: plannedBatches,
-      };
-    }
-
-    const blastContext = await loadBlastRadiusContext({
-      controlPlaneConfig,
-      controlPlaneSnapshot,
-    });
-    const derivedScopeReports = await emitDerivedScopeReports({
-      repoPath,
+      config,
+      options,
       runId,
-      tasks,
+      state,
+      plannedBatches,
       controlPlaneConfig,
       controlPlaneSnapshot,
-      orchestratorLog: orchLog,
-    });
-    const runMetrics = createRunMetrics({
-      derivedScopeReports,
-      fallbackResource: controlPlaneConfig.fallbackResource,
-    });
-    const policyDecisions = new Map<string, PolicyDecision>();
-    const lockResolver = buildTaskLockResolver({
+      orchLog,
+      closeValidationPipeline,
       lockMode,
-      derivedScopeReports,
-      fallbackResource: controlPlaneConfig.fallbackResource,
     });
+    if ("earlyResult" in resourcesResult) return resourcesResult.earlyResult;
 
-    validationPipeline = new ValidationPipeline({
+    const {
+      resourceContext,
+      tasks,
+      taskCatalog,
+      blastContext,
+      derivedScopeReports,
+      runMetrics,
+      policyDecisions,
+      lockResolver,
+    } = resourcesResult;
+
+    const runPipelines = createRunPipelines({
       projectName,
       repoPath,
       runId,
-      tasksRoot: tasksRootAbs,
-      mainBranch: config.main_branch,
+      tasksRootAbs,
+      config,
       paths: pathsContext,
+      validatorRunner: context.ports.validatorRunner,
       validators: {
         test: {
           config: testValidatorConfig,
@@ -412,38 +309,12 @@ async function runEngineImpl(context: RunContext<RunOptions, RunResult>): Promis
         doctorCanary: doctorCanaryConfig,
       },
       orchestratorLog: orchLog,
-      runner: context.ports.validatorRunner,
-      onChecksetDuration: (durationMs) => {
-        recordChecksetDuration(runMetrics, durationMs);
-      },
-      onDoctorDuration: (durationMs) => {
-        recordDoctorDuration(runMetrics, durationMs);
-      },
-    });
-    const compliancePipeline = new CompliancePipeline({
-      projectName,
-      runId,
-      tasksRoot: tasksRootAbs,
-      mainBranch: config.main_branch,
-      resourceContext: {
-        resources: resourceContext.effectiveResources,
-        staticResources: resourceContext.staticResources,
-        fallbackResource: resourceContext.fallbackResource,
-        ownerResolver: resourceContext.ownerResolver,
-        ownershipResolver: resourceContext.ownershipResolver,
-        resourcesMode: resourceContext.resourcesMode,
-      },
-      orchestratorLog: orchLog,
-      paths: pathsContext,
-    });
-    const budgetTracker = new BudgetTracker({
-      projectName,
-      runId,
+      runMetrics,
+      resourceContext,
       costPer1kTokens,
-      budgets: config.budgets,
-      orchestratorLog: orchLog,
-      paths: pathsContext,
     });
+    validationPipeline = runPipelines.validationPipeline;
+    const { compliancePipeline, budgetTracker } = runPipelines;
 
     logOrchestratorEvent(orchLog, "run.tasks_loaded", {
       total_tasks: tasks.length,
@@ -457,227 +328,58 @@ async function runEngineImpl(context: RunContext<RunOptions, RunResult>): Promis
       orchestratorLogger: orchLog,
     });
 
-    // Create or resume run state
-    // Ensure new tasks found in the manifest are tracked for this run.
-    for (const t of tasks) {
-      if (!state.tasks[t.manifest.id]) {
-        state.tasks[t.manifest.id] = {
-          status: "pending",
-          attempts: 0,
-          checkpoint_commits: [],
-          validator_results: [],
-          human_review: undefined,
-          tokens_used: 0,
-          estimated_cost: 0,
-          usage_by_attempt: [],
-        };
-      }
-    }
-    await stateStore.save(state);
+    await syncRunStateWithTasks({
+      tasks,
+      state,
+      stateStore,
+      orchLog,
+      runResumeReason,
+      hadExistingState,
+      budgetTracker,
+    });
 
-    if (hadExistingState) {
-      const usageBackfilled = budgetTracker.backfillUsageFromLogs({ tasks, state });
-      if (usageBackfilled) {
-        await stateStore.save(state);
-      }
+    const ledgerRuntime = await prepareLedgerRuntime({
+      projectName,
+      repoPath,
+      tasksRootAbs,
+      runId,
+      tasks,
+      taskCatalog,
+      state,
+      stateStore,
+      paths: pathsContext,
+      reuseCompleted,
+      importRunId,
+      isResume,
+      hadExistingState,
+      orchLog,
+      vcs,
+    });
 
-      const runningTasks = Object.values(state.tasks).filter((t) => t.status === "running").length;
-      logRunResume(orchLog, {
-        status: state.status,
-        reason: runResumeReason,
-        runningTasks,
-      });
-    }
+    const stopHandlers = createStopHandlers({
+      runId,
+      state,
+      stateStore,
+      orchLog,
+      plannedBatches,
+      workerRunner,
+      stopController,
+      stopContainersOnExit,
+      closeValidationPipeline,
+    });
 
-    const ledgerEligibilityCache = new Map<string, LedgerEligibilityResult>();
-    const ledgerReachabilityCache = new Map<string, boolean>();
-    const ledgerFingerprintCache = new Map<string, string>();
-    let ledgerLoaded = false;
-    let ledgerSnapshot: TaskLedger | null = null;
-    let ledgerHeadSha: string | null = null;
-    let taskFileIndex: Map<string, TaskFileLocation> | null = null;
-
-    const ensureLedgerContext = async (): Promise<LedgerContext> => {
-      if (!ledgerLoaded) {
-        ledgerSnapshot = await loadTaskLedger(projectName, pathsContext);
-        ledgerLoaded = true;
-      }
-      if (!ledgerHeadSha) {
-        ledgerHeadSha = await vcs.headSha(repoPath);
-      }
-      if (!taskFileIndex) {
-        taskFileIndex = await buildTaskFileIndex({
-          tasksRoot: tasksRootAbs,
-          tasks: taskCatalog,
-        });
-      }
-
-      return {
-        ledger: ledgerSnapshot,
-        headSha: ledgerHeadSha,
-        taskFileIndex,
-      };
-    };
-
-    if (importRunId) {
-      logOrchestratorEvent(orchLog, "ledger.import.start", { run_id: importRunId });
-      const importStore = new StateStore(projectName, importRunId, pathsContext);
-      if (!(await importStore.exists())) {
-        logOrchestratorEvent(orchLog, "ledger.import.error", {
-          run_id: importRunId,
-          message: "Run state not found for import.",
-        });
-        throw new Error(`Cannot import run ${importRunId}: state file not found.`);
-      }
-
-      const importState = await importStore.load();
-      const importResult = await importLedgerFromRunState({
-        projectName,
-        repoPath,
-        tasksRoot: path.resolve(repoPath, config.tasks_dir),
-        runId: importRunId,
-        tasks: taskCatalog,
-        state: importState,
-        paths: pathsContext,
-      });
-      logOrchestratorEvent(orchLog, "ledger.import.complete", {
-        run_id: importRunId,
-        imported: importResult.imported,
-        skipped: importResult.skipped,
-      });
-    }
-
-    const externalDeps = collectExternalDependencies(tasks);
-    if (reuseCompleted && !importRunId && externalDeps.size > 0) {
-      const ledgerContext = await ensureLedgerContext();
-      const ledgerTasks = ledgerContext.ledger?.tasks ?? {};
-      const missingFromLedger = [...externalDeps].filter((depId) => !ledgerTasks[depId]);
-
-      if (missingFromLedger.length > 0) {
-        const archiveImport = await autoImportLedgerFromArchiveRuns({
-          projectName,
-          repoPath,
-          tasksRoot: tasksRootAbs,
-          tasks: taskCatalog,
-          paths: pathsContext,
-        });
-
-        if (archiveImport.runIds.length > 0) {
-          logOrchestratorEvent(orchLog, "ledger.import.archive", {
-            run_count: archiveImport.runIds.length,
-            imported: archiveImport.imported.length,
-            skipped: archiveImport.skipped.length,
-            skipped_runs: archiveImport.skippedRuns.length,
-          });
-        }
-
-        if (archiveImport.imported.length > 0) {
-          ledgerLoaded = false;
-          ledgerSnapshot = null;
-        }
-      }
-    }
-
-    const shouldSeedFromLedger = reuseCompleted && (!hadExistingState || isResume);
-    if (shouldSeedFromLedger) {
-      const ledgerContext = await ensureLedgerContext();
-      const seedResult = await seedRunFromLedger({
-        tasks,
-        state,
-        ledger: ledgerContext.ledger,
-        repoPath,
-        headSha: ledgerContext.headSha,
-        vcs,
-        taskFileIndex: ledgerContext.taskFileIndex,
-        eligibilityCache: ledgerEligibilityCache,
-        reachabilityCache: ledgerReachabilityCache,
-        fingerprintCache: ledgerFingerprintCache,
-      });
-
-      for (const seeded of seedResult.seeded) {
-        logOrchestratorEvent(orchLog, "task.seeded_complete", {
-          task_id: seeded.taskId,
-          merge_commit: seeded.entry.mergeCommit ?? null,
-          ledger_run_id: seeded.entry.runId ?? null,
-        });
-      }
-
-      if (seedResult.seeded.length > 0) {
-        await stateStore.save(state);
-      }
-    }
-
-    const resolveStopReason = (): StopRequest | null => {
-      if (stopRequested) return stopRequested;
-      const reason = stopController.reason;
-      if (reason) {
-        stopRequested = reason;
-      }
-      return stopRequested;
-    };
-
-    const stopIfRequested = async (): Promise<RunResult | null> => {
-      const reason = resolveStopReason();
-      if (!reason) return null;
-      return await stopRun(reason);
-    };
-
-    const stopRun = async (reason: StopRequest): Promise<RunResult> => {
-      const stopSummary = await workerRunner.stop({
-        stopContainersOnExit,
-        orchestratorLogger: orchLog,
-      });
-      const containerAction: RunStopInfo["containers"] = stopSummary ? "stopped" : "left_running";
-      state.status = "paused";
-
-      const payload: JsonObject = {
-        reason: reason.kind,
-        stop_containers_requested: stopContainersOnExit,
-        containers: containerAction,
-      };
-      if (reason.signal) payload.signal = reason.signal;
-      if (stopSummary) {
-        payload.containers_stopped = stopSummary.stopped;
-        if (stopSummary.errors > 0) {
-          payload.container_stop_errors = stopSummary.errors;
-        }
-      }
-
-      logOrchestratorEvent(orchLog, "run.stop", payload);
-      await stateStore.save(state);
-      closeValidationPipeline();
-      orchLog.close();
-
-      return {
-        runId,
-        state,
-        plan: plannedBatches,
-        stopped: {
-          reason: "signal",
-          signal: reason.signal,
-          containers: containerAction,
-          stopContainersRequested: stopContainersOnExit,
-          stoppedContainers: stopSummary?.stopped,
-          stopErrors: stopSummary?.errors ? stopSummary.errors : undefined,
-        },
-      };
-    };
-
-    const earlyStop = await stopIfRequested();
+    const earlyStop = await stopHandlers.stopIfRequested();
     if (earlyStop) return earlyStop;
 
-    // Main loop helpers
-    let { completed, failed } = buildStatusSets(state);
-
-    const taskEngine = createTaskEngine({
+    const { taskEngine, batchEngine } = createRunEngines({
       projectName,
       runId,
+      repoPath,
+      tasksRootAbs,
+      paths: pathsContext,
       config,
       state,
       stateStore,
-      tasksRootAbs,
-      repoPath,
-      paths: pathsContext,
       workerRunner,
       vcs,
       orchestratorLog: orchLog,
@@ -687,311 +389,1347 @@ async function runEngineImpl(context: RunContext<RunOptions, RunResult>): Promis
       derivedScopeReports,
       blastContext,
       policyDecisions,
+      validationPipeline,
+      compliancePipeline,
+      budgetTracker,
+      runMetrics,
+      scopeComplianceMode,
+      manifestPolicy,
+      doctorValidatorConfig,
+      doctorValidatorEnabled,
+      doctorCanaryConfig,
+      cleanupWorkspacesOnSuccess,
+      cleanupContainersOnSuccess,
+      shouldSkipCleanup: stopHandlers.shouldSkipCleanup,
+      buildStatusSets,
     });
-
-    const batchEngine = createBatchEngine(
-      {
-        projectName,
-        runId,
-        repoPath,
-        tasksRootAbs,
-        paths: pathsContext,
-        config,
-        state,
-        stateStore,
-        orchestratorLog: orchLog,
-        taskEngine,
-        validationPipeline,
-        compliancePipeline,
-        budgetTracker,
-        runMetrics,
-        recordDoctorDuration: (durationMs) => {
-          recordDoctorDuration(runMetrics, durationMs);
-        },
-        controlPlaneConfig,
-        derivedScopeReports,
-        scopeComplianceMode,
-        manifestPolicy,
-        policyDecisions,
-        blastContext,
-        doctorValidatorConfig,
-        doctorValidatorEnabled,
-        doctorCanaryConfig,
-        cleanupWorkspacesOnSuccess,
-        cleanupContainersOnSuccess,
-        workerRunner,
-        shouldSkipCleanup: () => stopRequested !== null || stopController.reason !== null,
-        vcs,
-        buildStatusSets,
-      },
-      { doctorValidatorLastCount: completed.size + failed.size },
-    );
-
-    const findRunningBatch = (): (typeof state.batches)[number] | null => {
-      const activeBatch = state.batches.find((b) => b.status === "running");
-      if (activeBatch) return activeBatch;
-
-      const runningTaskEntry = Object.entries(state.tasks).find(([, t]) => t.status === "running");
-      if (!runningTaskEntry) return null;
-
-      const batchId = state.tasks[runningTaskEntry[0]].batch_id;
-      if (batchId === undefined) return null;
-
-      return state.batches.find((b) => b.batch_id === batchId) ?? null;
-    };
 
     const externalDepsLogged = new Set<string>();
-    let batchId = Math.max(0, ...state.batches.map((b) => b.batch_id));
-    while (true) {
-      const stopResult = await stopIfRequested();
-      if (stopResult) return stopResult;
 
-      const runningBatch = findRunningBatch();
-      if (runningBatch) {
-        const batchTasks = tasks.filter((t) => runningBatch.tasks.includes(t.manifest.id));
-        if (batchTasks.length === 0) {
-          state.status = "failed";
-          await stateStore.save(state);
-          logOrchestratorEvent(orchLog, "run.stop", {
-            reason: "running_batch_missing_tasks",
-          });
-          break;
-        }
-
-        const runningTasks = batchTasks.filter(
-          (t) => state.tasks[t.manifest.id]?.status === "running",
-        );
-        const results = await Promise.all(
-          runningTasks.map((task) => taskEngine.resumeRunningTask(task)),
-        );
-        const stopReason = await batchEngine.finalizeBatch({
-          batchId: runningBatch.batch_id,
-          batchTasks,
-          results,
-        });
-
-        ({ completed, failed } = buildStatusSets(state));
-
-        if (stopReason) {
-          logOrchestratorEvent(orchLog, "run.stop", { reason: stopReason });
-          break;
-        }
-        continue;
-      }
-
-      const pendingTasks = tasks.filter((t) => state.tasks[t.manifest.id]?.status === "pending");
-      if (pendingTasks.length === 0) break;
-
-      let externalCompletedDeps = new Set<string>();
-      if (reuseCompleted) {
-        const ledgerContext = await ensureLedgerContext();
-        const externalDeps = await resolveExternalCompletedDeps({
-          pendingTasks,
-          state,
-          ledger: ledgerContext.ledger,
-          repoPath,
-          headSha: ledgerContext.headSha,
-          vcs,
-          taskFileIndex: ledgerContext.taskFileIndex,
-          eligibilityCache: ledgerEligibilityCache,
-          reachabilityCache: ledgerReachabilityCache,
-          fingerprintCache: ledgerFingerprintCache,
-        });
-
-        externalCompletedDeps = externalDeps.externalCompleted;
-        for (const [taskId, deps] of externalDeps.satisfiedByTask.entries()) {
-          if (externalDepsLogged.has(taskId)) continue;
-          externalDepsLogged.add(taskId);
-          logOrchestratorEvent(orchLog, "deps.external_satisfied", {
-            task_id: taskId,
-            deps: deps.map((dep) => ({
-              dep_id: dep.depId,
-              merge_commit: dep.mergeCommit ?? null,
-              ledger_run_id: dep.runId ?? null,
-              completed_at: dep.completedAt ?? null,
-            })),
-          });
-        }
-      }
-
-      const effectiveCompleted = new Set([...completed, ...externalCompletedDeps]);
-      const ready = topologicalReady(pendingTasks, effectiveCompleted);
-      if (ready.length === 0) {
-        const dependencyIssues = collectDependencyIssues(pendingTasks, state, effectiveCompleted);
-        if (
-          dependencyIssues.blocked.length > 0 &&
-          dependencyIssues.missing.length === 0 &&
-          dependencyIssues.pending.length === 0
-        ) {
-          const blockedTasksPayload = dependencyIssues.blocked.map((entry) => ({
-            task_id: entry.taskId,
-            unmet_deps: entry.unmetDeps.map((dep) => ({
-              dep_id: dep.depId,
-              dep_status: dep.depStatus,
-              ...(dep.depLastError ? { dep_last_error: dep.depLastError } : {}),
-            })),
-          }));
-
-          logOrchestratorEvent(orchLog, "run.paused", {
-            reason: "blocked_dependencies",
-            message:
-              "No dependency-satisfied tasks remain; pending tasks are blocked by tasks requiring attention.",
-            pending_task_count: pendingTasks.length,
-            blocked_task_count: blockedTasksPayload.length,
-            blocked_tasks: blockedTasksPayload,
-            resume_command: `mycelium resume --project ${projectName} --run-id ${runId}`,
-          });
-          state.status = "paused";
-          await stateStore.save(state);
-          break;
-        }
-
-        if (dependencyIssues.missing.length > 0) {
-          const missingPayload = dependencyIssues.missing.map((entry) => ({
-            task_id: entry.taskId,
-            missing_deps: entry.missingDeps,
-          }));
-          logOrchestratorEvent(orchLog, "run.blocked", {
-            reason: "missing_dependencies",
-            message:
-              "No dependency-satisfied tasks remain; some dependencies are missing from this run.",
-            pending_task_count: pendingTasks.length,
-            blocked_task_count: missingPayload.length,
-            blocked_tasks: missingPayload,
-          });
-          state.status = "failed";
-          await stateStore.save(state);
-          break;
-        }
-
-        const pendingPayload = dependencyIssues.pending.map((entry) => ({
-          task_id: entry.taskId,
-          pending_deps: entry.pendingDeps,
-        }));
-        logOrchestratorEvent(orchLog, "run.blocked", {
-          reason: "true_deadlock",
-          message:
-            "No dependency-satisfied tasks remain; pending tasks depend on each other or unresolved tasks.",
-          pending_task_count: pendingTasks.length,
-          blocked_task_count: pendingPayload.length,
-          blocked_tasks: pendingPayload,
-        });
-        state.status = "failed";
-        await stateStore.save(state);
-        break;
-      }
-
-      batchId += 1;
-      const { batch } = buildGreedyBatch(ready, maxParallel, lockResolver);
-
-      const batchTaskIds = batch.tasks.map((t) => t.manifest.id);
-      plannedBatches.push({ batchId, taskIds: batchTaskIds, locks: batch.locks });
-      const startedAt = isoNow();
-      startBatch(state, { batchId, taskIds: batchTaskIds, locks: batch.locks, now: startedAt });
-      await stateStore.save(state);
-
-      logOrchestratorEvent(orchLog, "batch.start", {
-        batch_id: batchId,
-        tasks: batchTaskIds,
-        locks: batch.locks,
-        lock_mode: lockMode,
-      });
-
-      if (options.dryRun) {
-        logOrchestratorEvent(orchLog, "batch.dry_run", {
-          batch_id: batchId,
-          tasks: batchTaskIds,
-        });
-        // Mark all as skipped for dry-run
-        for (const t of batch.tasks) {
-          state.tasks[t.manifest.id].status = "skipped";
-          state.tasks[t.manifest.id].completed_at = isoNow();
-          completed.add(t.manifest.id);
-        }
-        state.batches[state.batches.length - 1].status = "complete";
-        state.batches[state.batches.length - 1].completed_at = isoNow();
-        await stateStore.save(state);
-        ({ completed, failed } = buildStatusSets(state));
-        continue;
-      }
-
-      // Launch tasks in parallel.
-      const results = await Promise.all(batch.tasks.map((task) => taskEngine.runTaskAttempt(task)));
-
-      const stopReason = await batchEngine.finalizeBatch({
-        batchId,
-        batchTasks: batch.tasks,
-        results,
-      });
-
-      ({ completed, failed } = buildStatusSets(state));
-
-      if (stopReason) {
-        logOrchestratorEvent(orchLog, "run.stop", { reason: stopReason });
-        break;
-      }
-    }
-
-    const stopAfterLoop = await stopIfRequested();
-    if (stopAfterLoop) return stopAfterLoop;
-
-    if (state.status === "running") {
-      const blockedTasks = summarizeBlockedTasks(state.tasks);
-      if (blockedTasks.length > 0) {
-        const blockedTasksPayload = blockedTasks.map((task) => ({
-          task_id: task.taskId,
-          status: task.status,
-          ...(task.lastError ? { last_error: task.lastError } : {}),
-        }));
-        state.status = "paused";
-        logOrchestratorEvent(orchLog, "run.paused", {
-          reason: "blocked_tasks",
-          message: "Run paused with tasks requiring attention.",
-          blocked_task_count: blockedTasksPayload.length,
-          blocked_tasks: blockedTasksPayload,
-          resume_command: `mycelium resume --project ${projectName} --run-id ${runId}`,
-        });
-      } else {
-        state.status = "complete";
-      }
-    }
-    await stateStore.save(state);
-
-    const runSummary = buildRunSummary({
-      runId,
+    const loopResult = await executeRunLoop({
       projectName,
+      runId,
+      options,
+      repoPath,
       state,
+      stateStore,
+      orchLog,
+      vcs,
+      tasks,
+      plannedBatches,
+      maxParallel,
       lockMode,
-      scopeMode: scopeComplianceMode,
-      controlPlaneEnabled: controlPlaneConfig.enabled,
-      metrics: runMetrics,
+      lockResolver,
+      reuseCompleted,
+      taskEngine,
+      batchEngine,
+      buildStatusSets,
+      ensureLedgerContext: ledgerRuntime.ensureLedgerContext,
+      ledgerEligibilityCache: ledgerRuntime.eligibilityCache,
+      ledgerReachabilityCache: ledgerRuntime.reachabilityCache,
+      ledgerFingerprintCache: ledgerRuntime.fingerprintCache,
+      externalDepsLogged,
+      stopIfRequested: stopHandlers.stopIfRequested,
     });
-    const runSummaryPath = runSummaryReportPath(repoPath, runId);
-    try {
-      await writeJsonFile(runSummaryPath, runSummary);
-      logOrchestratorEvent(orchLog, "run.summary", {
-        status: state.status,
-        report_path: runSummaryPath,
-        metrics: runSummary.metrics,
-      });
-    } catch (error) {
-      logOrchestratorEvent(orchLog, "run.summary.error", {
-        status: state.status,
-        report_path: runSummaryPath,
-        message: formatErrorMessage(error),
-      });
-    }
+    if (loopResult) return loopResult;
 
-    logOrchestratorEvent(orchLog, "run.complete", { status: state.status });
-    closeValidationPipeline();
-    orchLog.close();
-
-    return { runId, state, plan: plannedBatches };
+    return await finalizeRun({
+      projectName,
+      runId,
+      repoPath,
+      state,
+      stateStore,
+      orchLog,
+      plannedBatches,
+      lockMode,
+      scopeComplianceMode,
+      controlPlaneEnabled: controlPlaneConfig.enabled,
+      runMetrics,
+      stopIfRequested: stopHandlers.stopIfRequested,
+      closeValidationPipeline,
+    });
   } finally {
     heartbeat?.stop();
     stopController.cleanup();
   }
 }
+
+
+// =============================================================================
+// RUN SETUP HELPERS
+// =============================================================================
+
+type ResolvedValidators = RunContext<RunOptions, RunResult>["resolved"]["validators"];
+type ValidatorRunner = RunContext<RunOptions, RunResult>["ports"]["validatorRunner"];
+
+type RunInfrastructure = {
+  stateStore: StateStore;
+  orchLog: JsonlLogger;
+};
+
+type RunResourcesResult =
+  | {
+      earlyResult: RunResult;
+    }
+  | {
+      resourceContext: ResourceResolutionContext;
+      tasks: TaskSpec[];
+      taskCatalog: TaskSpec[];
+      blastContext: BlastRadiusContext | null;
+      derivedScopeReports: Map<string, DerivedScopeReport>;
+      runMetrics: RunMetrics;
+      policyDecisions: Map<string, PolicyDecision>;
+      lockResolver: LockResolver;
+    };
+
+type RunPipelines = {
+  validationPipeline: ValidationPipeline;
+  compliancePipeline: CompliancePipeline;
+  budgetTracker: BudgetTracker;
+};
+
+type RunEngines = {
+  taskEngine: ReturnType<typeof createTaskEngine>;
+  batchEngine: ReturnType<typeof createBatchEngine>;
+};
+
+type StopHandlers = {
+  stopIfRequested: () => Promise<RunResult | null>;
+  shouldSkipCleanup: () => boolean;
+};
+
+type LedgerRuntime = {
+  ensureLedgerContext: () => Promise<LedgerContext>;
+  resetLedgerCache: () => void;
+  eligibilityCache: Map<string, LedgerEligibilityResult>;
+  reachabilityCache: Map<string, boolean>;
+  fingerprintCache: Map<string, string>;
+};
+
+async function createRunInfrastructure(input: {
+  projectName: string;
+  runId: string;
+  repoPath: string;
+  paths: PathsContext;
+}): Promise<RunInfrastructure> {
+  await ensureDir(orchestratorHome(input.paths));
+  const stateStore = new StateStore(input.projectName, input.runId, input.paths);
+  const orchLog = new JsonlLogger(
+    orchestratorLogPath(input.projectName, input.runId, input.paths),
+    { runId: input.runId },
+  );
+
+  logOrchestratorEvent(orchLog, "run.start", {
+    project: input.projectName,
+    repo_path: input.repoPath,
+  });
+
+  return { stateStore, orchLog };
+}
+
+async function prepareRunResources(input: {
+  repoPath: string;
+  config: ProjectConfig;
+  options: RunOptions;
+  runId: string;
+  state: RunState;
+  plannedBatches: BatchPlanEntry[];
+  controlPlaneConfig: ControlPlaneRunConfig;
+  controlPlaneSnapshot: ControlPlaneSnapshot | undefined;
+  orchLog: JsonlLogger;
+  closeValidationPipeline: () => void;
+  lockMode: ControlPlaneLockMode;
+}): Promise<RunResourcesResult> {
+  const resourceContext = await buildResourceResolutionContext({
+    repoPath: input.repoPath,
+    controlPlaneConfig: input.controlPlaneConfig,
+    controlPlaneSnapshot: input.controlPlaneSnapshot,
+    staticResources: input.config.resources,
+  });
+
+  const tasksResult = await loadTasksForRun({
+    repoPath: input.repoPath,
+    config: input.config,
+    options: input.options,
+    knownResources: resourceContext.knownResources,
+    orchLog: input.orchLog,
+    runId: input.runId,
+    state: input.state,
+    plannedBatches: input.plannedBatches,
+    closeValidationPipeline: input.closeValidationPipeline,
+  });
+  if ("earlyResult" in tasksResult) return tasksResult;
+
+  const { tasks, taskCatalog } = tasksResult;
+  const blastContext = await loadBlastRadiusContext({
+    controlPlaneConfig: input.controlPlaneConfig,
+    controlPlaneSnapshot: input.controlPlaneSnapshot,
+  });
+  const derivedScopeReports = await emitDerivedScopeReports({
+    repoPath: input.repoPath,
+    runId: input.runId,
+    tasks,
+    controlPlaneConfig: input.controlPlaneConfig,
+    controlPlaneSnapshot: input.controlPlaneSnapshot,
+    orchestratorLog: input.orchLog,
+  });
+  const runMetrics = createRunMetrics({
+    derivedScopeReports,
+    fallbackResource: input.controlPlaneConfig.fallbackResource,
+  });
+  const policyDecisions = new Map<string, PolicyDecision>();
+  const lockResolver = buildTaskLockResolver({
+    lockMode: input.lockMode,
+    derivedScopeReports,
+    fallbackResource: input.controlPlaneConfig.fallbackResource,
+  });
+
+  return {
+    resourceContext,
+    tasks,
+    taskCatalog,
+    blastContext,
+    derivedScopeReports,
+    runMetrics,
+    policyDecisions,
+    lockResolver,
+  };
+}
+
+function createRunPipelines(input: {
+  projectName: string;
+  repoPath: string;
+  runId: string;
+  tasksRootAbs: string;
+  config: ProjectConfig;
+  paths: PathsContext;
+  validatorRunner: ValidatorRunner;
+  validators: ResolvedValidators;
+  orchestratorLog: JsonlLogger;
+  runMetrics: RunMetrics;
+  resourceContext: ResourceResolutionContext;
+  costPer1kTokens: number;
+}): RunPipelines {
+  const validationPipeline = new ValidationPipeline({
+    projectName: input.projectName,
+    repoPath: input.repoPath,
+    runId: input.runId,
+    tasksRoot: input.tasksRootAbs,
+    mainBranch: input.config.main_branch,
+    paths: input.paths,
+    validators: input.validators,
+    orchestratorLog: input.orchestratorLog,
+    runner: input.validatorRunner,
+    onChecksetDuration: (durationMs) => {
+      recordChecksetDuration(input.runMetrics, durationMs);
+    },
+    onDoctorDuration: (durationMs) => {
+      recordDoctorDuration(input.runMetrics, durationMs);
+    },
+  });
+  const compliancePipeline = new CompliancePipeline({
+    projectName: input.projectName,
+    runId: input.runId,
+    tasksRoot: input.tasksRootAbs,
+    mainBranch: input.config.main_branch,
+    resourceContext: {
+      resources: input.resourceContext.effectiveResources,
+      staticResources: input.resourceContext.staticResources,
+      fallbackResource: input.resourceContext.fallbackResource,
+      ownerResolver: input.resourceContext.ownerResolver,
+      ownershipResolver: input.resourceContext.ownershipResolver,
+      resourcesMode: input.resourceContext.resourcesMode,
+    },
+    orchestratorLog: input.orchestratorLog,
+    paths: input.paths,
+  });
+  const budgetTracker = new BudgetTracker({
+    projectName: input.projectName,
+    runId: input.runId,
+    costPer1kTokens: input.costPer1kTokens,
+    budgets: input.config.budgets,
+    orchestratorLog: input.orchestratorLog,
+    paths: input.paths,
+  });
+
+  return { validationPipeline, compliancePipeline, budgetTracker };
+}
+
+async function syncRunStateWithTasks(input: {
+  tasks: TaskSpec[];
+  state: RunState;
+  stateStore: StateStore;
+  orchLog: JsonlLogger;
+  runResumeReason: string;
+  hadExistingState: boolean;
+  budgetTracker: BudgetTracker;
+}): Promise<void> {
+  for (const task of input.tasks) {
+    if (input.state.tasks[task.manifest.id]) continue;
+    input.state.tasks[task.manifest.id] = {
+      status: "pending",
+      attempts: 0,
+      checkpoint_commits: [],
+      validator_results: [],
+      human_review: undefined,
+      tokens_used: 0,
+      estimated_cost: 0,
+      usage_by_attempt: [],
+    };
+  }
+  await input.stateStore.save(input.state);
+
+  if (!input.hadExistingState) return;
+
+  const usageBackfilled = input.budgetTracker.backfillUsageFromLogs({
+    tasks: input.tasks,
+    state: input.state,
+  });
+  if (usageBackfilled) {
+    await input.stateStore.save(input.state);
+  }
+
+  const runningTasks = Object.values(input.state.tasks).filter(
+    (task) => task.status === "running",
+  ).length;
+  logRunResume(input.orchLog, {
+    status: input.state.status,
+    reason: input.runResumeReason,
+    runningTasks,
+  });
+}
+
+function createRunEngines(input: {
+  projectName: string;
+  runId: string;
+  repoPath: string;
+  tasksRootAbs: string;
+  paths: PathsContext;
+  config: ProjectConfig;
+  state: RunState;
+  stateStore: StateStore;
+  workerRunner: WorkerRunner;
+  vcs: Vcs;
+  orchestratorLog: JsonlLogger;
+  mockLlmMode: boolean;
+  crashAfterContainerStart: boolean;
+  controlPlaneConfig: ControlPlaneRunConfig;
+  derivedScopeReports: Map<string, DerivedScopeReport>;
+  blastContext: BlastRadiusContext | null;
+  policyDecisions: Map<string, PolicyDecision>;
+  validationPipeline: ValidationPipeline | null;
+  compliancePipeline: CompliancePipeline;
+  budgetTracker: BudgetTracker;
+  runMetrics: RunMetrics;
+  scopeComplianceMode: ControlPlaneScopeMode;
+  manifestPolicy: ManifestEnforcementPolicy;
+  doctorValidatorConfig: ResolvedValidators["doctor"]["config"];
+  doctorValidatorEnabled: ResolvedValidators["doctor"]["enabled"];
+  doctorCanaryConfig: ResolvedValidators["doctorCanary"];
+  cleanupWorkspacesOnSuccess: boolean;
+  cleanupContainersOnSuccess: boolean;
+  shouldSkipCleanup: () => boolean;
+  buildStatusSets: (state: RunState) => { completed: Set<string>; failed: Set<string> };
+}): RunEngines {
+  const taskEngine = createTaskEngine({
+    projectName: input.projectName,
+    runId: input.runId,
+    config: input.config,
+    state: input.state,
+    stateStore: input.stateStore,
+    tasksRootAbs: input.tasksRootAbs,
+    repoPath: input.repoPath,
+    paths: input.paths,
+    workerRunner: input.workerRunner,
+    vcs: input.vcs,
+    orchestratorLog: input.orchestratorLog,
+    mockLlmMode: input.mockLlmMode,
+    crashAfterContainerStart: input.crashAfterContainerStart,
+    controlPlaneConfig: input.controlPlaneConfig,
+    derivedScopeReports: input.derivedScopeReports,
+    blastContext: input.blastContext,
+    policyDecisions: input.policyDecisions,
+  });
+
+  const statusSets = input.buildStatusSets(input.state);
+  const batchEngine = createBatchEngine(
+    {
+      projectName: input.projectName,
+      runId: input.runId,
+      repoPath: input.repoPath,
+      tasksRootAbs: input.tasksRootAbs,
+      paths: input.paths,
+      config: input.config,
+      state: input.state,
+      stateStore: input.stateStore,
+      orchestratorLog: input.orchestratorLog,
+      taskEngine,
+      validationPipeline: input.validationPipeline,
+      compliancePipeline: input.compliancePipeline,
+      budgetTracker: input.budgetTracker,
+      runMetrics: input.runMetrics,
+      recordDoctorDuration: (durationMs) => {
+        recordDoctorDuration(input.runMetrics, durationMs);
+      },
+      controlPlaneConfig: input.controlPlaneConfig,
+      derivedScopeReports: input.derivedScopeReports,
+      scopeComplianceMode: input.scopeComplianceMode,
+      manifestPolicy: input.manifestPolicy,
+      policyDecisions: input.policyDecisions,
+      blastContext: input.blastContext,
+      doctorValidatorConfig: input.doctorValidatorConfig,
+      doctorValidatorEnabled: input.doctorValidatorEnabled,
+      doctorCanaryConfig: input.doctorCanaryConfig,
+      cleanupWorkspacesOnSuccess: input.cleanupWorkspacesOnSuccess,
+      cleanupContainersOnSuccess: input.cleanupContainersOnSuccess,
+      workerRunner: input.workerRunner,
+      shouldSkipCleanup: input.shouldSkipCleanup,
+      vcs: input.vcs,
+      buildStatusSets: input.buildStatusSets,
+    },
+    { doctorValidatorLastCount: statusSets.completed.size + statusSets.failed.size },
+  );
+
+  return { taskEngine, batchEngine };
+}
+
+function createStopHandlers(input: {
+  runId: string;
+  state: RunState;
+  stateStore: StateStore;
+  orchLog: JsonlLogger;
+  plannedBatches: BatchPlanEntry[];
+  workerRunner: WorkerRunner;
+  stopController: StopController;
+  stopContainersOnExit: boolean;
+  closeValidationPipeline: () => void;
+}): StopHandlers {
+  let stopRequested: StopRequest | null = null;
+
+  const resolveStopReason = (): StopRequest | null => {
+    if (stopRequested) return stopRequested;
+    const reason = input.stopController.reason;
+    if (reason) {
+      stopRequested = reason;
+    }
+    return stopRequested;
+  };
+
+  const stopRun = async (reason: StopRequest): Promise<RunResult> => {
+    const stopSummary = await input.workerRunner.stop({
+      stopContainersOnExit: input.stopContainersOnExit,
+      orchestratorLogger: input.orchLog,
+    });
+    const containerAction: RunStopInfo["containers"] = stopSummary ? "stopped" : "left_running";
+    input.state.status = "paused";
+
+    const payload: JsonObject = {
+      reason: reason.kind,
+      stop_containers_requested: input.stopContainersOnExit,
+      containers: containerAction,
+    };
+    if (reason.signal) payload.signal = reason.signal;
+    if (stopSummary) {
+      payload.containers_stopped = stopSummary.stopped;
+      if (stopSummary.errors > 0) {
+        payload.container_stop_errors = stopSummary.errors;
+      }
+    }
+
+    logOrchestratorEvent(input.orchLog, "run.stop", payload);
+    await input.stateStore.save(input.state);
+    input.closeValidationPipeline();
+    input.orchLog.close();
+
+    return {
+      runId: input.runId,
+      state: input.state,
+      plan: input.plannedBatches,
+      stopped: {
+        reason: "signal",
+        signal: reason.signal,
+        containers: containerAction,
+        stopContainersRequested: input.stopContainersOnExit,
+        stoppedContainers: stopSummary?.stopped,
+        stopErrors: stopSummary?.errors ? stopSummary.errors : undefined,
+      },
+    };
+  };
+
+  const stopIfRequested = async (): Promise<RunResult | null> => {
+    const reason = resolveStopReason();
+    if (!reason) return null;
+    return await stopRun(reason);
+  };
+
+  return {
+    stopIfRequested,
+    shouldSkipCleanup: () => stopRequested !== null || input.stopController.reason !== null,
+  };
+}
+
+function createLedgerContextManager(input: {
+  projectName: string;
+  repoPath: string;
+  tasksRootAbs: string;
+  taskCatalog: TaskSpec[];
+  paths: PathsContext;
+  vcs: Vcs;
+}): LedgerRuntime {
+  const eligibilityCache = new Map<string, LedgerEligibilityResult>();
+  const reachabilityCache = new Map<string, boolean>();
+  const fingerprintCache = new Map<string, string>();
+  let ledgerLoaded = false;
+  let ledgerSnapshot: TaskLedger | null = null;
+  let ledgerHeadSha: string | null = null;
+  let taskFileIndex: Map<string, TaskFileLocation> | null = null;
+
+  const ensureLedgerContext = async (): Promise<LedgerContext> => {
+    if (!ledgerLoaded) {
+      ledgerSnapshot = await loadTaskLedger(input.projectName, input.paths);
+      ledgerLoaded = true;
+    }
+    if (!ledgerHeadSha) {
+      ledgerHeadSha = await input.vcs.headSha(input.repoPath);
+    }
+    if (!taskFileIndex) {
+      taskFileIndex = await buildTaskFileIndex({
+        tasksRoot: input.tasksRootAbs,
+        tasks: input.taskCatalog,
+      });
+    }
+
+    return {
+      ledger: ledgerSnapshot,
+      headSha: ledgerHeadSha,
+      taskFileIndex,
+    };
+  };
+
+  const resetLedgerCache = (): void => {
+    ledgerLoaded = false;
+    ledgerSnapshot = null;
+  };
+
+  return {
+    ensureLedgerContext,
+    resetLedgerCache,
+    eligibilityCache,
+    reachabilityCache,
+    fingerprintCache,
+  };
+}
+
+async function importLedgerFromRunIfRequested(input: {
+  importRunId: string | null;
+  projectName: string;
+  repoPath: string;
+  tasksRootAbs: string;
+  taskCatalog: TaskSpec[];
+  paths: PathsContext;
+  orchLog: JsonlLogger;
+}): Promise<void> {
+  if (!input.importRunId) return;
+
+  logOrchestratorEvent(input.orchLog, "ledger.import.start", { run_id: input.importRunId });
+  const importStore = new StateStore(input.projectName, input.importRunId, input.paths);
+  if (!(await importStore.exists())) {
+    logOrchestratorEvent(input.orchLog, "ledger.import.error", {
+      run_id: input.importRunId,
+      message: "Run state not found for import.",
+    });
+    throw new Error(`Cannot import run ${input.importRunId}: state file not found.`);
+  }
+
+  const importState = await importStore.load();
+  const importResult = await importLedgerFromRunState({
+    projectName: input.projectName,
+    repoPath: input.repoPath,
+    tasksRoot: input.tasksRootAbs,
+    runId: input.importRunId,
+    tasks: input.taskCatalog,
+    state: importState,
+    paths: input.paths,
+  });
+  logOrchestratorEvent(input.orchLog, "ledger.import.complete", {
+    run_id: input.importRunId,
+    imported: importResult.imported,
+    skipped: importResult.skipped,
+  });
+}
+
+async function maybeImportLedgerFromArchiveRuns(input: {
+  reuseCompleted: boolean;
+  importRunId: string | null;
+  tasks: TaskSpec[];
+  taskCatalog: TaskSpec[];
+  projectName: string;
+  repoPath: string;
+  tasksRootAbs: string;
+  paths: PathsContext;
+  orchLog: JsonlLogger;
+  ledgerRuntime: LedgerRuntime;
+}): Promise<void> {
+  if (!input.reuseCompleted || input.importRunId) return;
+
+  const externalDeps = collectExternalDependencies(input.tasks);
+  if (externalDeps.size === 0) return;
+
+  const ledgerContext = await input.ledgerRuntime.ensureLedgerContext();
+  const ledgerTasks = ledgerContext.ledger?.tasks ?? {};
+  const missingFromLedger = [...externalDeps].filter((depId) => !ledgerTasks[depId]);
+
+  if (missingFromLedger.length === 0) return;
+
+  const archiveImport = await autoImportLedgerFromArchiveRuns({
+    projectName: input.projectName,
+    repoPath: input.repoPath,
+    tasksRoot: input.tasksRootAbs,
+    tasks: input.taskCatalog,
+    paths: input.paths,
+  });
+
+  if (archiveImport.runIds.length > 0) {
+    logOrchestratorEvent(input.orchLog, "ledger.import.archive", {
+      run_count: archiveImport.runIds.length,
+      imported: archiveImport.imported.length,
+      skipped: archiveImport.skipped.length,
+      skipped_runs: archiveImport.skippedRuns.length,
+    });
+  }
+
+  if (archiveImport.imported.length > 0) {
+    input.ledgerRuntime.resetLedgerCache();
+  }
+}
+
+async function seedRunFromLedgerIfNeeded(input: {
+  reuseCompleted: boolean;
+  isResume: boolean;
+  hadExistingState: boolean;
+  tasks: TaskSpec[];
+  state: RunState;
+  stateStore: StateStore;
+  repoPath: string;
+  vcs: Vcs;
+  orchLog: JsonlLogger;
+  ledgerRuntime: LedgerRuntime;
+}): Promise<void> {
+  const shouldSeedFromLedger = input.reuseCompleted && (!input.hadExistingState || input.isResume);
+  if (!shouldSeedFromLedger) return;
+
+  const ledgerContext = await input.ledgerRuntime.ensureLedgerContext();
+  const seedResult = await seedRunFromLedger({
+    tasks: input.tasks,
+    state: input.state,
+    ledger: ledgerContext.ledger,
+    repoPath: input.repoPath,
+    headSha: ledgerContext.headSha,
+    vcs: input.vcs,
+    taskFileIndex: ledgerContext.taskFileIndex,
+    eligibilityCache: input.ledgerRuntime.eligibilityCache,
+    reachabilityCache: input.ledgerRuntime.reachabilityCache,
+    fingerprintCache: input.ledgerRuntime.fingerprintCache,
+  });
+
+  for (const seeded of seedResult.seeded) {
+    logOrchestratorEvent(input.orchLog, "task.seeded_complete", {
+      task_id: seeded.taskId,
+      merge_commit: seeded.entry.mergeCommit ?? null,
+      ledger_run_id: seeded.entry.runId ?? null,
+    });
+  }
+
+  if (seedResult.seeded.length > 0) {
+    await input.stateStore.save(input.state);
+  }
+}
+
+async function prepareLedgerRuntime(input: {
+  projectName: string;
+  repoPath: string;
+  tasksRootAbs: string;
+  runId: string;
+  tasks: TaskSpec[];
+  taskCatalog: TaskSpec[];
+  state: RunState;
+  stateStore: StateStore;
+  paths: PathsContext;
+  reuseCompleted: boolean;
+  importRunId: string | null;
+  isResume: boolean;
+  hadExistingState: boolean;
+  orchLog: JsonlLogger;
+  vcs: Vcs;
+}): Promise<LedgerRuntime> {
+  const ledgerRuntime = createLedgerContextManager({
+    projectName: input.projectName,
+    repoPath: input.repoPath,
+    tasksRootAbs: input.tasksRootAbs,
+    taskCatalog: input.taskCatalog,
+    paths: input.paths,
+    vcs: input.vcs,
+  });
+
+  await importLedgerFromRunIfRequested({
+    importRunId: input.importRunId,
+    projectName: input.projectName,
+    repoPath: input.repoPath,
+    tasksRootAbs: input.tasksRootAbs,
+    taskCatalog: input.taskCatalog,
+    paths: input.paths,
+    orchLog: input.orchLog,
+  });
+
+  await maybeImportLedgerFromArchiveRuns({
+    reuseCompleted: input.reuseCompleted,
+    importRunId: input.importRunId,
+    tasks: input.tasks,
+    taskCatalog: input.taskCatalog,
+    projectName: input.projectName,
+    repoPath: input.repoPath,
+    tasksRootAbs: input.tasksRootAbs,
+    paths: input.paths,
+    orchLog: input.orchLog,
+    ledgerRuntime,
+  });
+
+  await seedRunFromLedgerIfNeeded({
+    reuseCompleted: input.reuseCompleted,
+    isResume: input.isResume,
+    hadExistingState: input.hadExistingState,
+    tasks: input.tasks,
+    state: input.state,
+    stateStore: input.stateStore,
+    repoPath: input.repoPath,
+    vcs: input.vcs,
+    orchLog: input.orchLog,
+    ledgerRuntime,
+  });
+
+  return ledgerRuntime;
+}
+
+// =============================================================================
+// RUN INIT HELPERS
+// =============================================================================
+
+type RunStateInitInput = {
+  projectName: string;
+  runId: string;
+  repoPath: string;
+  config: ProjectConfig;
+  isResume: boolean;
+  runResumeReason: string;
+  controlPlaneConfig: ControlPlaneRunConfig;
+  stateStore: StateStore;
+  orchLog: JsonlLogger;
+  plannedBatches: BatchPlanEntry[];
+  vcs: Vcs;
+  closeValidationPipeline: () => void;
+};
+
+type RunStateInitResult =
+  | {
+      earlyResult: RunResult;
+    }
+  | {
+      state: RunState;
+      hadExistingState: boolean;
+      controlPlaneSnapshot: ControlPlaneSnapshot | undefined;
+      controlPlaneConfig: ControlPlaneRunConfig;
+    };
+
+type RunStateLoadResult =
+  | {
+      earlyResult: RunResult;
+    }
+  | {
+      state: RunState | null;
+      hadExistingState: boolean;
+    };
+
+async function loadRunStateForInit(input: RunStateInitInput): Promise<RunStateLoadResult> {
+  const hadExistingState = await input.stateStore.exists();
+  if (!hadExistingState) {
+    if (input.isResume) {
+      logOrchestratorEvent(input.orchLog, "run.resume.blocked", { reason: "state_missing" });
+      input.orchLog.close();
+      throw new Error(`Cannot resume run ${input.runId}: state file not found.`);
+    }
+
+    return { state: null, hadExistingState: false };
+  }
+
+  const state = await input.stateStore.load();
+  const canResume = state.status === "running" || (input.isResume && state.status === "paused");
+  if (!canResume) {
+    logRunResume(input.orchLog, { status: state.status, reason: input.runResumeReason });
+    logOrchestratorEvent(input.orchLog, "run.resume.blocked", { reason: "state_not_running" });
+    input.closeValidationPipeline();
+    input.orchLog.close();
+    return {
+      earlyResult: {
+        runId: input.runId,
+        state,
+        plan: input.plannedBatches,
+      },
+    };
+  }
+
+  if (state.status === "paused" && input.isResume) {
+    state.status = "running";
+    await input.stateStore.save(state);
+  }
+
+  return { state, hadExistingState: true };
+}
+
+async function initializeRunStateAndSnapshot(
+  input: RunStateInitInput,
+): Promise<RunStateInitResult> {
+  await input.vcs.ensureCleanWorkingTree(input.repoPath);
+  await input.vcs.checkoutOrCreateBranch(input.repoPath, input.config.main_branch);
+
+  const stateResult = await loadRunStateForInit(input);
+  if ("earlyResult" in stateResult) return stateResult;
+
+  const hadExistingState = stateResult.hadExistingState;
+  let state = stateResult.state;
+  let controlPlaneSnapshot: ControlPlaneSnapshot | undefined = state?.control_plane;
+  const snapshotEnabled = controlPlaneSnapshot?.enabled ?? input.controlPlaneConfig.enabled;
+  if (!controlPlaneSnapshot?.base_sha) {
+    const baseSha = await input.vcs.resolveRunBaseSha(input.repoPath, input.config.main_branch);
+    controlPlaneSnapshot = {
+      enabled: snapshotEnabled,
+      base_sha: baseSha,
+    };
+
+    if (hadExistingState && state) {
+      state.control_plane = controlPlaneSnapshot;
+      await input.stateStore.save(state);
+    } else {
+      state = createRunState({
+        runId: input.runId,
+        project: input.projectName,
+        repoPath: input.repoPath,
+        mainBranch: input.config.main_branch,
+        taskIds: [],
+        controlPlane: controlPlaneSnapshot,
+      });
+      await input.stateStore.save(state);
+    }
+  } else if (!hadExistingState) {
+    state = createRunState({
+      runId: input.runId,
+      project: input.projectName,
+      repoPath: input.repoPath,
+      mainBranch: input.config.main_branch,
+      taskIds: [],
+      controlPlane: controlPlaneSnapshot,
+    });
+    await input.stateStore.save(state);
+  }
+
+  if (shouldBuildControlPlaneSnapshot(controlPlaneSnapshot)) {
+    controlPlaneSnapshot = await buildControlPlaneSnapshot({
+      repoPath: input.repoPath,
+      baseSha: controlPlaneSnapshot.base_sha,
+      enabled: true,
+    });
+    state.control_plane = controlPlaneSnapshot;
+    await input.stateStore.save(state);
+  }
+
+  let controlPlaneConfig = input.controlPlaneConfig;
+  if (controlPlaneSnapshot && controlPlaneSnapshot.enabled !== controlPlaneConfig.enabled) {
+    controlPlaneConfig = {
+      ...controlPlaneConfig,
+      enabled: controlPlaneSnapshot.enabled,
+    };
+  }
+
+  return {
+    state: state as RunState,
+    hadExistingState,
+    controlPlaneSnapshot,
+    controlPlaneConfig,
+  };
+}
+
+type TaskLoadInput = {
+  repoPath: string;
+  config: ProjectConfig;
+  options: RunOptions;
+  knownResources: string[];
+  orchLog: JsonlLogger;
+  runId: string;
+  state: RunState;
+  plannedBatches: BatchPlanEntry[];
+  closeValidationPipeline: () => void;
+};
+
+type TaskLoadResult =
+  | {
+      earlyResult: RunResult;
+    }
+  | {
+      tasks: TaskSpec[];
+      taskCatalog: TaskSpec[];
+    };
+
+async function loadTasksForRun(input: TaskLoadInput): Promise<TaskLoadResult> {
+  let tasks: TaskSpec[];
+  let taskCatalog: TaskSpec[];
+  try {
+    const res = await loadTaskSpecs(input.repoPath, input.config.tasks_dir, {
+      knownResources: input.knownResources,
+    });
+    tasks = res.tasks;
+    taskCatalog = res.tasks;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    logOrchestratorEvent(input.orchLog, "run.tasks_invalid", { message });
+    input.closeValidationPipeline();
+    input.orchLog.close();
+    throw error;
+  }
+
+  if (input.options.tasks && input.options.tasks.length > 0) {
+    const allow = new Set(input.options.tasks);
+    tasks = tasks.filter((t) => allow.has(t.manifest.id));
+  }
+
+  if (tasks.length === 0) {
+    logOrchestratorEvent(input.orchLog, "run.no_tasks");
+    input.closeValidationPipeline();
+    input.orchLog.close();
+    return {
+      earlyResult: {
+        runId: input.runId,
+        state: input.state,
+        plan: input.plannedBatches,
+      },
+    };
+  }
+
+  return { tasks, taskCatalog };
+}
+
+
+// =============================================================================
+// RUN LOOP
+// =============================================================================
+
+type RunLoopContext = {
+  projectName: string;
+  runId: string;
+  options: RunOptions;
+  repoPath: string;
+  state: RunState;
+  stateStore: StateStore;
+  orchLog: JsonlLogger;
+  vcs: Vcs;
+  tasks: TaskSpec[];
+  plannedBatches: BatchPlanEntry[];
+  maxParallel: number;
+  lockMode: ControlPlaneLockMode;
+  lockResolver: LockResolver;
+  reuseCompleted: boolean;
+  taskEngine: ReturnType<typeof createTaskEngine>;
+  batchEngine: ReturnType<typeof createBatchEngine>;
+  buildStatusSets: (state: RunState) => { completed: Set<string>; failed: Set<string> };
+  ensureLedgerContext: () => Promise<LedgerContext>;
+  ledgerEligibilityCache: Map<string, LedgerEligibilityResult>;
+  ledgerReachabilityCache: Map<string, boolean>;
+  ledgerFingerprintCache: Map<string, string>;
+  externalDepsLogged: Set<string>;
+  stopIfRequested: () => Promise<RunResult | null>;
+};
+
+type RunLoopOutcome =
+  | { type: "continue" }
+  | { type: "break" }
+  | { type: "stop"; result: RunResult };
+
+async function executeRunLoop(input: RunLoopContext): Promise<RunResult | null> {
+  const continueLoop = (): RunLoopOutcome => ({ type: "continue" });
+  const breakLoop = (): RunLoopOutcome => ({ type: "break" });
+
+  const findRunningBatch = (): (typeof input.state.batches)[number] | null => {
+    const activeBatch = input.state.batches.find((b) => b.status === "running");
+    if (activeBatch) return activeBatch;
+
+    const runningTaskEntry = Object.entries(input.state.tasks).find(([, t]) => t.status === "running");
+    if (!runningTaskEntry) return null;
+
+    const batchId = input.state.tasks[runningTaskEntry[0]].batch_id;
+    if (batchId === undefined) return null;
+
+    return input.state.batches.find((b) => b.batch_id === batchId) ?? null;
+  };
+
+  const handleRunningBatch = async (
+    runningBatch: (typeof input.state.batches)[number],
+  ): Promise<RunLoopOutcome> => {
+    const batchTasks = input.tasks.filter((t) => runningBatch.tasks.includes(t.manifest.id));
+    if (batchTasks.length === 0) {
+      input.state.status = "failed";
+      await input.stateStore.save(input.state);
+      logOrchestratorEvent(input.orchLog, "run.stop", {
+        reason: "running_batch_missing_tasks",
+      });
+      return breakLoop();
+    }
+
+    const runningTasks = batchTasks.filter(
+      (t) => input.state.tasks[t.manifest.id]?.status === "running",
+    );
+    const results = await Promise.all(
+      runningTasks.map((task) => input.taskEngine.resumeRunningTask(task)),
+    );
+    const stopReason = await input.batchEngine.finalizeBatch({
+      batchId: runningBatch.batch_id,
+      batchTasks,
+      results,
+    });
+
+    if (stopReason) {
+      logOrchestratorEvent(input.orchLog, "run.stop", { reason: stopReason });
+      return breakLoop();
+    }
+
+    return continueLoop();
+  };
+
+  const handlePendingTasks = async (pendingTasks: TaskSpec[]): Promise<RunLoopOutcome> => {
+    const completed = input.buildStatusSets(input.state).completed;
+    const externalCompletedDeps = await resolveExternalDepsForPending({
+      pendingTasks,
+      reuseCompleted: input.reuseCompleted,
+      ensureLedgerContext: input.ensureLedgerContext,
+      state: input.state,
+      repoPath: input.repoPath,
+      vcs: input.vcs,
+      orchLog: input.orchLog,
+      externalDepsLogged: input.externalDepsLogged,
+      eligibilityCache: input.ledgerEligibilityCache,
+      reachabilityCache: input.ledgerReachabilityCache,
+      fingerprintCache: input.ledgerFingerprintCache,
+    });
+
+    const effectiveCompleted = new Set([...completed, ...externalCompletedDeps]);
+    const ready = topologicalReady(pendingTasks, effectiveCompleted);
+    if (ready.length === 0) {
+      return await handleNoReadyTasks({
+        pendingTasks,
+        state: input.state,
+        stateStore: input.stateStore,
+        orchLog: input.orchLog,
+        projectName: input.projectName,
+        runId: input.runId,
+        completed: effectiveCompleted,
+      });
+    }
+
+    return await handleReadyBatch({
+      ready,
+      maxParallel: input.maxParallel,
+      lockResolver: input.lockResolver,
+      lockMode: input.lockMode,
+      options: input.options,
+      state: input.state,
+      stateStore: input.stateStore,
+      orchLog: input.orchLog,
+      plannedBatches: input.plannedBatches,
+      taskEngine: input.taskEngine,
+      batchEngine: input.batchEngine,
+    });
+  };
+
+  while (true) {
+    const stopResult = await input.stopIfRequested();
+    if (stopResult) return stopResult;
+
+    const runningBatch = findRunningBatch();
+    if (runningBatch) {
+      const outcome = await handleRunningBatch(runningBatch);
+      if (outcome.type === "stop") return outcome.result;
+      if (outcome.type === "break") break;
+      continue;
+    }
+
+    const pendingTasks = input.tasks.filter(
+      (t) => input.state.tasks[t.manifest.id]?.status === "pending",
+    );
+    if (pendingTasks.length === 0) break;
+
+    const outcome = await handlePendingTasks(pendingTasks);
+    if (outcome.type === "stop") return outcome.result;
+    if (outcome.type === "break") break;
+  }
+
+  return null;
+}
+
+async function resolveExternalDepsForPending(input: {
+  pendingTasks: TaskSpec[];
+  reuseCompleted: boolean;
+  ensureLedgerContext: () => Promise<LedgerContext>;
+  state: RunState;
+  repoPath: string;
+  vcs: Vcs;
+  orchLog: JsonlLogger;
+  externalDepsLogged: Set<string>;
+  eligibilityCache: Map<string, LedgerEligibilityResult>;
+  reachabilityCache: Map<string, boolean>;
+  fingerprintCache: Map<string, string>;
+}): Promise<Set<string>> {
+  if (!input.reuseCompleted) {
+    return new Set<string>();
+  }
+
+  const ledgerContext = await input.ensureLedgerContext();
+  const externalDeps = await resolveExternalCompletedDeps({
+    pendingTasks: input.pendingTasks,
+    state: input.state,
+    ledger: ledgerContext.ledger,
+    repoPath: input.repoPath,
+    headSha: ledgerContext.headSha,
+    vcs: input.vcs,
+    taskFileIndex: ledgerContext.taskFileIndex,
+    eligibilityCache: input.eligibilityCache,
+    reachabilityCache: input.reachabilityCache,
+    fingerprintCache: input.fingerprintCache,
+  });
+
+  for (const [taskId, deps] of externalDeps.satisfiedByTask.entries()) {
+    if (input.externalDepsLogged.has(taskId)) continue;
+    input.externalDepsLogged.add(taskId);
+    logOrchestratorEvent(input.orchLog, "deps.external_satisfied", {
+      task_id: taskId,
+      deps: deps.map((dep) => ({
+        dep_id: dep.depId,
+        merge_commit: dep.mergeCommit ?? null,
+        ledger_run_id: dep.runId ?? null,
+        completed_at: dep.completedAt ?? null,
+      })),
+    });
+  }
+
+  return externalDeps.externalCompleted;
+}
+
+async function handleNoReadyTasks(input: {
+  pendingTasks: TaskSpec[];
+  state: RunState;
+  stateStore: StateStore;
+  orchLog: JsonlLogger;
+  projectName: string;
+  runId: string;
+  completed: Set<string>;
+}): Promise<RunLoopOutcome> {
+  const dependencyIssues = collectDependencyIssues(input.pendingTasks, input.state, input.completed);
+  if (
+    dependencyIssues.blocked.length > 0 &&
+    dependencyIssues.missing.length === 0 &&
+    dependencyIssues.pending.length === 0
+  ) {
+    const blockedTasksPayload = dependencyIssues.blocked.map((entry) => ({
+      task_id: entry.taskId,
+      unmet_deps: entry.unmetDeps.map((dep) => ({
+        dep_id: dep.depId,
+        dep_status: dep.depStatus,
+        ...(dep.depLastError ? { dep_last_error: dep.depLastError } : {}),
+      })),
+    }));
+
+    logOrchestratorEvent(input.orchLog, "run.paused", {
+      reason: "blocked_dependencies",
+      message:
+        "No dependency-satisfied tasks remain; pending tasks are blocked by tasks requiring attention.",
+      pending_task_count: input.pendingTasks.length,
+      blocked_task_count: blockedTasksPayload.length,
+      blocked_tasks: blockedTasksPayload,
+      resume_command: `mycelium resume --project ${input.projectName} --run-id ${input.runId}`,
+    });
+    input.state.status = "paused";
+    await input.stateStore.save(input.state);
+    return { type: "break" };
+  }
+
+  if (dependencyIssues.missing.length > 0) {
+    const missingPayload = dependencyIssues.missing.map((entry) => ({
+      task_id: entry.taskId,
+      missing_deps: entry.missingDeps,
+    }));
+    logOrchestratorEvent(input.orchLog, "run.blocked", {
+      reason: "missing_dependencies",
+      message:
+        "No dependency-satisfied tasks remain; some dependencies are missing from this run.",
+      pending_task_count: input.pendingTasks.length,
+      blocked_task_count: missingPayload.length,
+      blocked_tasks: missingPayload,
+    });
+    input.state.status = "failed";
+    await input.stateStore.save(input.state);
+    return { type: "break" };
+  }
+
+  const pendingPayload = dependencyIssues.pending.map((entry) => ({
+    task_id: entry.taskId,
+    pending_deps: entry.pendingDeps,
+  }));
+  logOrchestratorEvent(input.orchLog, "run.blocked", {
+    reason: "true_deadlock",
+    message:
+      "No dependency-satisfied tasks remain; pending tasks depend on each other or unresolved tasks.",
+    pending_task_count: input.pendingTasks.length,
+    blocked_task_count: pendingPayload.length,
+    blocked_tasks: pendingPayload,
+  });
+  input.state.status = "failed";
+  await input.stateStore.save(input.state);
+  return { type: "break" };
+}
+
+async function handleReadyBatch(input: {
+  ready: TaskSpec[];
+  maxParallel: number;
+  lockResolver: LockResolver;
+  lockMode: ControlPlaneLockMode;
+  options: RunOptions;
+  state: RunState;
+  stateStore: StateStore;
+  orchLog: JsonlLogger;
+  plannedBatches: BatchPlanEntry[];
+  taskEngine: ReturnType<typeof createTaskEngine>;
+  batchEngine: ReturnType<typeof createBatchEngine>;
+}): Promise<RunLoopOutcome> {
+  let batchId = Math.max(0, ...input.state.batches.map((b) => b.batch_id));
+  batchId += 1;
+  const { batch } = buildGreedyBatch(input.ready, input.maxParallel, input.lockResolver);
+
+  const batchTaskIds = batch.tasks.map((task) => task.manifest.id);
+  input.plannedBatches.push({ batchId, taskIds: batchTaskIds, locks: batch.locks });
+  const startedAt = isoNow();
+  startBatch(input.state, { batchId, taskIds: batchTaskIds, locks: batch.locks, now: startedAt });
+  await input.stateStore.save(input.state);
+
+  logOrchestratorEvent(input.orchLog, "batch.start", {
+    batch_id: batchId,
+    tasks: batchTaskIds,
+    locks: batch.locks,
+    lock_mode: input.lockMode,
+  });
+
+  if (input.options.dryRun) {
+    logOrchestratorEvent(input.orchLog, "batch.dry_run", {
+      batch_id: batchId,
+      tasks: batchTaskIds,
+    });
+    for (const task of batch.tasks) {
+      input.state.tasks[task.manifest.id].status = "skipped";
+      input.state.tasks[task.manifest.id].completed_at = isoNow();
+    }
+    input.state.batches[input.state.batches.length - 1].status = "complete";
+    input.state.batches[input.state.batches.length - 1].completed_at = isoNow();
+    await input.stateStore.save(input.state);
+    return { type: "continue" };
+  }
+
+  const results = await Promise.all(
+    batch.tasks.map((task) => input.taskEngine.runTaskAttempt(task)),
+  );
+
+  const stopReason = await input.batchEngine.finalizeBatch({
+    batchId,
+    batchTasks: batch.tasks,
+    results,
+  });
+
+  if (stopReason) {
+    logOrchestratorEvent(input.orchLog, "run.stop", { reason: stopReason });
+    return { type: "break" };
+  }
+
+  return { type: "continue" };
+}
+
+type RunFinalizationInput = {
+  projectName: string;
+  runId: string;
+  repoPath: string;
+  state: RunState;
+  stateStore: StateStore;
+  orchLog: JsonlLogger;
+  plannedBatches: BatchPlanEntry[];
+  lockMode: ControlPlaneLockMode;
+  scopeComplianceMode: ControlPlaneScopeMode;
+  controlPlaneEnabled: boolean;
+  runMetrics: RunMetrics;
+  stopIfRequested: () => Promise<RunResult | null>;
+  closeValidationPipeline: () => void;
+};
+
+async function finalizeRun(input: RunFinalizationInput): Promise<RunResult> {
+  const stopAfterLoop = await input.stopIfRequested();
+  if (stopAfterLoop) return stopAfterLoop;
+
+  if (input.state.status === "running") {
+    const blockedTasks = summarizeBlockedTasks(input.state.tasks);
+    if (blockedTasks.length > 0) {
+      const blockedTasksPayload = blockedTasks.map((task) => ({
+        task_id: task.taskId,
+        status: task.status,
+        ...(task.lastError ? { last_error: task.lastError } : {}),
+      }));
+      input.state.status = "paused";
+      logOrchestratorEvent(input.orchLog, "run.paused", {
+        reason: "blocked_tasks",
+        message: "Run paused with tasks requiring attention.",
+        blocked_task_count: blockedTasksPayload.length,
+        blocked_tasks: blockedTasksPayload,
+        resume_command: `mycelium resume --project ${input.projectName} --run-id ${input.runId}`,
+      });
+    } else {
+      input.state.status = "complete";
+    }
+  }
+  await input.stateStore.save(input.state);
+
+  const runSummary = buildRunSummary({
+    runId: input.runId,
+    projectName: input.projectName,
+    state: input.state,
+    lockMode: input.lockMode,
+    scopeMode: input.scopeComplianceMode,
+    controlPlaneEnabled: input.controlPlaneEnabled,
+    metrics: input.runMetrics,
+  });
+  const runSummaryPath = runSummaryReportPath(input.repoPath, input.runId);
+  try {
+    await writeJsonFile(runSummaryPath, runSummary);
+    logOrchestratorEvent(input.orchLog, "run.summary", {
+      status: input.state.status,
+      report_path: runSummaryPath,
+      metrics: runSummary.metrics,
+    });
+  } catch (error) {
+    logOrchestratorEvent(input.orchLog, "run.summary.error", {
+      status: input.state.status,
+      report_path: runSummaryPath,
+      message: formatErrorMessage(error),
+    });
+  }
+
+  logOrchestratorEvent(input.orchLog, "run.complete", { status: input.state.status });
+  input.closeValidationPipeline();
+  input.orchLog.close();
+
+  return { runId: input.runId, state: input.state, plan: input.plannedBatches };
+}
+
 
 // =============================================================================
 // RUN STOP TYPES
