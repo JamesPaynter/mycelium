@@ -1,8 +1,8 @@
 import type { RunLogEvent } from "../../../core/run-logs.js";
 import type { RunState } from "../../../core/state.js";
 
-import type { TaskCounts, TimelineEntry, TimelineResult } from "./types.js";
 import { durationLabel, parseDurationMs } from "./time.js";
+import type { TaskCounts, TimelineEntry, TimelineResult } from "./types.js";
 import { compact, numberFrom, stringFrom } from "./utils.js";
 
 // =============================================================================

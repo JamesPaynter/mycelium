@@ -3,8 +3,8 @@ import path from "node:path";
 
 import { findTaskLogDir } from "../../../core/log-query.js";
 import { loadRunEvents, readDoctorLogSnippet } from "../../../core/run-logs.js";
-import type { TaskState } from "../../../core/state.js";
 import { loadRunStateForProject } from "../../../core/state-store.js";
+import type { TaskState } from "../../../core/state.js";
 
 import type { LogsCommandContext } from "./index.js";
 

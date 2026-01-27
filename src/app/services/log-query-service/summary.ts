@@ -6,8 +6,8 @@ import type { LlmClient } from "../../../llm/client.js";
 import { MockLlmClient, isMockLlmEnabled } from "../../../llm/mock.js";
 import { OpenAiClient } from "../../../llm/openai.js";
 
-import type { CodexTurnInfo, LlmSummaryResult, LogSummaryInput, ValidatorSummaryRow } from "./types.js";
 import { parseDurationMs, formatDuration, formatTimestamp } from "./time.js";
+import type { CodexTurnInfo, LlmSummaryResult, LogSummaryInput, ValidatorSummaryRow } from "./types.js";
 import { compact, numberFrom, relativeToRun } from "./utils.js";
 import {
   findDoctorValidatorReport,
