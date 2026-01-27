@@ -5,9 +5,7 @@ import fse from "fs-extra";
 import type { PathsContext } from "../../../core/paths.js";
 import { runLogsDir } from "../../../core/paths.js";
 import type { ValidatorStatus } from "../../../core/state.js";
-import {
-  type ArchitectureValidationReport,
-} from "../../../validators/architecture-validator.js";
+import { type ArchitectureValidationReport } from "../../../validators/architecture-validator.js";
 import { type StyleValidationReport } from "../../../validators/style-validator.js";
 import { type TestValidationReport } from "../../../validators/test-validator.js";
 
@@ -133,7 +131,10 @@ export async function listValidatorReports(reportDir: string): Promise<string[]>
   return entries.filter((name) => name.toLowerCase().endsWith(".json"));
 }
 
-export async function findLatestReport(reportDir: string, before: string[]): Promise<string | null> {
+export async function findLatestReport(
+  reportDir: string,
+  before: string[],
+): Promise<string | null> {
   const exists = await fse.pathExists(reportDir);
   if (!exists) return null;
 

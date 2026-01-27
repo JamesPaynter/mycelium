@@ -13,7 +13,11 @@ import {
 } from "./logging.js";
 import { DOCTOR_PROMPT_LIMIT } from "./loop-constants.js";
 import { runVerificationCommand } from "./loop-io.js";
-import { buildCommandSummary, buildCommandsSummary, recordAttemptSummary } from "./loop-reporting.js";
+import {
+  buildCommandSummary,
+  buildCommandsSummary,
+  recordAttemptSummary,
+} from "./loop-reporting.js";
 
 // =============================================================================
 // VERIFICATION STEPS
@@ -252,7 +256,11 @@ export async function runDoctorStep(args: {
   if (doctorExitCode === 0) {
     args.log.log({ type: "doctor.pass", attempt: args.attempt });
     if (args.strictTddEnabled) {
-      args.log.log({ type: "tdd.stage.pass", attempt: args.attempt, payload: { stage: "B", mode: "strict" } });
+      args.log.log({
+        type: "tdd.stage.pass",
+        attempt: args.attempt,
+        payload: { stage: "B", mode: "strict" },
+      });
     }
     const summaryResult = await recordAttemptSummary({
       attempt: args.attempt,

@@ -25,7 +25,10 @@ function shouldBlockValidator(mode: ValidationResult["mode"], status: ValidatorS
   return status === "fail" || status === "error";
 }
 
-function buildBlockReason(validator: ValidationResult["validator"], summary: string | null): string {
+function buildBlockReason(
+  validator: ValidationResult["validator"],
+  summary: string | null,
+): string {
   const label = VALIDATOR_LABELS[validator] ?? "Validator";
   if (summary && summary.trim().length > 0) {
     return `${label} validator blocked merge: ${summary}`;

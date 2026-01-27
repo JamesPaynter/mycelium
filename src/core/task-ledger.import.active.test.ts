@@ -5,12 +5,11 @@ import { describe, expect, it } from "vitest";
 
 import { createPathsContext } from "./paths.js";
 import { createRunState } from "./state.js";
+import { computeTaskFingerprint, importLedgerFromRunState, loadTaskLedger } from "./task-ledger.js";
 import {
-  computeTaskFingerprint,
-  importLedgerFromRunState,
-  loadTaskLedger,
-} from "./task-ledger.js";
-import { makeTemporaryDirectory, registerTaskLedgerTempCleanup } from "./task-ledger.test-helpers.js";
+  makeTemporaryDirectory,
+  registerTaskLedgerTempCleanup,
+} from "./task-ledger.test-helpers.js";
 import type { TaskSpec } from "./task-manifest.js";
 
 registerTaskLedgerTempCleanup();

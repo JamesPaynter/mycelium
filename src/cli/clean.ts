@@ -87,10 +87,7 @@ function logEmptyPlan(plan: CleanupPlan, removeContainers: boolean): void {
   console.log(`Nothing to clean for run ${plan.runId}.${suffix}`);
 }
 
-async function confirmCleanupOrAbort(
-  runId: string,
-  opts: CleanOptions,
-): Promise<boolean> {
+async function confirmCleanupOrAbort(runId: string, opts: CleanOptions): Promise<boolean> {
   if (opts.force ?? false) {
     return true;
   }

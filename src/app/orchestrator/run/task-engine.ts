@@ -7,7 +7,7 @@
 
 import type { DerivedScopeReport } from "../../../control-plane/integration/derived-scope.js";
 import type { PolicyDecision } from "../../../control-plane/policy/types.js";
-import type { ProjectConfig } from "../../../core/config.js";
+import type { ProjectConfig, TaskFailurePolicy } from "../../../core/config.js";
 import { JsonlLogger } from "../../../core/logger.js";
 import type { PathsContext } from "../../../core/paths.js";
 import type { StateStore } from "../../../core/state-store.js";
@@ -84,12 +84,11 @@ export type TaskEngine = {
 // =============================================================================
 
 export function createTaskEngine(context: TaskEngineContext): TaskEngine {
-  const failurePolicy = context.config.task_failure_policy ?? "retry";
+  const failurePolicy: TaskFailurePolicy = context.config.task_failure_policy ?? "retry";
   return {
     buildReadyForValidationSummaries: (batchTasks) =>
       buildReadyForValidationSummaries(context, batchTasks),
-    buildValidatedTaskSummaries: (batchTasks) =>
-      buildValidatedTaskSummaries(context, batchTasks),
+    buildValidatedTaskSummaries: (batchTasks) => buildValidatedTaskSummaries(context, batchTasks),
     ensureTaskActiveStage: (task) => ensureTaskActiveStage(context, task),
     resumeRunningTask: (task) => resumeRunningTask(context, failurePolicy, task),
     runTaskAttempt: (task) => runTaskAttempt(context, failurePolicy, task),

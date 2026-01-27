@@ -9,9 +9,7 @@ import type { ProjectConfig } from "../../../core/config.js";
 import { JsonlLogger } from "../../../core/logger.js";
 import type { PathsContext } from "../../../core/paths.js";
 import { validatorLogPath } from "../../../core/paths.js";
-import {
-  VALIDATOR_NAME as ARCHITECTURE_VALIDATOR_NAME,
-} from "../../../validators/architecture-validator.js";
+import { VALIDATOR_NAME as ARCHITECTURE_VALIDATOR_NAME } from "../../../validators/architecture-validator.js";
 import { VALIDATOR_NAME as DOCTOR_VALIDATOR_NAME } from "../../../validators/doctor-validator.js";
 import { VALIDATOR_NAME as STYLE_VALIDATOR_NAME } from "../../../validators/style-validator.js";
 import { VALIDATOR_NAME as TEST_VALIDATOR_NAME } from "../../../validators/test-validator.js";

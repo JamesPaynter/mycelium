@@ -51,54 +51,123 @@ export async function extractTypeScriptImportDependencyEdges(
     return [];
   }
 
-  const edges: ControlPlaneDependencyEdge[] = [];
   const seen = new Set<string>();
   const workspacePackagesByName = indexWorkspacePackagesByName(workspacePackages);
+  const edges: ControlPlaneDependencyEdge[] = [];
 
   for (const component of options.components) {
-    const roots = component.roots.map((root) => path.join(options.repoRoot, root));
-    const files = await findTypeScriptFiles(roots);
-
-    for (const filePath of files) {
-      const source = await fs.readFile(filePath, "utf8");
-      const specifiers = extractImportSpecifiers(source);
-
-      for (const specifier of specifiers) {
-        if (shouldIgnoreSpecifier(specifier)) {
-          continue;
-        }
-
-        const matches = resolveWorkspaceTargets(specifier, workspacePackagesByName);
-        if (matches.length === 0) {
-          continue;
-        }
-
-        const confidence = matches.length > 1 ? "low" : "medium";
-        for (const targetId of matches) {
-          if (targetId === component.id) {
-            continue;
-          }
-
-          const edge: ControlPlaneDependencyEdge = {
-            from_component: component.id,
-            to_component: targetId,
-            kind: "ts-import",
-            confidence,
-          };
-
-          const key = `${edge.from_component}::${edge.to_component}::${edge.kind}::${edge.confidence}`;
-          if (seen.has(key)) {
-            continue;
-          }
-
-          edges.push(edge);
-          seen.add(key);
-        }
-      }
-    }
+    const componentEdges = await collectEdgesForComponent(
+      options.repoRoot,
+      component,
+      workspacePackagesByName,
+      seen,
+    );
+    edges.push(...componentEdges);
   }
 
   return edges;
+}
+
+// =============================================================================
+// EDGE COLLECTION
+// =============================================================================
+
+async function collectEdgesForComponent(
+  repoRoot: string,
+  component: ControlPlaneComponent,
+  workspacePackagesByName: Map<string, string[]>,
+  seen: Set<string>,
+): Promise<ControlPlaneDependencyEdge[]> {
+  const roots = component.roots.map((root) => path.join(repoRoot, root));
+  const files = await findTypeScriptFiles(roots);
+  const edges: ControlPlaneDependencyEdge[] = [];
+  for (const filePath of files) {
+    const fileEdges = await collectEdgesForFile(
+      filePath,
+      component.id,
+      workspacePackagesByName,
+      seen,
+    );
+    edges.push(...fileEdges);
+  }
+
+  return edges;
+}
+
+async function collectEdgesForFile(
+  filePath: string,
+  componentId: string,
+  workspacePackagesByName: Map<string, string[]>,
+  seen: Set<string>,
+): Promise<ControlPlaneDependencyEdge[]> {
+  const source = await fs.readFile(filePath, "utf8");
+  const specifiers = extractImportSpecifiers(source);
+  const edges: ControlPlaneDependencyEdge[] = [];
+  for (const specifier of specifiers) {
+    appendEdgesForSpecifier(specifier, componentId, workspacePackagesByName, seen, edges);
+  }
+
+  return edges;
+}
+
+function appendEdgesForSpecifier(
+  specifier: string,
+  componentId: string,
+  workspacePackagesByName: Map<string, string[]>,
+  seen: Set<string>,
+  edges: ControlPlaneDependencyEdge[],
+): void {
+  if (shouldIgnoreSpecifier(specifier)) {
+    return;
+  }
+
+  const matches = resolveWorkspaceTargets(specifier, workspacePackagesByName);
+  if (matches.length === 0) {
+    return;
+  }
+  const confidence = matches.length > 1 ? "low" : "medium";
+  for (const targetId of matches) {
+    const edge = buildDependencyEdge(componentId, targetId, confidence);
+    if (!edge) {
+      continue;
+    }
+
+    if (!registerEdge(edge, seen)) {
+      continue;
+    }
+    edges.push(edge);
+  }
+}
+
+function buildDependencyEdge(
+  fromComponentId: string,
+  toComponentId: string,
+  confidence: ControlPlaneDependencyEdge["confidence"],
+): ControlPlaneDependencyEdge | null {
+  if (toComponentId === fromComponentId) {
+    return null;
+  }
+
+  return {
+    from_component: fromComponentId,
+    to_component: toComponentId,
+    kind: "ts-import",
+    confidence,
+  };
+}
+
+function registerEdge(edge: ControlPlaneDependencyEdge, seen: Set<string>): boolean {
+  const key = buildEdgeKey(edge);
+  if (seen.has(key)) {
+    return false;
+  }
+
+  seen.add(key);
+  return true;
+}
+
+function buildEdgeKey(edge: ControlPlaneDependencyEdge): string {
+  return `${edge.from_component}::${edge.to_component}::${edge.kind}::${edge.confidence}`;
 }
 
 // =============================================================================

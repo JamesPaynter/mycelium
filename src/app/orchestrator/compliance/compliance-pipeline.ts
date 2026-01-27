@@ -24,7 +24,7 @@ import type { PathsContext } from "../../../core/paths.js";
 import { taskComplianceReportPath } from "../../../core/paths.js";
 import { markTaskRescopeRequired, resetTaskToPending, type RunState } from "../../../core/state.js";
 import { resolveTaskManifestPath } from "../../../core/task-layout.js";
-import type { TaskManifest, TaskSpec } from "../../../core/task-manifest.js";
+import type { TaskSpec } from "../../../core/task-manifest.js";
 import { writeJsonFile } from "../../../core/utils.js";
 
 import {
@@ -33,9 +33,14 @@ import {
   logComplianceEvents,
   resolveCompliancePolicyForScope,
   resolveCompliancePolicyForTier,
+  type ComplianceRescopePlan,
+  type ComplianceScopeViolations,
 } from "./compliance-helpers.js";
 
-export { buildComplianceRescopePlan, resolveCompliancePolicyForTier } from "./compliance-helpers.js";
+export {
+  buildComplianceRescopePlan,
+  resolveCompliancePolicyForTier,
+} from "./compliance-helpers.js";
 export type { ComplianceRescopePlan, ComplianceScopeViolations } from "./compliance-helpers.js";
 
 // =============================================================================
@@ -92,7 +97,6 @@ export type CompliancePipelineOutcome = {
   scopeViolations: ComplianceScopeViolations;
   rescope: ComplianceRescopeOutcome;
 };
-
 
 // =============================================================================
 // COMPLIANCE PIPELINE

@@ -5,7 +5,7 @@
  * Usage: new DockerWorkerRunner(...).runAttempt(...)
  */
 
-import { logOrchestratorEvent } from "../../../core/logger.js";
+import { logOrchestratorEvent, type JsonObject } from "../../../core/logger.js";
 import type { ContainerSpec } from "../../../docker/docker.js";
 import { buildWorkerImage } from "../../../docker/image.js";
 import { DockerManager } from "../../../docker/manager.js";
@@ -19,10 +19,7 @@ import {
   CONTAINER_WORKDIR,
   findTaskContainer,
 } from "./docker-worker-helpers.js";
-import {
-  cleanupTaskContainer,
-  stopRunContainers,
-} from "./docker-worker-runner-cleanup.js";
+import { cleanupTaskContainer, stopRunContainers } from "./docker-worker-runner-cleanup.js";
 import type {
   WorkerCleanupInput,
   WorkerPrepareInput,

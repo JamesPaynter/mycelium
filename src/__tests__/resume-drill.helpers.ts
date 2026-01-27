@@ -252,9 +252,9 @@ export async function cleanupRunContainers(projectName: string, runId: string): 
   }
 }
 
-export async function hasThreadResumeEvent(
-  state: { tasks: Record<string, { logs_dir?: string | null }> },
-): Promise<boolean> {
+export async function hasThreadResumeEvent(state: {
+  tasks: Record<string, { logs_dir?: string | null }>;
+}): Promise<boolean> {
   for (const task of Object.values(state.tasks)) {
     if (!task.logs_dir) continue;
 

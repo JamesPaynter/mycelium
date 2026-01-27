@@ -4,11 +4,7 @@ import fse from "fs-extra";
 
 import { loadWorkerState, type WorkerCheckpoint } from "../../../../worker/state.js";
 import { JsonlLogger, logOrchestratorEvent } from "../../../core/logger.js";
-import {
-  taskEventsLogPath,
-  taskLogsDir,
-  taskWorkspaceDir,
-} from "../../../core/paths.js";
+import { taskEventsLogPath, taskLogsDir, taskWorkspaceDir } from "../../../core/paths.js";
 import type { CheckpointCommit } from "../../../core/state.js";
 import { moveTaskDir } from "../../../core/task-layout.js";
 import type { TaskSpec } from "../../../core/task-manifest.js";

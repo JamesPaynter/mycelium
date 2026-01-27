@@ -1,3 +1,4 @@
+import type { TaskFailurePolicy } from "../../../core/config.js";
 import { logTaskReset } from "../../../core/logger.js";
 import type { TaskSpec } from "../../../core/task-manifest.js";
 import type { WorkerRunnerResult } from "../workers/worker-runner.js";
@@ -13,7 +14,7 @@ import type { TaskEngineContext, TaskRunResult } from "./task-engine.js";
 
 export async function resumeRunningTask(
   context: TaskEngineContext,
-  failurePolicy: string,
+  failurePolicy: TaskFailurePolicy,
   task: TaskSpec,
 ): Promise<TaskRunResult> {
   const taskId = task.manifest.id;

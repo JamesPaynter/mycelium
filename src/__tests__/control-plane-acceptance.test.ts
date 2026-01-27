@@ -1,7 +1,10 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { buildControlPlaneModel } from "../control-plane/model/build.js";
-import type { ControlPlaneComponent, ControlPlaneDependencyEdge } from "../control-plane/model/schema.js";
+import type {
+  ControlPlaneComponent,
+  ControlPlaneDependencyEdge,
+} from "../control-plane/model/schema.js";
 
 import {
   cleanupTempDirs,

@@ -1,9 +1,5 @@
-import {
-  logOrchestratorEvent,
-} from "../../../core/logger.js";
-import {
-  validatorReportPath,
-} from "../../../core/paths.js";
+import { logOrchestratorEvent } from "../../../core/logger.js";
+import { validatorReportPath } from "../../../core/paths.js";
 import {
   type ArchitectureValidationReport,
   VALIDATOR_ID as ARCHITECTURE_VALIDATOR_ID,
@@ -28,7 +24,11 @@ import {
   summarizeStyleValidatorResult,
   summarizeTestValidatorResult,
 } from "./validation-helpers.js";
-import type { ValidationRunnerContext, ValidationStepOutcome, ValidationTaskContext } from "./validation-runner-types.js";
+import type {
+  ValidationRunnerContext,
+  ValidationStepOutcome,
+  ValidationTaskContext,
+} from "./validation-runner-types.js";
 
 export async function runTaskValidation(
   context: ValidationRunnerContext,
@@ -110,7 +110,12 @@ export async function runTestValidation(
     validator: TEST_VALIDATOR_ID,
     status: summary.status,
     summary: summary.summary,
-    reportPath: relativeReportPath(context.projectName, context.runId, summary.reportPath, context.paths),
+    reportPath: relativeReportPath(
+      context.projectName,
+      context.runId,
+      summary.reportPath,
+      context.paths,
+    ),
     mode: context.validators.test.mode,
   });
 
@@ -164,7 +169,12 @@ export async function runStyleValidation(
     validator: STYLE_VALIDATOR_ID,
     status: summary.status,
     summary: summary.summary,
-    reportPath: relativeReportPath(context.projectName, context.runId, summary.reportPath, context.paths),
+    reportPath: relativeReportPath(
+      context.projectName,
+      context.runId,
+      summary.reportPath,
+      context.paths,
+    ),
     mode: context.validators.style.mode,
   });
 
@@ -218,7 +228,12 @@ export async function runArchitectureValidation(
     validator: ARCHITECTURE_VALIDATOR_ID,
     status: summary.status,
     summary: summary.summary,
-    reportPath: relativeReportPath(context.projectName, context.runId, summary.reportPath, context.paths),
+    reportPath: relativeReportPath(
+      context.projectName,
+      context.runId,
+      summary.reportPath,
+      context.paths,
+    ),
     mode: context.validators.architecture.mode,
   });
 

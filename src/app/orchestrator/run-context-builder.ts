@@ -103,9 +103,7 @@ function buildContainerSecurityPayload(config: ProjectConfig["docker"]): JsonObj
   return payload;
 }
 
-function resolveControlPlaneFallbackResource(
-  raw: Partial<ProjectConfig["control_plane"]>,
-): string {
+function resolveControlPlaneFallbackResource(raw: Partial<ProjectConfig["control_plane"]>): string {
   const fallbackResourceRaw = raw.fallback_resource ?? "repo-root";
   const trimmed = fallbackResourceRaw.trim();
   return trimmed.length > 0 ? trimmed : "repo-root";

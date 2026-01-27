@@ -1,17 +1,16 @@
-import fs from "node:fs";
-import path from "node:path";
-
 import { Command } from "commander";
 
 import { LogQueryService } from "../../../app/services/log-query-service.js";
 import type { ProjectConfig } from "../../../core/config.js";
-import { findTaskLogDir } from "../../../core/log-query.js";
 import type { PathsContext } from "../../../core/paths.js";
 import { resolveRunLogsDir } from "../../../core/paths.js";
-import { loadRunEvents, readDoctorLogSnippet } from "../../../core/run-logs.js";
-import { loadRunStateForProject } from "../../../core/state-store.js";
 import { loadConfigForCli } from "../../config.js";
 
+import {
+  runLogsDoctorCommand,
+  runLogsFailuresCommand,
+  runLogsSummarizeCommand,
+} from "./handlers.js";
 import { registerLogsQueryCommand, runLogsFollow, runLogsQuery } from "./query.js";
 import { registerLogsSearchCommand } from "./search.js";
 import { registerLogsTimelineCommand } from "./timeline.js";
@@ -57,7 +56,7 @@ export function registerLogsCommand(program: Command): void {
     .option("--task <id>", "Limit to a specific task")
     .action(async (opts, command) => {
       const ctx = await buildContext(command);
-      await logsFailuresCommand(ctx, {
+      await runLogsFailuresCommand(ctx, {
         runId: ctx.runId,
         taskId: opts.task,
       });
@@ -70,7 +69,7 @@ export function registerLogsCommand(program: Command): void {
     .option("--attempt <n>", "Attempt number", (v: string) => parseInt(v, 10))
     .action(async (opts, command) => {
       const ctx = await buildContext(command);
-      await logsDoctorCommand(ctx, {
+      await runLogsDoctorCommand(ctx, {
         runId: ctx.runId,
         taskId: opts.task,
         attempt: opts.attempt,
@@ -84,7 +83,7 @@ export function registerLogsCommand(program: Command): void {
     .option("--llm", "Use LLM to summarize validator failures", false)
     .action(async (opts, command) => {
       const ctx = await buildContext(command);
-      await logsSummarizeCommand(ctx, {
+      await runLogsSummarizeCommand(ctx, {
         runId: ctx.runId,
         taskId: opts.task,
         useLlm: opts.llm ?? false,
@@ -102,208 +101,6 @@ export function registerLogsCommand(program: Command): void {
       useIndex: ctx.useIndex,
     });
   });
-}
-
-// =============================================================================
-// COMMANDS
-// =============================================================================
-
-async function logsFailuresCommand(
-  ctx: LogsCommandContext,
-  opts: { runId?: string; taskId?: string },
-): Promise<void> {
-  const runLogs = ctx.resolveRunLogsOrWarn(opts.runId);
-  if (!runLogs) return;
-
-  const events = loadRunEvents(runLogs.runId, runLogs.dir, {
-    useIndex: ctx.useIndex,
-    taskId: opts.taskId,
-  });
-  const groups = ctx.logQueryService.buildFailureGroups(events, runLogs.dir);
-
-  if (groups.length === 0) {
-    console.log(
-      `No failures recorded for run ${runLogs.runId}${opts.taskId ? ` (task ${opts.taskId})` : ""}.`,
-    );
-    return;
-  }
-
-  console.log(`Failure digest for run ${runLogs.runId}:`);
-  for (const group of groups) {
-    const header = `${group.label} (${group.count})`;
-    console.log(`- ${header}`);
-    for (const example of group.examples) {
-      const prefixParts = [
-        ctx.logQueryService.formatTimestamp(example.ts),
-        example.taskId ? `task ${example.taskId}` : null,
-        example.attempt ? `attempt ${example.attempt}` : null,
-      ].filter(Boolean);
-      const prefix = prefixParts.join(" ");
-      const snippet = example.snippet ? ` — ${example.snippet}` : "";
-      console.log(`  • ${prefix}: ${example.message}${snippet}`);
-    }
-  }
-}
-
-async function logsDoctorCommand(
-  ctx: LogsCommandContext,
-  opts: { runId?: string; taskId: string; attempt?: number },
-): Promise<void> {
-  const runLogs = ctx.resolveRunLogsOrWarn(opts.runId);
-  if (!runLogs) return;
-
-  const taskDir = findTaskLogDir(runLogs.dir, opts.taskId);
-  if (!taskDir) {
-    console.log(`No logs directory found for task ${opts.taskId} in run ${runLogs.runId}.`);
-    process.exitCode = 1;
-    return;
-  }
-
-  const doctorFiles = fs
-    .readdirSync(taskDir)
-    .filter((file) => /^doctor-\d+\.log$/i.test(file))
-    .sort();
-
-  if (doctorFiles.length === 0) {
-    console.log(`No doctor logs found for task ${opts.taskId} in run ${runLogs.runId}.`);
-    process.exitCode = 1;
-    return;
-  }
-
-  if (opts.attempt !== undefined && (!Number.isInteger(opts.attempt) || opts.attempt <= 0)) {
-    console.log("--attempt must be a positive integer.");
-    process.exitCode = 1;
-    return;
-  }
-
-  const selected = ctx.logQueryService.pickDoctorLog(doctorFiles, opts.attempt);
-  if (!selected) {
-    console.log(`Doctor log for attempt ${opts.attempt} not found for task ${opts.taskId}.`);
-    process.exitCode = 1;
-    return;
-  }
-
-  const attemptNum = selected.attempt;
-  const fullPath = path.join(taskDir, selected.fileName);
-  const content = fs.readFileSync(fullPath, "utf8");
-
-  console.log(
-    `Doctor log for task ${opts.taskId} (run ${runLogs.runId}, attempt ${attemptNum}): ${fullPath}`,
-  );
-  process.stdout.write(content.endsWith("\n") ? content : `${content}\n`);
-}
-
-async function logsSummarizeCommand(
-  ctx: LogsCommandContext,
-  opts: { runId?: string; taskId: string; useLlm?: boolean },
-): Promise<void> {
-  const runLogs = ctx.resolveRunLogsOrWarn(opts.runId);
-  if (!runLogs) return;
-
-  const stateResolved = await loadRunStateForProject(ctx.projectName, runLogs.runId, ctx.paths);
-  const taskState = stateResolved?.state.tasks[opts.taskId] ?? null;
-  const events = loadRunEvents(runLogs.runId, runLogs.dir, {
-    useIndex: ctx.useIndex,
-    taskId: opts.taskId,
-  });
-
-  const validatorSummaries = await ctx.logQueryService.collectValidatorSummaries(
-    runLogs.dir,
-    opts.taskId,
-    taskState,
-  );
-  const lastDoctorAttempt = ctx.logQueryService.findLastAttempt(events, (event) =>
-    event.type.startsWith("doctor."),
-  );
-  const doctorLog = readDoctorLogSnippet(runLogs.dir, opts.taskId, lastDoctorAttempt);
-  const lastCodexTurn = ctx.logQueryService.findLastCodexTurn(events);
-  const statusLine = ctx.logQueryService.buildStatusLine(taskState);
-  const nextAction = ctx.logQueryService.suggestNextAction(
-    taskState,
-    validatorSummaries,
-    doctorLog,
-    lastCodexTurn,
-  );
-
-  console.log(`Summary for task ${opts.taskId} (run ${runLogs.runId}):`);
-  console.log(`- ${statusLine}`);
-
-  if (lastCodexTurn) {
-    const codexParts = compactParts([
-      lastCodexTurn.completedAt
-        ? `completed ${ctx.logQueryService.formatTimestamp(lastCodexTurn.completedAt)}`
-        : lastCodexTurn.startedAt
-          ? `started ${ctx.logQueryService.formatTimestamp(lastCodexTurn.startedAt)}`
-          : null,
-      lastCodexTurn.attempt ? `attempt ${lastCodexTurn.attempt}` : null,
-      lastCodexTurn.durationMs
-        ? `turn duration ${ctx.logQueryService.formatDuration(lastCodexTurn.durationMs)}`
-        : null,
-    ]);
-    console.log(`- Last Codex turn: ${codexParts ?? "not recorded"}`);
-  } else {
-    console.log("- Last Codex turn: not recorded");
-  }
-
-  if (doctorLog) {
-    console.log(
-      `- Last doctor log (${ctx.logQueryService.relativeToRun(runLogs.dir, doctorLog.path)}):`,
-    );
-    console.log(indentMultiline(doctorLog.content));
-  } else {
-    console.log("- Last doctor log: not found");
-  }
-
-  console.log("- Validator results:");
-  if (validatorSummaries.length === 0) {
-    console.log("  • none found");
-  } else {
-    for (const entry of validatorSummaries) {
-      const summaryText = entry.summary ?? "(no summary available)";
-      console.log(`  • ${entry.validator}: ${entry.status} — ${summaryText}`);
-      if (entry.reportPath) {
-        console.log(`    Report: ${entry.reportPath}`);
-      }
-    }
-  }
-
-  if (taskState?.human_review) {
-    const review = taskState.human_review;
-    console.log("");
-    console.log(
-      `Human review required by ${review.validator}: ${review.reason}${review.summary ? ` — ${review.summary}` : ""}`,
-    );
-    if (review.report_path) {
-      console.log(`Report: ${ctx.logQueryService.relativeToRun(runLogs.dir, review.report_path)}`);
-    }
-  }
-
-  console.log(`- Next action: ${nextAction}`);
-
-  if (opts.useLlm) {
-    const llmResult = await ctx.logQueryService.runLlmSummary({
-      runId: runLogs.runId,
-      taskId: opts.taskId,
-      statusLine,
-      nextAction,
-      attempts: taskState?.attempts ?? null,
-      lastError: taskState?.last_error ?? null,
-      doctorText: doctorLog?.content ?? null,
-      codex: lastCodexTurn,
-      validators: validatorSummaries,
-    });
-
-    console.log("");
-    if (llmResult.status === "ok") {
-      console.log("LLM summary:");
-      console.log(llmResult.text);
-    } else {
-      console.log(llmResult.message);
-      if (llmResult.status === "error") {
-        process.exitCode = 1;
-      }
-    }
-  }
 }
 
 // =============================================================================
@@ -355,17 +152,4 @@ function resolveRunLogsOrWarn(
   console.log(message);
   process.exitCode = 1;
   return null;
-}
-
-function compactParts(parts: Array<string | null | undefined>): string | undefined {
-  const filtered = parts.filter((part) => part && part.trim().length > 0) as string[];
-  return filtered.length > 0 ? filtered.join(" | ") : undefined;
-}
-
-function indentMultiline(text: string, spaces = 2): string {
-  const prefix = " ".repeat(spaces);
-  return text
-    .split(/\r?\n/)
-    .map((line) => `${prefix}${line}`)
-    .join("\n");
 }

@@ -33,99 +33,115 @@ describe("acceptance: doctor canary config + logging", () => {
     }
   });
 
-  it("skips canary when disabled", async () => {
-    const { repoDir, homeDir } = await makeRepoWithSingleTask(tempRoots);
-    process.env.MYCELIUM_HOME = homeDir;
-    process.env.MOCK_LLM = "1";
+  it(
+    "skips canary when disabled",
+    async () => {
+      const { repoDir, homeDir } = await makeRepoWithSingleTask(tempRoots);
+      process.env.MYCELIUM_HOME = homeDir;
+      process.env.MOCK_LLM = "1";
 
-    const config = makeConfig(repoDir, {
-      doctorCommand: 'node -e "process.exit(0)"',
-      doctorCanary: {
-        mode: "off",
-        env_var: "ORCH_CANARY",
-        warn_on_unexpected_pass: true,
-      },
-    });
+      const config = makeConfig(repoDir, {
+        doctorCommand: 'node -e "process.exit(0)"',
+        doctorCanary: {
+          mode: "off",
+          env_var: "ORCH_CANARY",
+          warn_on_unexpected_pass: true,
+        },
+      });
 
-    const result = await runProject("doctor-canary-disabled", config, {
-      maxParallel: 1,
-      useDocker: false,
-      buildImage: false,
-    });
+      const result = await runProject("doctor-canary-disabled", config, {
+        maxParallel: 1,
+        useDocker: false,
+        buildImage: false,
+      });
 
-    const events = await readLogEvents(orchestratorLogPath("doctor-canary-disabled", result.runId));
-    const skipped = events.find((event) => event.type === "doctor.canary.skipped");
+      const events = await readLogEvents(
+        orchestratorLogPath("doctor-canary-disabled", result.runId),
+      );
+      const skipped = events.find((event) => event.type === "doctor.canary.skipped");
 
-    expect((skipped?.payload as { reason?: string } | undefined)?.reason).toBe(
-      "disabled_by_config",
-    );
-    expect(events.some((event) => event.type === "doctor.canary.start")).toBe(false);
-    expect(events.some((event) => event.type === "doctor.canary.unexpected_pass")).toBe(false);
-  }, TEST_TIMEOUT_MS);
+      expect((skipped?.payload as { reason?: string } | undefined)?.reason).toBe(
+        "disabled_by_config",
+      );
+      expect(events.some((event) => event.type === "doctor.canary.start")).toBe(false);
+      expect(events.some((event) => event.type === "doctor.canary.unexpected_pass")).toBe(false);
+    },
+    TEST_TIMEOUT_MS,
+  );
 
-  it("logs unexpected pass as a warning with the configured env var", async () => {
-    const { repoDir, homeDir } = await makeRepoWithSingleTask(tempRoots);
-    process.env.MYCELIUM_HOME = homeDir;
-    process.env.MOCK_LLM = "1";
+  it(
+    "logs unexpected pass as a warning with the configured env var",
+    async () => {
+      const { repoDir, homeDir } = await makeRepoWithSingleTask(tempRoots);
+      process.env.MYCELIUM_HOME = homeDir;
+      process.env.MOCK_LLM = "1";
 
-    const config = makeConfig(repoDir, {
-      doctorCommand: 'node -e "process.exit(0)"',
-      doctorCanary: {
-        mode: "env",
-        env_var: "MYCELIUM_CANARY",
-        warn_on_unexpected_pass: true,
-      },
-    });
+      const config = makeConfig(repoDir, {
+        doctorCommand: 'node -e "process.exit(0)"',
+        doctorCanary: {
+          mode: "env",
+          env_var: "MYCELIUM_CANARY",
+          warn_on_unexpected_pass: true,
+        },
+      });
 
-    const result = await runProject("doctor-canary-unexpected", config, {
-      maxParallel: 1,
-      useDocker: false,
-      buildImage: false,
-    });
+      const result = await runProject("doctor-canary-unexpected", config, {
+        maxParallel: 1,
+        useDocker: false,
+        buildImage: false,
+      });
 
-    const events = await readLogEvents(
-      orchestratorLogPath("doctor-canary-unexpected", result.runId),
-    );
-    const unexpected = events.find((event) => event.type === "doctor.canary.unexpected_pass");
+      const events = await readLogEvents(
+        orchestratorLogPath("doctor-canary-unexpected", result.runId),
+      );
+      const unexpected = events.find((event) => event.type === "doctor.canary.unexpected_pass");
 
-    const unexpectedPayload = unexpected?.payload as
-      | { env_var?: string; severity?: string }
-      | undefined;
-    expect(unexpectedPayload?.env_var).toBe("MYCELIUM_CANARY");
-    expect(unexpectedPayload?.severity).toBe("warn");
-    expect(events.some((event) => event.type === "doctor.canary.expected_fail")).toBe(false);
-  }, TEST_TIMEOUT_MS);
+      const unexpectedPayload = unexpected?.payload as
+        | { env_var?: string; severity?: string }
+        | undefined;
+      expect(unexpectedPayload?.env_var).toBe("MYCELIUM_CANARY");
+      expect(unexpectedPayload?.severity).toBe("warn");
+      expect(events.some((event) => event.type === "doctor.canary.expected_fail")).toBe(false);
+    },
+    TEST_TIMEOUT_MS,
+  );
 
-  it("logs expected fail when the canary env var forces failure", async () => {
-    const { repoDir, homeDir } = await makeRepoWithSingleTask(tempRoots);
-    process.env.MYCELIUM_HOME = homeDir;
-    process.env.MOCK_LLM = "1";
+  it(
+    "logs expected fail when the canary env var forces failure",
+    async () => {
+      const { repoDir, homeDir } = await makeRepoWithSingleTask(tempRoots);
+      process.env.MYCELIUM_HOME = homeDir;
+      process.env.MOCK_LLM = "1";
 
-    const config = makeConfig(repoDir, {
-      doctorCommand: "node -e \"process.exit(process.env.MYCELIUM_CANARY === '1' ? 1 : 0)\"",
-      doctorCanary: {
-        mode: "env",
-        env_var: "MYCELIUM_CANARY",
-        warn_on_unexpected_pass: true,
-      },
-    });
+      const config = makeConfig(repoDir, {
+        doctorCommand: "node -e \"process.exit(process.env.MYCELIUM_CANARY === '1' ? 1 : 0)\"",
+        doctorCanary: {
+          mode: "env",
+          env_var: "MYCELIUM_CANARY",
+          warn_on_unexpected_pass: true,
+        },
+      });
 
-    const result = await runProject("doctor-canary-expected", config, {
-      maxParallel: 1,
-      useDocker: false,
-      buildImage: false,
-    });
+      const result = await runProject("doctor-canary-expected", config, {
+        maxParallel: 1,
+        useDocker: false,
+        buildImage: false,
+      });
 
-    const events = await readLogEvents(orchestratorLogPath("doctor-canary-expected", result.runId));
-    const expectedFail = events.find((event) => event.type === "doctor.canary.expected_fail");
+      const events = await readLogEvents(
+        orchestratorLogPath("doctor-canary-expected", result.runId),
+      );
+      const expectedFail = events.find((event) => event.type === "doctor.canary.expected_fail");
 
-    const expectedPayload = expectedFail?.payload as
-      | { env_var?: string; exit_code?: number }
-      | undefined;
-    expect(expectedPayload?.env_var).toBe("MYCELIUM_CANARY");
-    expect(expectedPayload?.exit_code).toBe(1);
-    expect(events.some((event) => event.type === "doctor.canary.unexpected_pass")).toBe(false);
-  }, TEST_TIMEOUT_MS);
+      const expectedPayload = expectedFail?.payload as
+        | { env_var?: string; exit_code?: number }
+        | undefined;
+      expect(expectedPayload?.env_var).toBe("MYCELIUM_CANARY");
+      expect(expectedPayload?.exit_code).toBe(1);
+      expect(events.some((event) => event.type === "doctor.canary.unexpected_pass")).toBe(false);
+    },
+    TEST_TIMEOUT_MS,
+  );
 });
 
 async function makeRepoWithSingleTask(

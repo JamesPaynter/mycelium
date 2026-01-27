@@ -2,9 +2,7 @@ import path from "node:path";
 
 import { validatorsLogsDir } from "../../../core/paths.js";
 import type { ValidatorStatus } from "../../../core/state.js";
-import type {
-  DoctorValidationReport,
-} from "../../../validators/doctor-validator.js";
+import type { DoctorValidationReport } from "../../../validators/doctor-validator.js";
 import {
   VALIDATOR_ID as DOCTOR_VALIDATOR_ID,
   VALIDATOR_NAME as DOCTOR_VALIDATOR_NAME,
@@ -19,7 +17,10 @@ import {
   listValidatorReports,
   relativeReportPath,
 } from "./validation-helpers.js";
-import type { DoctorValidationContext, ValidationRunnerContext } from "./validation-runner-types.js";
+import type {
+  DoctorValidationContext,
+  ValidationRunnerContext,
+} from "./validation-runner-types.js";
 
 export async function runDoctorValidation(
   context: ValidationRunnerContext,

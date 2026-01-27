@@ -4,7 +4,10 @@ import fse from "fs-extra";
 import { describe, expect, it } from "vitest";
 
 import { computeTaskFingerprint } from "./task-ledger.js";
-import { makeTemporaryDirectory, registerTaskLedgerTempCleanup } from "./task-ledger.test-helpers.js";
+import {
+  makeTemporaryDirectory,
+  registerTaskLedgerTempCleanup,
+} from "./task-ledger.test-helpers.js";
 
 registerTaskLedgerTempCleanup();
 

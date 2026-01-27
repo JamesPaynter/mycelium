@@ -11,7 +11,6 @@ import { planProject } from "../cli/plan.js";
 import { loadProjectConfig } from "../core/config-loader.js";
 import { orchestratorLogPath } from "../core/paths.js";
 import { StateStore } from "../core/state-store.js";
-import type { RunState } from "../core/state.js";
 
 import {
   cleanupRunContainers,

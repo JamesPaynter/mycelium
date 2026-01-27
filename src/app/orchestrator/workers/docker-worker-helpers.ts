@@ -105,7 +105,9 @@ export async function findTaskContainer(
 ): Promise<{ id: string; name?: string } | null> {
   const containers = await listRunContainers(docker, projectName, runId);
 
-  const byTask = containers.find((container) => containerLabel(container.labels, "task_id") === taskId);
+  const byTask = containers.find(
+    (container) => containerLabel(container.labels, "task_id") === taskId,
+  );
   if (byTask) {
     return { id: byTask.id, name: firstContainerName(byTask.names) };
   }

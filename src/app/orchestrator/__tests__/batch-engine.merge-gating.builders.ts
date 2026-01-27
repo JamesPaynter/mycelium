@@ -9,7 +9,12 @@ import {
 import type { ManifestComplianceResult } from "../../../core/manifest-compliance.js";
 import type { RunState } from "../../../core/state.js";
 import type { TaskStage } from "../../../core/task-layout.js";
-import { buildTaskDirName, buildTaskSlug, type TaskManifest, type TaskSpec } from "../../../core/task-manifest.js";
+import {
+  buildTaskDirName,
+  buildTaskSlug,
+  type TaskManifest,
+  type TaskSpec,
+} from "../../../core/task-manifest.js";
 import type {
   BudgetTracker,
   BudgetTrackingOutcome,
@@ -95,9 +100,7 @@ export async function writeTaskSpec(tasksRoot: string, manifest: TaskManifest): 
   await fs.writeFile(path.join(taskDir, "spec.md"), `# ${manifest.name}\n`, "utf8");
 }
 
-export function buildStatusSets(
-  state: RunState,
-): { completed: Set<string>; failed: Set<string> } {
+export function buildStatusSets(state: RunState): { completed: Set<string>; failed: Set<string> } {
   const blockedStatuses = new Set([
     "failed",
     "needs_human_review",
@@ -106,7 +109,9 @@ export function buildStatusSets(
   ]);
   const completed = new Set<string>(
     Object.entries(state.tasks)
-      .filter(([, s]) => s.status === "complete" || s.status === "validated" || s.status === "skipped")
+      .filter(
+        ([, s]) => s.status === "complete" || s.status === "validated" || s.status === "skipped",
+      )
       .map(([id]) => id),
   );
   const failed = new Set<string>(
@@ -121,18 +126,17 @@ export function buildStatusSets(
 // BUDGET + COMPLIANCE FAKES
 // =============================================================================
 
-export function createBudgetTracker(): Pick<BudgetTracker, "recordUsageUpdates" | "evaluateBreaches"> {
+export function createBudgetTracker(): Pick<
+  BudgetTracker,
+  "recordUsageUpdates" | "evaluateBreaches"
+> {
   return {
     recordUsageUpdates: (): BudgetUsageSnapshot => ({
       runUsageBefore: { tokensUsed: 0, estimatedCost: 0 },
       runUsageAfter: { tokensUsed: 0, estimatedCost: 0 },
       usageUpdates: [],
     }),
-    evaluateBreaches: ({
-      snapshot,
-    }: {
-      snapshot: BudgetUsageSnapshot;
-    }): BudgetTrackingOutcome => ({
+    evaluateBreaches: ({ snapshot }: { snapshot: BudgetUsageSnapshot }): BudgetTrackingOutcome => ({
       ...snapshot,
       breaches: [],
     }),

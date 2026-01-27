@@ -63,43 +63,114 @@ export async function extractWorkspacePackageDependencyEdges(
   const seen = new Set<string>();
 
   for (const pkg of packages) {
-    for (const field of WORKSPACE_DEPENDENCY_FIELDS) {
-      const dependencyNames = pkg.dependency_names[field];
-      if (!dependencyNames || dependencyNames.length === 0) {
-        continue;
-      }
-
-      for (const dependencyName of dependencyNames) {
-        const targetIds = componentIdsByName.get(dependencyName);
-        if (!targetIds || targetIds.length === 0) {
-          continue;
-        }
-
-        for (const targetId of targetIds) {
-          if (targetId === pkg.component_id) {
-            continue;
-          }
-
-          const edge: ControlPlaneDependencyEdge = {
-            from_component: pkg.component_id,
-            to_component: targetId,
-            kind: "workspace-package",
-            confidence: "high",
-          };
-
-          const key = `${edge.from_component}::${edge.to_component}::${edge.kind}`;
-          if (seen.has(key)) {
-            continue;
-          }
-
-          edges.push(edge);
-          seen.add(key);
-        }
-      }
-    }
+    const packageEdges = collectEdgesForPackage(pkg, componentIdsByName, seen);
+    edges.push(...packageEdges);
   }
 
   return edges;
+}
+
+// =============================================================================
+// EDGE COLLECTION
+// =============================================================================
+
+function collectEdgesForPackage(
+  pkg: WorkspacePackageInfo,
+  componentIdsByName: Map<string, string[]>,
+  seen: Set<string>,
+): ControlPlaneDependencyEdge[] {
+  const edges: ControlPlaneDependencyEdge[] = [];
+  const targets = collectDependencyTargets(pkg, componentIdsByName);
+
+  for (const targetId of targets) {
+    const edge = buildDependencyEdge(pkg.component_id, targetId);
+    if (!edge) {
+      continue;
+    }
+
+    if (!registerEdge(edge, seen)) {
+      continue;
+    }
+
+    edges.push(edge);
+  }
+
+  return edges;
+}
+
+function collectDependencyTargets(
+  pkg: WorkspacePackageInfo,
+  componentIdsByName: Map<string, string[]>,
+): string[] {
+  const targets = new Set<string>();
+
+  for (const field of WORKSPACE_DEPENDENCY_FIELDS) {
+    const dependencyNames = pkg.dependency_names[field];
+    if (!dependencyNames || dependencyNames.length === 0) {
+      continue;
+    }
+
+    for (const dependencyName of dependencyNames) {
+      appendTargetsForDependency({
+        dependencyName,
+        componentIdsByName,
+        componentId: pkg.component_id,
+        targets,
+      });
+    }
+  }
+
+  return Array.from(targets);
+}
+
+function appendTargetsForDependency(options: {
+  dependencyName: string;
+  componentIdsByName: Map<string, string[]>;
+  componentId: string;
+  targets: Set<string>;
+}): void {
+  const targetIds = options.componentIdsByName.get(options.dependencyName);
+  if (!targetIds || targetIds.length === 0) {
+    return;
+  }
+
+  for (const targetId of targetIds) {
+    if (targetId === options.componentId) {
+      continue;
+    }
+
+    options.targets.add(targetId);
+  }
+}
+
+function buildDependencyEdge(
+  fromComponentId: string,
+  toComponentId: string,
+): ControlPlaneDependencyEdge | null {
+  if (toComponentId === fromComponentId) {
+    return null;
+  }
+
+  return {
+    from_component: fromComponentId,
+    to_component: toComponentId,
+    kind: "workspace-package",
+    confidence: "high",
+  };
+}
+
+function registerEdge(edge: ControlPlaneDependencyEdge, seen: Set<string>): boolean {
+  const key = buildEdgeKey(edge);
+  if (seen.has(key)) {
+    return false;
+  }
+
+  seen.add(key);
+  return true;
+}
+
+function buildEdgeKey(edge: ControlPlaneDependencyEdge): string {
+  return `${edge.from_component}::${edge.to_component}::${edge.kind}`;
 }
 
 // =============================================================================

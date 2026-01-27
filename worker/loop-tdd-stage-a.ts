@@ -138,7 +138,11 @@ export async function runStrictTddStageA(args: {
   const afterChanges = await listChangedPaths(args.workingDirectory);
   const newChanges = diffChangedPaths(beforeChanges, afterChanges);
   const filteredChanges = filterInternalChanges(newChanges, args.workingDirectory, args.runLogsDir);
-  const currentChanges = filterInternalChanges(afterChanges, args.workingDirectory, args.runLogsDir);
+  const currentChanges = filterInternalChanges(
+    afterChanges,
+    args.workingDirectory,
+    args.runLogsDir,
+  );
   const nonTestChanges = currentChanges.filter((file) => !isTestPath(file, args.testPaths));
 
   if (nonTestChanges.length > 0) {
