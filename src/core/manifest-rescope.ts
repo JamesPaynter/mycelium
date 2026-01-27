@@ -23,62 +23,18 @@ export function computeRescopeFromCompliance(
     return { status: "noop", reason: "No compliance violations to rescope" };
   }
 
-  const existingLocks = new Set(manifest.locks.writes ?? []);
-  const existingWriteFiles = new Set(manifest.files.writes ?? []);
-  const existingReadFiles = new Set(manifest.files.reads ?? []);
+  const existing = buildExistingScopeSets(manifest);
+  const updateResult = collectComplianceRescopeUpdates(compliance, existing);
 
-  const addedLocks = new Set<string>();
-  const addedFiles = new Set<string>();
-
-  for (const violation of compliance.violations) {
-    if (violation.reasons.includes("resource_unmapped") && violation.resources.length === 0) {
-      return {
-        status: "failed",
-        reason: `Cannot rescope: resource mapping missing for ${violation.path}`,
-      };
-    }
-
-    if (violation.reasons.includes("resource_not_locked_for_write")) {
-      for (const res of violation.resources) {
-        if (!existingLocks.has(res)) {
-          addedLocks.add(res);
-        }
-      }
-    }
-
-    if (violation.reasons.includes("file_not_declared_for_write")) {
-      const normalizedPath = toPosixPath(violation.path);
-      if (!existingWriteFiles.has(normalizedPath) && !existingReadFiles.has(normalizedPath)) {
-        addedFiles.add(normalizedPath);
-      }
-    }
+  if (updateResult.status === "failed") {
+    return { status: "failed", reason: updateResult.reason };
   }
 
-  if (addedLocks.size === 0 && addedFiles.size === 0) {
-    return {
-      status: "noop",
-      reason: "Compliance violations present but no new locks/files to add",
-    };
-  }
-
-  const nextManifest = normalizeTaskManifest({
-    ...manifest,
-    locks: {
-      reads: manifest.locks.reads ?? [],
-      writes: [...(manifest.locks.writes ?? []), ...addedLocks],
-    },
-    files: {
-      reads: [...(manifest.files.reads ?? []), ...addedFiles],
-      writes: [...(manifest.files.writes ?? []), ...addedFiles],
-    },
-  });
-
-  return {
-    status: "updated",
-    manifest: nextManifest,
-    addedLocks: Array.from(addedLocks).sort(),
-    addedFiles: Array.from(addedFiles).sort(),
-  };
+  return finalizeRescopeManifest(
+    manifest,
+    updateResult.updates,
+    "Compliance violations present but no new locks/files to add",
+  );
 }
 
 export function computeRescopeFromComponentScope(input: {
@@ -96,52 +52,147 @@ export function computeRescopeFromComponentScope(input: {
     return { status: "failed", reason: "Cannot rescope: component resource prefix missing" };
   }
 
-  const existingLocks = new Set(input.manifest.locks.writes ?? []);
-  const existingWriteFiles = new Set(input.manifest.files.writes ?? []);
-  const existingReadFiles = new Set(input.manifest.files.reads ?? []);
+  const existing = buildExistingScopeSets(input.manifest);
+  const updates = collectComponentScopeUpdates({
+    prefix,
+    missingComponents: input.missingComponents,
+    changedFiles: input.changedFiles,
+    existing,
+  });
 
-  const addedLocks = new Set<string>();
-  const addedFiles = new Set<string>();
+  return finalizeRescopeManifest(
+    input.manifest,
+    updates,
+    "Component scope drift detected but no new locks/files to add",
+  );
+}
+
+type ExistingScopeSets = {
+  locks: Set<string>;
+  writeFiles: Set<string>;
+  readFiles: Set<string>;
+};
+
+type RescopeUpdates = {
+  addedLocks: Set<string>;
+  addedFiles: Set<string>;
+};
+
+type ComplianceUpdateResult =
+  | { status: "ok"; updates: RescopeUpdates }
+  | { status: "failed"; reason: string };
+
+function buildExistingScopeSets(manifest: TaskManifest): ExistingScopeSets {
+  return {
+    locks: new Set(manifest.locks.writes ?? []),
+    writeFiles: new Set(manifest.files.writes ?? []),
+    readFiles: new Set(manifest.files.reads ?? []),
+  };
+}
+
+function collectComplianceRescopeUpdates(
+  compliance: ManifestComplianceResult,
+  existing: ExistingScopeSets,
+): ComplianceUpdateResult {
+  const updates = createRescopeUpdates();
+
+  for (const violation of compliance.violations) {
+    if (isMissingResourceMapping(violation)) {
+      return {
+        status: "failed",
+        reason: `Cannot rescope: resource mapping missing for ${violation.path}`,
+      };
+    }
+
+    if (violation.reasons.includes("resource_not_locked_for_write")) {
+      for (const res of violation.resources) {
+        addLockIfMissing(res, existing, updates);
+      }
+    }
+
+    if (violation.reasons.includes("file_not_declared_for_write")) {
+      addFileIfMissing(violation.path, existing, updates);
+    }
+  }
+
+  return { status: "ok", updates };
+}
+
+function collectComponentScopeUpdates(input: {
+  prefix: string;
+  missingComponents: string[];
+  changedFiles: string[];
+  existing: ExistingScopeSets;
+}): RescopeUpdates {
+  const updates = createRescopeUpdates();
 
   for (const componentId of input.missingComponents) {
-    const lockName = `${prefix}${componentId}`;
-    if (!existingLocks.has(lockName)) {
-      addedLocks.add(lockName);
-    }
+    addLockIfMissing(`${input.prefix}${componentId}`, input.existing, updates);
   }
 
   for (const file of input.changedFiles) {
-    const normalizedPath = toPosixPath(file);
-    if (!existingWriteFiles.has(normalizedPath) && !existingReadFiles.has(normalizedPath)) {
-      addedFiles.add(normalizedPath);
-    }
+    addFileIfMissing(file, input.existing, updates);
   }
 
-  if (addedLocks.size === 0 && addedFiles.size === 0) {
-    return {
-      status: "noop",
-      reason: "Component scope drift detected but no new locks/files to add",
-    };
+  return updates;
+}
+
+function finalizeRescopeManifest(
+  manifest: TaskManifest,
+  updates: RescopeUpdates,
+  emptyReason: string,
+): RescopeComputation {
+  if (updates.addedLocks.size === 0 && updates.addedFiles.size === 0) {
+    return { status: "noop", reason: emptyReason };
   }
 
   const nextManifest = normalizeTaskManifest({
-    ...input.manifest,
+    ...manifest,
     locks: {
-      reads: input.manifest.locks.reads ?? [],
-      writes: [...(input.manifest.locks.writes ?? []), ...addedLocks],
+      reads: manifest.locks.reads ?? [],
+      writes: [...(manifest.locks.writes ?? []), ...updates.addedLocks],
     },
     files: {
-      reads: [...(input.manifest.files.reads ?? []), ...addedFiles],
-      writes: [...(input.manifest.files.writes ?? []), ...addedFiles],
+      reads: [...(manifest.files.reads ?? []), ...updates.addedFiles],
+      writes: [...(manifest.files.writes ?? []), ...updates.addedFiles],
     },
   });
 
   return {
     status: "updated",
     manifest: nextManifest,
-    addedLocks: Array.from(addedLocks).sort(),
-    addedFiles: Array.from(addedFiles).sort(),
+    addedLocks: Array.from(updates.addedLocks).sort(),
+    addedFiles: Array.from(updates.addedFiles).sort(),
   };
+}
+
+function createRescopeUpdates(): RescopeUpdates {
+  return { addedLocks: new Set<string>(), addedFiles: new Set<string>() };
+}
+
+function isMissingResourceMapping(violation: ManifestComplianceResult["violations"][number]): boolean {
+  return violation.reasons.includes("resource_unmapped") && violation.resources.length === 0;
+}
+
+function addLockIfMissing(
+  lockName: string,
+  existing: ExistingScopeSets,
+  updates: RescopeUpdates,
+): void {
+  if (!existing.locks.has(lockName)) {
+    updates.addedLocks.add(lockName);
+  }
+}
+
+function addFileIfMissing(
+  filePath: string,
+  existing: ExistingScopeSets,
+  updates: RescopeUpdates,
+): void {
+  const normalizedPath = toPosixPath(filePath);
+  if (!existing.writeFiles.has(normalizedPath) && !existing.readFiles.has(normalizedPath)) {
+    updates.addedFiles.add(normalizedPath);
+  }
 }
 
 function toPosixPath(input: string): string {

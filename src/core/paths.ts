@@ -17,6 +17,15 @@ export type ResolveMyceliumHomeOptions = {
   repoPath?: string;
 };
 
+export type ValidatorReportPathOptions = {
+  projectName: string;
+  runId: string;
+  validatorName: string;
+  taskId: string;
+  taskSlug: string;
+  paths?: PathsContext;
+};
+
 // =============================================================================
 // CONTEXT
 // =============================================================================
@@ -186,20 +195,38 @@ export function validatorLogPath(
   return path.join(validatorsLogsDir(projectName, runId, paths), `${validatorName}.jsonl`);
 }
 
-export function validatorReportPath(
-  projectName: string,
-  runId: string,
-  validatorName: string,
-  taskId: string,
-  taskSlug: string,
-  paths?: PathsContext,
-): string {
+type ValidatorReportPathArgs =
+  | [options: ValidatorReportPathOptions]
+  | [
+      projectName: string,
+      runId: string,
+      validatorName: string,
+      taskId: string,
+      taskSlug: string,
+      paths?: PathsContext,
+    ];
+
+export function validatorReportPath(...args: ValidatorReportPathArgs): string {
+  const { projectName, runId, validatorName, taskId, taskSlug, paths } =
+    normalizeValidatorReportPathArgs(args);
   const safeSlug = taskSlug.length > 0 ? taskSlug : "task";
   return path.join(
     validatorsLogsDir(projectName, runId, paths),
     validatorName,
     `${taskId}-${safeSlug}.json`,
   );
+}
+
+function normalizeValidatorReportPathArgs(
+  args: ValidatorReportPathArgs,
+): ValidatorReportPathOptions {
+  if (typeof args[0] === "string") {
+    const [projectName, runId, validatorName, taskId, taskSlug, paths] =
+      args as [string, string, string, string, string, PathsContext?];
+    return { projectName, runId, validatorName, taskId, taskSlug, paths };
+  }
+
+  return args[0];
 }
 
 export function runWorkspaceDir(projectName: string, runId: string, paths?: PathsContext): string {
