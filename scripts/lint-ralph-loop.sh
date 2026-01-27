@@ -7,25 +7,12 @@ CODEX_CMD="${CODEX_CMD:-}"
 LINT_CMD="${LINT_CMD:-npx eslint}"
 SKIP_LINT="${SKIP_LINT:-1}"
 ALLOW_DIRTY="${ALLOW_DIRTY:-0}"
-CODEX_TTY="${CODEX_TTY:-1}"
 
 if [[ -z "$CODEX_CMD" ]]; then
-  echo "Set CODEX_CMD to the command that launches Codex and reads prompt from STDIN." >&2
-  echo 'Example: CODEX_CMD="codex --stdin"' >&2
+  echo "Set CODEX_CMD to the command that launches Codex in headless mode." >&2
+  echo 'Example: CODEX_CMD='\''codex --headless --prompt-file "$PROMPT_FILE"'\''' >&2
   exit 1
 fi
-
-run_codex() {
-  if [[ "$CODEX_TTY" == "1" ]]; then
-    if ! command -v script >/dev/null 2>&1; then
-      echo "The 'script' command is required for CODEX_TTY=1." >&2
-      exit 1
-    fi
-    eval "script -q /dev/null $CODEX_CMD"
-  else
-    eval "$CODEX_CMD"
-  fi
-}
 
 if [[ ! -f "$QUEUE" ]]; then
   echo "Queue not found: $QUEUE" >&2
@@ -49,7 +36,8 @@ for _ in $(seq 1 "$MAX_ITERS"); do
   lint_targets="${file_list[*]}"
 
   echo "Starting Codex for ${task_id} (${files})"
-  if ! cat <<EOF | run_codex
+  prompt_file="$(mktemp -t lint-ralph-prompt.XXXXXX)"
+  cat <<EOF > "$prompt_file"
 You are in the repo at $(pwd).
 
 Fix ESLint warnings for the following file(s) only:
@@ -65,10 +53,13 @@ Constraints:
 Goal: remove the lint warnings for these files.
 No need to run lint; the loop is running in fast mode.
 EOF
-  then
+  export PROMPT_FILE="$prompt_file"
+  if ! eval "$CODEX_CMD"; then
+    rm -f "$prompt_file"
     echo "Codex command failed." >&2
     exit 1
   fi
+  rm -f "$prompt_file"
 
   if [[ "$SKIP_LINT" != "1" ]]; then
     lint_output="$($LINT_CMD "${file_list[@]}" --format unix || true)"
