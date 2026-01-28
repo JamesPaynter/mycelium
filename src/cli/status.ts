@@ -1,6 +1,12 @@
 import type { AppContext } from "../app/context.js";
 import { createAppPathsContext } from "../app/paths.js";
 import type { ProjectConfig } from "../core/config.js";
+import { formatErrorMessage } from "../core/error-format.js";
+import {
+  type UserFacingErrorCode,
+  UserFacingError,
+  USER_FACING_ERROR_CODES,
+} from "../core/errors.js";
 import {
   loadRunStateForProject,
   summarizeRunState,
@@ -15,18 +21,22 @@ export async function statusCommand(
   opts: { runId?: string },
   appContext?: AppContext,
 ): Promise<void> {
-  const paths = appContext?.paths ?? createAppPathsContext({ repoPath: config.repo_path });
-  const resolved = await loadRunStateForProject(projectName, opts.runId, paths);
-  if (!resolved) {
-    printRunNotFound(projectName, opts.runId);
-    return;
-  }
+  try {
+    const paths = appContext?.paths ?? createAppPathsContext({ repoPath: config.repo_path });
+    const resolved = await loadRunStateForProject(projectName, opts.runId, paths);
+    if (!resolved) {
+      printRunNotFound(projectName, opts.runId);
+      return;
+    }
 
-  const summary = summarizeRunState(resolved.state);
-  printRunSummary(summary);
-  printBudgetSummary(summary);
-  printHumanReviewQueue(summary.humanReview);
-  printTaskTable(summary.tasks);
+    const summary = summarizeRunState(resolved.state);
+    printRunSummary(summary);
+    printBudgetSummary(summary);
+    printHumanReviewQueue(summary.humanReview);
+    printTaskTable(summary.tasks);
+  } catch (error) {
+    throw normalizeStatusCommandError(error);
+  }
 }
 
 function printRunNotFound(projectName: string, requestedRunId?: string): void {
@@ -189,4 +199,75 @@ function pad(value: string, width: number): string {
 
 function formatCost(value: number): string {
   return `$${value.toFixed(4)}`;
+}
+
+// =============================================================================
+// ERROR NORMALIZATION
+// =============================================================================
+
+const STATUS_COMMAND_FAILURE_TITLE = "Status command failed.";
+const STATUS_COMMAND_RUN_STATE_HINT =
+  "Run `mycelium resume` to recover the run, or `mycelium clean` to remove the run state.";
+
+function normalizeStatusCommandError(error: unknown): UserFacingError {
+  if (error instanceof UserFacingError) {
+    return new UserFacingError({
+      code: error.code,
+      title: STATUS_COMMAND_FAILURE_TITLE,
+      message: error.message,
+      hint: error.hint ?? resolveStatusCommandHint(error),
+      next: error.next,
+      cause: error.cause ?? error,
+    });
+  }
+
+  return new UserFacingError({
+    code: resolveCommandErrorCode(error),
+    title: STATUS_COMMAND_FAILURE_TITLE,
+    message: formatErrorMessage(error),
+    hint: resolveStatusCommandHint(error),
+    cause: error,
+  });
+}
+
+function resolveStatusCommandHint(error: unknown): string | undefined {
+  if (isRunStateError(error)) {
+    return STATUS_COMMAND_RUN_STATE_HINT;
+  }
+
+  return undefined;
+}
+
+function resolveCommandErrorCode(error: unknown): UserFacingErrorCode {
+  if (error instanceof UserFacingError) {
+    return error.code;
+  }
+
+  return USER_FACING_ERROR_CODES.unknown;
+}
+
+function isRunStateError(error: unknown): boolean {
+  const userError = resolveUserFacingError(error);
+  const title = userError?.title ?? "";
+  if (title.toLowerCase().includes("run state")) {
+    return true;
+  }
+
+  const message = formatErrorMessage(error).toLowerCase();
+  return message.includes("run state");
+}
+
+function resolveUserFacingError(error: unknown): UserFacingError | null {
+  if (error instanceof UserFacingError) {
+    return error;
+  }
+
+  if (error && typeof error === "object" && "cause" in error) {
+    const cause = (error as { cause?: unknown }).cause;
+    if (cause instanceof UserFacingError) {
+      return cause;
+    }
+  }
+
+  return null;
 }

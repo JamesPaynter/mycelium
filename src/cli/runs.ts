@@ -3,6 +3,12 @@ import { Command } from "commander";
 import type { AppContext } from "../app/context.js";
 import { createAppPathsContext } from "../app/paths.js";
 import type { ProjectConfig } from "../core/config.js";
+import { formatErrorMessage } from "../core/error-format.js";
+import {
+  type UserFacingErrorCode,
+  UserFacingError,
+  USER_FACING_ERROR_CODES,
+} from "../core/errors.js";
 import { listRunHistoryEntries, type RunHistoryEntry } from "../core/run-history.js";
 
 import { loadConfigForCli } from "./config.js";
@@ -56,20 +62,24 @@ export async function runsListCommand(
   opts: { limit?: number; json?: boolean },
   appContext?: AppContext,
 ): Promise<void> {
-  const paths = appContext?.paths ?? createAppPathsContext({ repoPath: config.repo_path });
-  const runs = await listRunHistoryEntries(projectName, { limit: opts.limit }, paths);
+  try {
+    const paths = appContext?.paths ?? createAppPathsContext({ repoPath: config.repo_path });
+    const runs = await listRunHistoryEntries(projectName, { limit: opts.limit }, paths);
 
-  if (opts.json) {
-    console.log(JSON.stringify(runs, null, 2));
-    return;
+    if (opts.json) {
+      console.log(JSON.stringify(runs, null, 2));
+      return;
+    }
+
+    if (runs.length === 0) {
+      console.log(`No runs found for project ${projectName}.`);
+      return;
+    }
+
+    printRunList(projectName, runs);
+  } catch (error) {
+    throw normalizeRunsCommandError(error);
   }
-
-  if (runs.length === 0) {
-    console.log(`No runs found for project ${projectName}.`);
-    return;
-  }
-
-  printRunList(projectName, runs);
 }
 
 // =============================================================================
@@ -166,4 +176,75 @@ function formatTimestamp(ts: string): string {
     .toISOString()
     .replace("T", " ")
     .replace(/\.\d+Z$/, "Z");
+}
+
+// =============================================================================
+// ERROR NORMALIZATION
+// =============================================================================
+
+const RUNS_COMMAND_FAILURE_TITLE = "Runs command failed.";
+const RUNS_COMMAND_RUN_STATE_HINT =
+  "Run `mycelium resume` to recover the run, or `mycelium clean` to remove the run state.";
+
+function normalizeRunsCommandError(error: unknown): UserFacingError {
+  if (error instanceof UserFacingError) {
+    return new UserFacingError({
+      code: error.code,
+      title: RUNS_COMMAND_FAILURE_TITLE,
+      message: error.message,
+      hint: error.hint ?? resolveRunsCommandHint(error),
+      next: error.next,
+      cause: error.cause ?? error,
+    });
+  }
+
+  return new UserFacingError({
+    code: resolveCommandErrorCode(error),
+    title: RUNS_COMMAND_FAILURE_TITLE,
+    message: formatErrorMessage(error),
+    hint: resolveRunsCommandHint(error),
+    cause: error,
+  });
+}
+
+function resolveRunsCommandHint(error: unknown): string | undefined {
+  if (isRunStateError(error)) {
+    return RUNS_COMMAND_RUN_STATE_HINT;
+  }
+
+  return undefined;
+}
+
+function resolveCommandErrorCode(error: unknown): UserFacingErrorCode {
+  if (error instanceof UserFacingError) {
+    return error.code;
+  }
+
+  return USER_FACING_ERROR_CODES.unknown;
+}
+
+function isRunStateError(error: unknown): boolean {
+  const userError = resolveUserFacingError(error);
+  const title = userError?.title ?? "";
+  if (title.toLowerCase().includes("run state")) {
+    return true;
+  }
+
+  const message = formatErrorMessage(error).toLowerCase();
+  return message.includes("run state");
+}
+
+function resolveUserFacingError(error: unknown): UserFacingError | null {
+  if (error instanceof UserFacingError) {
+    return error;
+  }
+
+  if (error && typeof error === "object" && "cause" in error) {
+    const cause = (error as { cause?: unknown }).cause;
+    if (cause instanceof UserFacingError) {
+      return cause;
+    }
+  }
+
+  return null;
 }

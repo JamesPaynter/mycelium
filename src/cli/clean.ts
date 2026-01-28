@@ -5,6 +5,16 @@ import type { AppContext } from "../app/context.js";
 import { createAppPathsContext } from "../app/paths.js";
 import { buildCleanupPlan, executeCleanupPlan, type CleanupPlan } from "../core/cleanup.js";
 import type { ProjectConfig } from "../core/config.js";
+import { formatErrorMessage } from "../core/error-format.js";
+import {
+  ConfigError,
+  DockerError,
+  GitError,
+  TaskError,
+  type UserFacingErrorCode,
+  UserFacingError,
+  USER_FACING_ERROR_CODES,
+} from "../core/errors.js";
 import { DockerManager } from "../docker/manager.js";
 
 type CleanOptions = {
@@ -25,26 +35,34 @@ export async function cleanCommand(
   const dockerManager = removeContainers ? new DockerManager() : undefined;
   const paths = appContext?.paths ?? createAppPathsContext({ repoPath: config.repo_path });
 
-  const plan = await resolveCleanupPlan(projectName, opts, removeContainers, dockerManager, paths);
-  if (!plan) return;
-  if (isPlanEmpty(plan)) {
-    logEmptyPlan(plan, removeContainers);
-    return;
-  }
+  try {
+    const plan = await resolveCleanupPlan(
+      projectName,
+      opts,
+      removeContainers,
+      dockerManager,
+      paths,
+    );
+    if (!plan) return;
+    if (isPlanEmpty(plan)) {
+      logEmptyPlan(plan, removeContainers);
+      return;
+    }
 
-  printPlan(plan, { keepLogs: opts.keepLogs ?? false, includeContainers: removeContainers });
+    printPlan(plan, { keepLogs: opts.keepLogs ?? false, includeContainers: removeContainers });
 
-  if (opts.dryRun) {
-    console.log("Dry run only. No files or containers were removed.");
-    return;
-  }
+    if (opts.dryRun) {
+      console.log("Dry run only. No files or containers were removed.");
+      return;
+    }
 
-  const confirmed = await confirmCleanupOrAbort(plan.runId, opts);
-  if (!confirmed) return;
+    const confirmed = await confirmCleanupOrAbort(plan.runId, opts);
+    if (!confirmed) return;
 
-  const didCleanup = await executeCleanupPlanOrReport(plan, dockerManager);
-  if (didCleanup) {
+    await executeCleanupPlanOrReport(plan, dockerManager);
     console.log("Cleanup complete.");
+  } catch (error) {
+    throw normalizeCleanCommandError(error, { removeContainers });
   }
 }
 
@@ -55,27 +73,17 @@ async function resolveCleanupPlan(
   dockerManager: DockerManager | undefined,
   paths: AppContext["paths"],
 ): Promise<CleanupPlan | null> {
-  try {
-    const plan = await buildCleanupPlan(projectName, {
-      runId: opts.runId,
-      keepLogs: opts.keepLogs,
-      removeContainers,
-      dockerManager,
-      paths,
-    });
-    if (!plan) {
-      console.log(`No runs found for project ${projectName}.`);
-    }
-    return plan;
-  } catch (err) {
-    const detail = err instanceof Error ? err.message : String(err);
-    console.error(`Failed to build cleanup plan: ${detail}`);
-    if (removeContainers) {
-      console.error("Hint: rerun with --no-containers if Docker is unavailable.");
-    }
-    process.exitCode = 1;
-    return null;
+  const plan = await buildCleanupPlan(projectName, {
+    runId: opts.runId,
+    keepLogs: opts.keepLogs,
+    removeContainers,
+    dockerManager,
+    paths,
+  });
+  if (!plan) {
+    console.log(`No runs found for project ${projectName}.`);
   }
+  return plan;
 }
 
 function isPlanEmpty(plan: CleanupPlan): boolean {
@@ -101,20 +109,12 @@ async function confirmCleanupOrAbort(runId: string, opts: CleanOptions): Promise
 async function executeCleanupPlanOrReport(
   plan: CleanupPlan,
   dockerManager: DockerManager | undefined,
-): Promise<boolean> {
-  try {
-    await executeCleanupPlan(plan, {
-      dryRun: false,
-      log: (msg) => console.log(msg),
-      dockerManager,
-    });
-    return true;
-  } catch (err) {
-    const detail = err instanceof Error ? err.message : String(err);
-    console.error(`Cleanup failed: ${detail}`);
-    process.exitCode = 1;
-    return false;
-  }
+): Promise<void> {
+  await executeCleanupPlan(plan, {
+    dryRun: false,
+    log: (msg) => console.log(msg),
+    dockerManager,
+  });
 }
 
 function printPlan(
@@ -157,4 +157,121 @@ async function confirmCleanup(runId: string): Promise<boolean> {
   rl.close();
 
   return /^y(es)?$/i.test(answer.trim());
+}
+
+// =============================================================================
+// ERROR NORMALIZATION
+// =============================================================================
+
+const CLEAN_COMMAND_FAILURE_TITLE = "Clean command failed.";
+const CLEAN_COMMAND_DOCKER_HINT = "Rerun with --no-containers if Docker is unavailable.";
+const CLEAN_COMMAND_PERMISSIONS_HINT = "Check file permissions for run artifacts and try again.";
+
+type CleanCommandErrorContext = {
+  removeContainers: boolean;
+};
+
+function normalizeCleanCommandError(
+  error: unknown,
+  context: CleanCommandErrorContext,
+): UserFacingError {
+  if (error instanceof UserFacingError) {
+    return new UserFacingError({
+      code: error.code,
+      title: CLEAN_COMMAND_FAILURE_TITLE,
+      message: error.message,
+      hint: error.hint ?? resolveCleanCommandHint(error, context),
+      next: error.next,
+      cause: error.cause ?? error,
+    });
+  }
+
+  return new UserFacingError({
+    code: resolveCommandErrorCode(error),
+    title: CLEAN_COMMAND_FAILURE_TITLE,
+    message: formatErrorMessage(error),
+    hint: resolveCleanCommandHint(error, context),
+    cause: error,
+  });
+}
+
+function resolveCleanCommandHint(
+  error: unknown,
+  context: CleanCommandErrorContext,
+): string | undefined {
+  if (context.removeContainers && isDockerError(error)) {
+    return CLEAN_COMMAND_DOCKER_HINT;
+  }
+
+  const code = resolveErrorCode(error);
+  if (code === "EACCES" || code === "EPERM") {
+    return CLEAN_COMMAND_PERMISSIONS_HINT;
+  }
+
+  return undefined;
+}
+
+function resolveCommandErrorCode(error: unknown): UserFacingErrorCode {
+  if (error instanceof UserFacingError) {
+    return error.code;
+  }
+  if (error instanceof ConfigError) {
+    return USER_FACING_ERROR_CODES.config;
+  }
+  if (error instanceof TaskError) {
+    return USER_FACING_ERROR_CODES.task;
+  }
+  if (error instanceof DockerError) {
+    return USER_FACING_ERROR_CODES.docker;
+  }
+  if (error instanceof GitError) {
+    return USER_FACING_ERROR_CODES.git;
+  }
+
+  return USER_FACING_ERROR_CODES.unknown;
+}
+
+function isDockerError(error: unknown): boolean {
+  const userError = resolveUserFacingError(error);
+  if (userError?.code === USER_FACING_ERROR_CODES.docker) {
+    return true;
+  }
+
+  if (error instanceof DockerError) {
+    return true;
+  }
+
+  const code = resolveErrorCode(error);
+  if (code === "ECONNREFUSED" || code === "ENOENT") {
+    return true;
+  }
+
+  const message = formatErrorMessage(error).toLowerCase();
+  return message.includes("docker");
+}
+
+function resolveUserFacingError(error: unknown): UserFacingError | null {
+  if (error instanceof UserFacingError) {
+    return error;
+  }
+
+  if (error && typeof error === "object" && "cause" in error) {
+    const cause = (error as { cause?: unknown }).cause;
+    if (cause instanceof UserFacingError) {
+      return cause;
+    }
+  }
+
+  return null;
+}
+
+function resolveErrorCode(error: unknown): string | null {
+  if (error && typeof error === "object" && "code" in error) {
+    const code = (error as { code?: unknown }).code;
+    if (typeof code === "string") {
+      return code;
+    }
+  }
+
+  return null;
 }
