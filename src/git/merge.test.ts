@@ -108,6 +108,7 @@ describe("mergeTaskBranches", () => {
     expect(result.status).toBe("merged");
     expect(result.merged.map((b) => b.taskId)).toEqual(["010", "012"]);
     expect(result.conflicts.map((conflict) => conflict.branch.taskId)).toEqual(["011"]);
+    expect(result.conflicts[0].message).toBe(`Merge conflict while merging ${branchB}.`);
     expect(result.mergeCommit).toBe(await headSha(repoPath));
 
     const status = await gitStatus(repoPath);

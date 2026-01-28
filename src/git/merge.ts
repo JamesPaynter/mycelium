@@ -1,3 +1,5 @@
+import { UserFacingError, USER_FACING_ERROR_CODES } from "../core/errors.js";
+
 import {
   addRemote,
   abortMerge,
@@ -60,7 +62,7 @@ export async function mergeTaskBranches(opts: {
   const { repoPath, mainBranch, branches } = opts;
 
   await ensureCleanWorkingTree(repoPath);
-  await checkout(repoPath, mainBranch);
+  await checkoutBranchOrThrow(repoPath, mainBranch);
 
   return mergeTaskBranchesInCurrent(repoPath, branches);
 }
@@ -74,11 +76,11 @@ export async function mergeTaskBranchesToTemp(opts: {
   const { repoPath, mainBranch, tempBranch, branches } = opts;
 
   await ensureCleanWorkingTree(repoPath);
-  await checkout(repoPath, mainBranch);
+  await checkoutBranchOrThrow(repoPath, mainBranch);
   const baseSha = await headSha(repoPath);
   const resolvedTempBranch = await resolveTempBranchName(repoPath, tempBranch);
 
-  await checkoutNewBranch(repoPath, resolvedTempBranch, baseSha);
+  await checkoutNewBranchOrThrow(repoPath, resolvedTempBranch, baseSha);
 
   const mergeResult = await mergeTaskBranchesInCurrent(repoPath, branches);
 
@@ -99,7 +101,7 @@ export async function fastForward(opts: {
   const { repoPath, mainBranch, targetRef, expectedBaseSha, cleanupBranch } = opts;
 
   await ensureCleanWorkingTree(repoPath);
-  await checkout(repoPath, mainBranch);
+  await checkoutBranchOrThrow(repoPath, mainBranch);
 
   const currentHead = await headSha(repoPath);
   if (expectedBaseSha && currentHead !== expectedBaseSha) {
@@ -123,7 +125,11 @@ export async function fastForward(opts: {
     };
   }
 
-  await git(repoPath, ["merge", "--ff-only", targetRef]);
+  try {
+    await git(repoPath, ["merge", "--ff-only", targetRef]);
+  } catch (err) {
+    throw createMergeUserFacingError(`Unable to fast-forward ${mainBranch} to ${targetRef}.`, err);
+  }
   const nextHead = await headSha(repoPath);
 
   if (cleanupBranch) {
@@ -161,14 +167,11 @@ async function mergeTaskBranchesInCurrent(
       if (isMergeConflictError(err)) {
         await abortMerge(repoPath).catch(() => undefined);
 
-        conflicts.push({
-          branch,
-          message: formatMergeError(err),
-        });
+        conflicts.push({ branch, message: formatMergeConflictMessage(branch) });
         continue;
       }
 
-      throw err;
+      throw createMergeUserFacingError(`Unable to merge ${branch.branchName}.`, err);
     } finally {
       await removeRemote(repoPath, remoteName).catch(() => undefined);
     }
@@ -189,7 +192,81 @@ async function resolveTempBranchName(repoPath: string, desiredName: string): Pro
   return candidate;
 }
 
-function formatMergeError(err: unknown): string {
-  if (err instanceof Error) return err.message;
-  return String(err);
+// =============================================================================
+// ERROR HELPERS
+// =============================================================================
+
+const MERGE_ERROR_HINT =
+  "Run `git status` to inspect the repository. If a merge is in progress, run `git merge --abort` to clean up.";
+const CHECKOUT_ERROR_HINT = "Make sure the branch exists locally and is up to date.";
+const CREATE_BRANCH_ERROR_HINT = "Make sure the branch name and start point are valid.";
+
+async function checkoutBranchOrThrow(repoPath: string, branch: string): Promise<void> {
+  try {
+    await checkout(repoPath, branch);
+  } catch (err) {
+    throw createCheckoutUserFacingError(branch, err);
+  }
+}
+
+async function checkoutNewBranchOrThrow(
+  repoPath: string,
+  branch: string,
+  startPoint: string,
+): Promise<void> {
+  try {
+    await checkoutNewBranch(repoPath, branch, startPoint);
+  } catch (err) {
+    throw createBranchUserFacingError(branch, startPoint, err);
+  }
+}
+
+function createMergeUserFacingError(message: string, err: unknown): UserFacingError {
+  if (err instanceof UserFacingError) {
+    return err;
+  }
+
+  return new UserFacingError({
+    code: USER_FACING_ERROR_CODES.git,
+    title: "Git merge failed.",
+    message,
+    hint: MERGE_ERROR_HINT,
+    cause: err,
+  });
+}
+
+function createCheckoutUserFacingError(branch: string, err: unknown): UserFacingError {
+  if (err instanceof UserFacingError) {
+    return err;
+  }
+
+  return new UserFacingError({
+    code: USER_FACING_ERROR_CODES.git,
+    title: "Git checkout failed.",
+    message: `Unable to checkout ${branch}.`,
+    hint: CHECKOUT_ERROR_HINT,
+    cause: err,
+  });
+}
+
+function createBranchUserFacingError(
+  branch: string,
+  startPoint: string,
+  err: unknown,
+): UserFacingError {
+  if (err instanceof UserFacingError) {
+    return err;
+  }
+
+  return new UserFacingError({
+    code: USER_FACING_ERROR_CODES.git,
+    title: "Git branch creation failed.",
+    message: `Unable to create ${branch} from ${startPoint}.`,
+    hint: CREATE_BRANCH_ERROR_HINT,
+    cause: err,
+  });
+}
+
+function formatMergeConflictMessage(branch: TaskBranchToMerge): string {
+  return `Merge conflict while merging ${branch.branchName}.`;
 }
