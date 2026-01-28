@@ -2,13 +2,19 @@ import fs from "node:fs/promises";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import path from "node:path";
 
-import { findTaskLogDir, readJsonlFromCursor, taskEventsLogPathForId } from "../core/log-query.js";
-import { resolveRunLogsDir, type Paths } from "../core/paths.js";
-import { listRunHistoryEntries } from "../core/run-history.js";
-import { readDoctorLogSnippet } from "../core/run-logs.js";
-import { loadRunStateForProject, summarizeRunState } from "../core/state-store.js";
+import type { Paths } from "../core/paths.js";
 
-import { loadCodeGraphSnapshot, type CodeGraphError } from "./code-graph.js";
+import type { CodeGraphError } from "./code-graph.js";
+import { queryCodeGraph, type CodeGraphQueryError } from "./queries/code-graph-queries.js";
+import {
+  queryComplianceReport,
+  queryDoctorSnippet,
+  queryOrchestratorEvents,
+  queryTaskEvents,
+  queryValidatorReport,
+  type LogQueryError,
+} from "./queries/log-queries.js";
+import { queryRunsList, queryRunSummary, type RunQueryError } from "./queries/run-queries.js";
 
 // =============================================================================
 // TYPES
@@ -48,12 +54,6 @@ type StaticFile = {
   size: number;
   contentType: string;
 };
-
-type OptionalNumberParseResult = { ok: true; value: number | null } | { ok: false };
-
-type JsonFileReadResult =
-  | { ok: true; value: unknown }
-  | { ok: false; reason: "not_found" | "too_large" };
 
 // =============================================================================
 // PUBLIC API
@@ -239,21 +239,18 @@ async function handleRunsListRequest(
   route: { projectName: string },
   options: ResolvedUiRouterOptions,
 ): Promise<void> {
-  const limitResult = parseOptionalPositiveInteger(url.searchParams.get("limit"));
-  if (!limitResult.ok) {
-    sendApiError(res, 400, "bad_request", "Invalid limit value.", method === "HEAD");
+  const result = await queryRunsList({
+    projectName: route.projectName,
+    limit: url.searchParams.get("limit"),
+    paths: options.paths,
+  });
+
+  if (!result.ok) {
+    sendRunQueryError(res, result.error, method === "HEAD");
     return;
   }
 
-  const runs = await listRunHistoryEntries(
-    route.projectName,
-    {
-      limit: limitResult.value ?? undefined,
-    },
-    options.paths,
-  );
-
-  sendApiOk(res, { runs }, method === "HEAD");
+  sendApiOk(res, result.result, method === "HEAD");
 }
 
 async function handleSummaryRequest(
@@ -262,20 +259,18 @@ async function handleSummaryRequest(
   route: { projectName: string; runId: string },
   options: ResolvedUiRouterOptions,
 ): Promise<void> {
-  const resolved = await loadRunStateForProject(route.projectName, route.runId, options.paths);
-  if (!resolved) {
-    sendApiError(
-      res,
-      404,
-      "not_found",
-      `Run ${route.runId} not found for project ${route.projectName}.`,
-      method === "HEAD",
-    );
+  const result = await queryRunSummary({
+    projectName: route.projectName,
+    runId: route.runId,
+    paths: options.paths,
+  });
+
+  if (!result.ok) {
+    sendRunQueryError(res, result.error, method === "HEAD");
     return;
   }
 
-  const summary = summarizeRunState(resolved.state);
-  sendApiOk(res, summary, method === "HEAD");
+  sendApiOk(res, result.result, method === "HEAD");
 }
 
 async function handleCodeGraphRequest(
@@ -285,31 +280,31 @@ async function handleCodeGraphRequest(
   route: { projectName: string; runId: string },
   options: ResolvedUiRouterOptions,
 ): Promise<void> {
-  const baseSha = parseOptionalString(url.searchParams.get("baseSha")) ?? null;
-  const resolved = await loadRunStateForProject(route.projectName, route.runId, options.paths);
-  if (!resolved) {
-    sendApiError(
-      res,
-      404,
-      "not_found",
-      `Run ${route.runId} not found for project ${route.projectName}.`,
-      method === "HEAD",
-    );
-    return;
-  }
-
-  const snapshot = await loadCodeGraphSnapshot({
-    state: resolved.state,
-    baseShaOverride: baseSha,
+  const result = await queryCodeGraph({
+    projectName: route.projectName,
+    runId: route.runId,
+    baseSha: url.searchParams.get("baseSha"),
+    paths: options.paths,
   });
 
-  if (!snapshot.ok) {
-    const status = statusForCodeGraphError(snapshot.error.code);
-    sendCodeGraphError(res, status, snapshot.error, method === "HEAD");
+  if (!result.ok) {
+    if (isRunNotFoundError(result.error)) {
+      sendApiError(
+        res,
+        404,
+        "not_found",
+        `Run ${route.runId} not found for project ${route.projectName}.`,
+        method === "HEAD",
+      );
+      return;
+    }
+
+    const status = statusForCodeGraphError(result.error.code);
+    sendCodeGraphError(res, status, result.error, method === "HEAD");
     return;
   }
 
-  sendApiOk(res, snapshot.result, method === "HEAD");
+  sendApiOk(res, result.result, method === "HEAD");
 }
 
 async function handleOrchestratorEventsRequest(
@@ -319,53 +314,22 @@ async function handleOrchestratorEventsRequest(
   route: { projectName: string; runId: string },
   options: ResolvedUiRouterOptions,
 ): Promise<void> {
-  const cursorResult = parseCursorParam(url.searchParams.get("cursor"));
-  if (!cursorResult.ok) {
-    sendApiError(res, 400, "bad_request", "Invalid cursor value.", method === "HEAD");
+  const result = await queryOrchestratorEvents({
+    projectName: route.projectName,
+    runId: route.runId,
+    cursor: url.searchParams.get("cursor"),
+    maxBytes: url.searchParams.get("maxBytes"),
+    typeGlob: url.searchParams.get("typeGlob"),
+    taskId: url.searchParams.get("taskId"),
+    paths: options.paths,
+  });
+
+  if (!result.ok) {
+    sendLogQueryError(res, result.error, method === "HEAD");
     return;
   }
 
-  const maxBytesResult = parseOptionalNonNegativeInteger(url.searchParams.get("maxBytes"));
-  if (!maxBytesResult.ok) {
-    sendApiError(res, 400, "bad_request", "Invalid maxBytes value.", method === "HEAD");
-    return;
-  }
-
-  const typeGlob = parseOptionalString(url.searchParams.get("typeGlob"));
-  const taskId = parseOptionalString(url.searchParams.get("taskId"));
-
-  const resolved = resolveRunLogsDir(route.projectName, route.runId, options.paths);
-  if (!resolved) {
-    sendApiError(res, 404, "not_found", "Run logs not found.", method === "HEAD");
-    return;
-  }
-
-  const logPath = path.join(resolved.dir, "orchestrator.jsonl");
-  const logExists = await fileExists(logPath);
-  if (!logExists) {
-    sendApiError(res, 404, "not_found", "Run logs not found.", method === "HEAD");
-    return;
-  }
-
-  const readOptions = maxBytesResult.value === null ? {} : { maxBytes: maxBytesResult.value };
-  const result = await readJsonlFromCursor(
-    logPath,
-    cursorResult.value,
-    { taskId, typeGlob },
-    readOptions,
-  );
-
-  sendApiOk(
-    res,
-    {
-      file: "orchestrator.jsonl",
-      cursor: result.cursor,
-      nextCursor: result.nextCursor,
-      truncated: result.truncated,
-      lines: result.lines,
-    },
-    method === "HEAD",
-  );
+  sendApiOk(res, result.result, method === "HEAD");
 }
 
 async function handleTaskEventsRequest(
@@ -375,46 +339,22 @@ async function handleTaskEventsRequest(
   route: { projectName: string; runId: string; taskId: string },
   options: ResolvedUiRouterOptions,
 ): Promise<void> {
-  const cursorResult = parseCursorParam(url.searchParams.get("cursor"));
-  if (!cursorResult.ok) {
-    sendApiError(res, 400, "bad_request", "Invalid cursor value.", method === "HEAD");
+  const result = await queryTaskEvents({
+    projectName: route.projectName,
+    runId: route.runId,
+    taskId: route.taskId,
+    cursor: url.searchParams.get("cursor"),
+    maxBytes: url.searchParams.get("maxBytes"),
+    typeGlob: url.searchParams.get("typeGlob"),
+    paths: options.paths,
+  });
+
+  if (!result.ok) {
+    sendLogQueryError(res, result.error, method === "HEAD");
     return;
   }
 
-  const maxBytesResult = parseOptionalNonNegativeInteger(url.searchParams.get("maxBytes"));
-  if (!maxBytesResult.ok) {
-    sendApiError(res, 400, "bad_request", "Invalid maxBytes value.", method === "HEAD");
-    return;
-  }
-
-  const typeGlob = parseOptionalString(url.searchParams.get("typeGlob"));
-
-  const resolved = resolveRunLogsDir(route.projectName, route.runId, options.paths);
-  if (!resolved) {
-    sendApiError(res, 404, "not_found", "Run logs not found.", method === "HEAD");
-    return;
-  }
-
-  const logPath = taskEventsLogPathForId(resolved.dir, route.taskId);
-  if (!logPath) {
-    sendApiError(res, 404, "not_found", "Task logs not found.", method === "HEAD");
-    return;
-  }
-
-  const readOptions = maxBytesResult.value === null ? {} : { maxBytes: maxBytesResult.value };
-  const result = await readJsonlFromCursor(logPath, cursorResult.value, { typeGlob }, readOptions);
-
-  sendApiOk(
-    res,
-    {
-      file: normalizeLogPath(resolved.dir, logPath),
-      cursor: result.cursor,
-      nextCursor: result.nextCursor,
-      truncated: result.truncated,
-      lines: result.lines,
-    },
-    method === "HEAD",
-  );
+  sendApiOk(res, result.result, method === "HEAD");
 }
 
 async function handleDoctorRequest(
@@ -424,55 +364,21 @@ async function handleDoctorRequest(
   route: { projectName: string; runId: string; taskId: string },
   options: ResolvedUiRouterOptions,
 ): Promise<void> {
-  const attemptResult = parseOptionalPositiveInteger(url.searchParams.get("attempt"));
-  if (!attemptResult.ok) {
-    sendApiError(res, 400, "bad_request", "Invalid attempt value.", method === "HEAD");
+  const result = await queryDoctorSnippet({
+    projectName: route.projectName,
+    runId: route.runId,
+    taskId: route.taskId,
+    attempt: url.searchParams.get("attempt"),
+    limit: url.searchParams.get("limit"),
+    paths: options.paths,
+  });
+
+  if (!result.ok) {
+    sendLogQueryError(res, result.error, method === "HEAD");
     return;
   }
 
-  const limitResult = parseOptionalPositiveInteger(url.searchParams.get("limit"));
-  if (!limitResult.ok) {
-    sendApiError(res, 400, "bad_request", "Invalid limit value.", method === "HEAD");
-    return;
-  }
-
-  const requestedLimit = limitResult.value ?? DEFAULT_DOCTOR_SNIPPET_LIMIT;
-  if (requestedLimit > MAX_DOCTOR_SNIPPET_LIMIT) {
-    sendApiError(
-      res,
-      400,
-      "bad_request",
-      `Limit exceeds maximum of ${MAX_DOCTOR_SNIPPET_LIMIT} characters.`,
-      method === "HEAD",
-    );
-    return;
-  }
-
-  const resolved = resolveRunLogsDir(route.projectName, route.runId, options.paths);
-  if (!resolved) {
-    sendApiError(res, 404, "not_found", "Run logs not found.", method === "HEAD");
-    return;
-  }
-
-  const snippet = readDoctorLogSnippet(
-    resolved.dir,
-    route.taskId,
-    attemptResult.value,
-    requestedLimit,
-  );
-  if (!snippet) {
-    sendApiError(res, 404, "not_found", "Doctor logs not found.", method === "HEAD");
-    return;
-  }
-
-  sendApiOk(
-    res,
-    {
-      file: normalizeLogPath(resolved.dir, snippet.path),
-      content: snippet.content,
-    },
-    method === "HEAD",
-  );
+  sendApiOk(res, result.result, method === "HEAD");
 }
 
 async function handleComplianceRequest(
@@ -481,43 +387,19 @@ async function handleComplianceRequest(
   route: { projectName: string; runId: string; taskId: string },
   options: ResolvedUiRouterOptions,
 ): Promise<void> {
-  const resolved = resolveRunLogsDir(route.projectName, route.runId, options.paths);
-  if (!resolved) {
-    sendApiError(res, 404, "not_found", "Run logs not found.", method === "HEAD");
+  const result = await queryComplianceReport({
+    projectName: route.projectName,
+    runId: route.runId,
+    taskId: route.taskId,
+    paths: options.paths,
+  });
+
+  if (!result.ok) {
+    sendLogQueryError(res, result.error, method === "HEAD");
     return;
   }
 
-  const taskLogDir = findTaskLogDir(resolved.dir, route.taskId);
-  if (!taskLogDir) {
-    sendApiError(res, 404, "not_found", "Compliance report not found.", method === "HEAD");
-    return;
-  }
-
-  const compliancePath = path.join(taskLogDir, "compliance.json");
-  const report = await readJsonFileWithLimit(compliancePath, MAX_JSON_REPORT_BYTES);
-  if (!report.ok) {
-    if (report.reason === "too_large") {
-      sendApiError(
-        res,
-        413,
-        "bad_request",
-        "Compliance report exceeds size limit.",
-        method === "HEAD",
-      );
-      return;
-    }
-    sendApiError(res, 404, "not_found", "Compliance report not found.", method === "HEAD");
-    return;
-  }
-
-  sendApiOk(
-    res,
-    {
-      file: normalizeLogPath(resolved.dir, compliancePath),
-      report: report.value,
-    },
-    method === "HEAD",
-  );
+  sendApiOk(res, result.result, method === "HEAD");
 }
 
 async function handleValidatorReportRequest(
@@ -526,42 +408,20 @@ async function handleValidatorReportRequest(
   route: { projectName: string; runId: string; validator: string; taskId: string },
   options: ResolvedUiRouterOptions,
 ): Promise<void> {
-  const resolved = resolveRunLogsDir(route.projectName, route.runId, options.paths);
-  if (!resolved) {
-    sendApiError(res, 404, "not_found", "Run logs not found.", method === "HEAD");
+  const result = await queryValidatorReport({
+    projectName: route.projectName,
+    runId: route.runId,
+    validator: route.validator,
+    taskId: route.taskId,
+    paths: options.paths,
+  });
+
+  if (!result.ok) {
+    sendLogQueryError(res, result.error, method === "HEAD");
     return;
   }
 
-  const reportPath = await findValidatorReportPath(resolved.dir, route.validator, route.taskId);
-  if (!reportPath) {
-    sendApiError(res, 404, "not_found", "Validator report not found.", method === "HEAD");
-    return;
-  }
-
-  const report = await readJsonFileWithLimit(reportPath, MAX_JSON_REPORT_BYTES);
-  if (!report.ok) {
-    if (report.reason === "too_large") {
-      sendApiError(
-        res,
-        413,
-        "bad_request",
-        "Validator report exceeds size limit.",
-        method === "HEAD",
-      );
-      return;
-    }
-    sendApiError(res, 404, "not_found", "Validator report not found.", method === "HEAD");
-    return;
-  }
-
-  sendApiOk(
-    res,
-    {
-      file: normalizeLogPath(resolved.dir, reportPath),
-      report: report.value,
-    },
-    method === "HEAD",
-  );
+  sendApiOk(res, result.result, method === "HEAD");
 }
 
 function matchApiRoute(pathname: string): ApiRouteMatch {
@@ -848,6 +708,35 @@ function sendCodeGraphError(
   sendJson(res, status, { ok: false, error }, isHead);
 }
 
+// =============================================================================
+// QUERY ERROR MAPPING
+// =============================================================================
+
+function sendRunQueryError(res: ServerResponse, error: RunQueryError, isHead: boolean): void {
+  switch (error.code) {
+    case "bad_request":
+      sendApiError(res, 400, "bad_request", error.message, isHead);
+      return;
+    case "not_found":
+      sendApiError(res, 404, "not_found", error.message, isHead);
+      return;
+  }
+}
+
+function sendLogQueryError(res: ServerResponse, error: LogQueryError, isHead: boolean): void {
+  switch (error.code) {
+    case "bad_request":
+      sendApiError(res, 400, "bad_request", error.message, isHead);
+      return;
+    case "not_found":
+      sendApiError(res, 404, "not_found", error.message, isHead);
+      return;
+    case "report_too_large":
+      sendApiError(res, 413, "bad_request", error.message, isHead);
+      return;
+  }
+}
+
 function sendJson(res: ServerResponse, status: number, payload: unknown, isHead: boolean): void {
   const body = JSON.stringify(payload);
   res.statusCode = status;
@@ -866,10 +755,6 @@ function sendJson(res: ServerResponse, status: number, payload: unknown, isHead:
 // =============================================================================
 // UTILITIES
 // =============================================================================
-
-const DEFAULT_DOCTOR_SNIPPET_LIMIT = 6000;
-const MAX_DOCTOR_SNIPPET_LIMIT = 20000;
-const MAX_JSON_REPORT_BYTES = 1024 * 1024;
 
 const STATIC_CONTENT_TYPES: Record<string, string> = {
   ".css": "text/css; charset=utf-8",
@@ -928,59 +813,10 @@ function safeDecodePathname(pathname: string): string | null {
   }
 }
 
-function parseOptionalString(value: string | null): string | undefined {
-  if (value === null) return undefined;
-  const trimmed = value.trim();
-  return trimmed ? trimmed : undefined;
-}
-
-function parseOptionalNonNegativeInteger(value: string | null): OptionalNumberParseResult {
-  if (value === null) {
-    return { ok: true, value: null };
-  }
-
-  const trimmed = value.trim();
-  if (!trimmed) {
-    return { ok: true, value: null };
-  }
-
-  if (!/^\d+$/.test(trimmed)) {
-    return { ok: false };
-  }
-
-  const parsed = Number.parseInt(trimmed, 10);
-  if (!Number.isSafeInteger(parsed)) {
-    return { ok: false };
-  }
-
-  return { ok: true, value: parsed };
-}
-
-function parseOptionalPositiveInteger(value: string | null): OptionalNumberParseResult {
-  const parsed = parseOptionalNonNegativeInteger(value);
-  if (!parsed.ok) {
-    return { ok: false };
-  }
-
-  if (parsed.value === null) {
-    return parsed;
-  }
-
-  return parsed.value > 0 ? parsed : { ok: false };
-}
-
-function parseCursorParam(value: string | null): { ok: true; value: number } | { ok: false } {
-  const parsed = parseOptionalNonNegativeInteger(value);
-  if (!parsed.ok) {
-    return { ok: false };
-  }
-
-  return { ok: true, value: parsed.value ?? 0 };
-}
-
-function normalizeLogPath(baseDir: string, filePath: string): string {
-  const relativePath = path.relative(baseDir, filePath);
-  return relativePath.split(path.sep).join("/");
+function isRunNotFoundError(
+  error: CodeGraphQueryError,
+): error is { code: "run_not_found"; message: string } {
+  return error.code === "run_not_found";
 }
 
 function statusForCodeGraphError(code: CodeGraphError["code"]): number {
@@ -994,78 +830,6 @@ function statusForCodeGraphError(code: CodeGraphError["code"]): number {
     default:
       return 500;
   }
-}
-
-async function fileExists(filePath: string): Promise<boolean> {
-  try {
-    const stat = await fs.stat(filePath);
-    return stat.isFile();
-  } catch (err) {
-    if (isMissingFile(err)) return false;
-    throw err;
-  }
-}
-
-async function readJsonFileWithLimit(
-  filePath: string,
-  maxBytes: number,
-): Promise<JsonFileReadResult> {
-  const stat = await fs.stat(filePath).catch((err) => {
-    if (isMissingFile(err)) return null;
-    throw err;
-  });
-
-  if (!stat || !stat.isFile()) {
-    return { ok: false, reason: "not_found" };
-  }
-
-  if (stat.size > maxBytes) {
-    return { ok: false, reason: "too_large" };
-  }
-
-  const raw = await fs.readFile(filePath, "utf8");
-  try {
-    return { ok: true, value: JSON.parse(raw) };
-  } catch {
-    return { ok: true, value: raw };
-  }
-}
-
-async function findValidatorReportPath(
-  runLogsDir: string,
-  validator: string,
-  taskId: string,
-): Promise<string | null> {
-  const validatorDir = path.join(runLogsDir, "validators", validator);
-  const entries = await fs.readdir(validatorDir, { withFileTypes: true }).catch((err) => {
-    if (isMissingFile(err)) return null;
-    throw err;
-  });
-
-  if (!entries) {
-    return null;
-  }
-
-  let latest: { path: string; mtimeMs: number } | null = null;
-
-  for (const entry of entries) {
-    if (!entry.isFile()) continue;
-    if (!entry.name.startsWith(`${taskId}-`)) continue;
-    if (!entry.name.toLowerCase().endsWith(".json")) continue;
-
-    const fullPath = path.join(validatorDir, entry.name);
-    const stat = await fs.stat(fullPath).catch((err) => {
-      if (isMissingFile(err)) return null;
-      throw err;
-    });
-
-    if (!stat || !stat.isFile()) continue;
-    if (!latest || stat.mtimeMs > latest.mtimeMs) {
-      latest = { path: fullPath, mtimeMs: stat.mtimeMs };
-    }
-  }
-
-  return latest ? latest.path : null;
 }
 
 function sendText(res: ServerResponse, status: number, message: string, isHead: boolean): void {
