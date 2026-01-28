@@ -1,3 +1,4 @@
+import { UserFacingError, USER_FACING_ERROR_CODES } from "./errors.js";
 import {
   locksConflict,
   normalizeLocks,
@@ -11,6 +12,16 @@ export type BatchPlan = {
 };
 
 export type LockResolver = (task: TaskSpec) => NormalizedLocks;
+
+const SCHEDULER_PLACEMENT_TITLE = "Scheduler placement failed.";
+const SCHEDULER_PLACEMENT_MESSAGE = "No tasks could be placed into a runnable batch.";
+const SCHEDULER_PLACEMENT_HINT =
+  "Review task locks and configured resources, then rerun with --debug for details.";
+
+type PlacementDetail = {
+  task: TaskSpec;
+  locks: NormalizedLocks;
+};
 
 function resolveTaskLocks(task: TaskSpec): NormalizedLocks {
   return normalizeLocks(task.manifest.locks);
@@ -70,11 +81,13 @@ function buildBatchFromSorted(
   const remaining = [...available];
   const batchLocks = createBatchLocks();
   const batch: TaskSpec[] = [];
+  const placementDetails: PlacementDetail[] = [];
 
   for (const task of [...remaining]) {
     if (batch.length >= maxParallel) break;
 
     const locks = resolveLocks(task);
+    placementDetails.push({ task, locks });
     if (canRunInSameBatch(locks, batchLocks)) {
       batch.push(task);
       addToBatch(locks, batchLocks);
@@ -83,7 +96,7 @@ function buildBatchFromSorted(
   }
 
   if (batch.length === 0 && available.length > 0) {
-    throw new Error("Scheduler could not place any tasks into a batch; check lock definitions.");
+    throw createSchedulerPlacementError(placementDetails);
   }
 
   return {
@@ -127,6 +140,38 @@ function compareTaskById(a: TaskSpec, b: TaskSpec): number {
 
   if (!Number.isNaN(ai) && !Number.isNaN(bi)) return ai - bi;
   return a.manifest.id.localeCompare(b.manifest.id);
+}
+
+function createSchedulerPlacementError(details: PlacementDetail[]): UserFacingError {
+  return new UserFacingError({
+    code: USER_FACING_ERROR_CODES.task,
+    title: SCHEDULER_PLACEMENT_TITLE,
+    message: SCHEDULER_PLACEMENT_MESSAGE,
+    hint: SCHEDULER_PLACEMENT_HINT,
+    cause: new Error(formatSchedulerPlacementCause(details)),
+  });
+}
+
+function formatSchedulerPlacementCause(details: PlacementDetail[]): string {
+  const baseMessage = "Scheduler could not place any tasks into a batch; check lock definitions.";
+
+  if (details.length === 0) {
+    return baseMessage;
+  }
+
+  const lines = details.map(formatSchedulerPlacementDetail).join("\n");
+  return `${baseMessage}\n${lines}`;
+}
+
+function formatSchedulerPlacementDetail(detail: PlacementDetail): string {
+  const reads = formatLockList(detail.locks.reads);
+  const writes = formatLockList(detail.locks.writes);
+
+  return `${detail.task.manifest.id} ${detail.task.manifest.name}: reads=[${reads}] writes=[${writes}]`;
+}
+
+function formatLockList(values: string[]): string {
+  return values.length > 0 ? values.join(", ") : "none";
 }
 
 function assertMaxParallel(maxParallel: number): void {

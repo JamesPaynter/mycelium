@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { buildBatches, buildGreedyBatch, topologicalReady } from "./scheduler.js";
 import type { TaskSpec } from "./task-manifest.js";
@@ -77,6 +77,48 @@ describe("scheduler", () => {
     const ready = topologicalReady(tasks, new Set(["2"]));
 
     expect(ready.map(taskId)).toEqual(["2", "010"]);
+  });
+
+  it("wraps placement failures with UserFacingError", async () => {
+    vi.resetModules();
+    vi.doMock("./task-manifest.js", async () => {
+      const actual =
+        await vi.importActual<typeof import("./task-manifest.js")>("./task-manifest.js");
+      return {
+        ...actual,
+        locksConflict: () => true,
+      };
+    });
+
+    try {
+      const { buildGreedyBatch: buildGreedyBatchWithMock } = await import("./scheduler.js");
+      const { UserFacingError } = await import("./errors.js");
+
+      const task = createTask("001", { writes: ["db"] });
+
+      let error: unknown;
+      try {
+        buildGreedyBatchWithMock([task], 2);
+      } catch (err) {
+        error = err;
+      }
+
+      expect(error).toBeInstanceOf(UserFacingError);
+
+      const userError = error as InstanceType<typeof UserFacingError>;
+      expect(userError.title).toBe("Scheduler placement failed.");
+      expect(userError.message).toBe("No tasks could be placed into a runnable batch.");
+      expect(userError.hint).toBe(
+        "Review task locks and configured resources, then rerun with --debug for details.",
+      );
+      expect(userError.cause).toBeInstanceOf(Error);
+      const cause = userError.cause as Error;
+      expect(cause.message).toContain("Scheduler could not place any tasks into a batch");
+      expect(cause.message).toContain("001 Task 001");
+    } finally {
+      vi.unmock("./task-manifest.js");
+      vi.resetModules();
+    }
   });
 });
 
