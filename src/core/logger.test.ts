@@ -2,9 +2,13 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { JsonlLogger, eventWithTs, logOrchestratorEvent } from "./logger.js";
+
+afterEach(() => {
+  vi.restoreAllMocks();
+});
 
 describe("JsonlLogger", () => {
   it("writes events with run and task metadata", () => {
@@ -62,6 +66,57 @@ describe("JsonlLogger", () => {
     expect(event.task_id).toBe("001");
     expect(event.batch_id).toBe(1);
     expect(event.tasks).toEqual(["001"]);
+  });
+
+  it("warns on write failures with formatted messages", () => {
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "jsonl-logger-"));
+    const logPath = path.join(tmpDir, "events.jsonl");
+    const logger = new JsonlLogger(logPath, { runId: "run-4" });
+
+    const writeError = new Error("disk full");
+    vi.spyOn(fs, "writeSync").mockImplementation(() => {
+      throw writeError;
+    });
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+
+    logger.log({ type: "task.start" });
+    logger.close();
+
+    expect(warnSpy).toHaveBeenCalledTimes(1);
+    const message = warnSpy.mock.calls[0]?.[0];
+    expect(message).toContain("Warning:");
+    expect(message).toContain("write log event");
+    expect(message).toContain(logPath);
+    expect(message).toContain("disk full");
+  });
+
+  it("includes stack details when debug is enabled", () => {
+    const originalArgv = [...process.argv];
+    process.argv = [...process.argv, "--debug"];
+
+    try {
+      const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "jsonl-logger-"));
+      const logPath = path.join(tmpDir, "events.jsonl");
+      const logger = new JsonlLogger(logPath, { runId: "run-5" });
+
+      const writeError = new Error("disk full");
+      vi.spyOn(fs, "writeSync").mockImplementation(() => {
+        throw writeError;
+      });
+      const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+
+      logger.log({ type: "task.start" });
+      logger.close();
+
+      expect(warnSpy).toHaveBeenCalledTimes(1);
+      const message = warnSpy.mock.calls[0]?.[0];
+      expect(message).toContain("disk full");
+      if (writeError.stack) {
+        expect(message).toContain(writeError.stack);
+      }
+    } finally {
+      process.argv = originalArgv;
+    }
   });
 });
 

@@ -3,7 +3,12 @@ import path from "node:path";
 
 import fse from "fs-extra";
 
+import { formatErrorLines, formatErrorMessage } from "./error-format.js";
 import { isoNow } from "./utils.js";
+
+// =============================================================================
+// TYPES
+// =============================================================================
 
 export type JsonValue = string | number | boolean | null | JsonArray | JsonObject;
 export type JsonArray = JsonValue[];
@@ -32,8 +37,15 @@ type EventDefaults = {
   taskId?: string;
 };
 
+type LogFailureAction = "write" | "close";
+
+// =============================================================================
+// LOGGER
+// =============================================================================
+
 export class JsonlLogger {
-  private fileDescriptor: number;
+  private readonly fileDescriptor: number;
+  private readonly isDebugEnabled: boolean;
   private closed = false;
 
   constructor(
@@ -42,6 +54,7 @@ export class JsonlLogger {
   ) {
     fse.ensureDirSync(path.dirname(filePath));
     this.fileDescriptor = fs.openSync(filePath, "a");
+    this.isDebugEnabled = resolveLoggerDebugEnabled();
   }
 
   log(event: LogEventInput): void {
@@ -55,7 +68,7 @@ export class JsonlLogger {
       fs.fsyncSync(this.fileDescriptor);
       fs.closeSync(this.fileDescriptor);
     } catch (err) {
-      console.error(`Failed to close log file ${this.filePath}:`, err);
+      console.warn(formatLogFailureWarning("close", this.filePath, err, this.isDebugEnabled));
     } finally {
       this.closed = true;
     }
@@ -67,10 +80,14 @@ export class JsonlLogger {
       fs.writeSync(this.fileDescriptor, `${JSON.stringify(event)}\n`);
       fs.fsyncSync(this.fileDescriptor);
     } catch (err) {
-      console.error(`Failed to write log event to ${this.filePath}:`, err);
+      console.warn(formatLogFailureWarning("write", this.filePath, err, this.isDebugEnabled));
     }
   }
 }
+
+// =============================================================================
+// EVENT HELPERS
+// =============================================================================
 
 export function eventWithTs(event: LogEventInput, defaults: EventDefaults = {}): LogEvent {
   const { runId: providedRunId, taskId, payload, ts, type, ...rest } = event;
@@ -164,4 +181,62 @@ export function logJsonLineOrRaw(
   }
 
   logger.log({ type: fallbackType, payload: { stream, raw: line } });
+}
+
+// =============================================================================
+// INTERNALS
+// =============================================================================
+
+function formatLogFailureWarning(
+  action: LogFailureAction,
+  filePath: string,
+  error: unknown,
+  isDebugEnabled: boolean,
+): string {
+  const summary = formatErrorMessage(error);
+  const actionLabel =
+    action === "write" ? `write log event to ${filePath}` : `close log file ${filePath}`;
+  const message = `Warning: failed to ${actionLabel}: ${summary}`;
+
+  if (!isDebugEnabled) {
+    return message;
+  }
+
+  const stack = resolveDebugStack(error);
+  if (!stack) {
+    return message;
+  }
+
+  return `${message}\n${stack}`;
+}
+
+function resolveDebugStack(error: unknown): string | undefined {
+  const lines = formatErrorLines(error, { mode: "debug" });
+  const stackLine = lines.find((line) => line.kind === "stack");
+  return stackLine?.text;
+}
+
+function resolveLoggerDebugEnabled(): boolean {
+  const argvFlag = resolveDebugFlagFromArgv(process.argv);
+  return argvFlag ?? false;
+}
+
+function resolveDebugFlagFromArgv(argv: string[]): boolean | undefined {
+  let debugFlag: boolean | undefined;
+
+  for (const arg of argv) {
+    if (arg === "--") {
+      break;
+    }
+
+    if (arg === "--debug") {
+      debugFlag = true;
+    }
+
+    if (arg === "--no-debug") {
+      debugFlag = false;
+    }
+  }
+
+  return debugFlag;
 }
