@@ -1,7 +1,7 @@
 /*
 Purpose: render user-facing errors for CLI output with optional color.
 Assumptions: stderr is the default stream; non-TTY output should disable color.
-Usage: console.error(renderCliError(err, { debug: verbose }));
+Usage: console.error(renderCliError(err, { debug: isDebugEnabled }));
 */
 
 import {

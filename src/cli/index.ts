@@ -52,7 +52,8 @@ export function buildCli(): Command {
       "--config <path>",
       "Override project config path (defaults to repo .mycelium/config.yaml or ~/.mycelium/projects/<project>.yaml)",
     )
-    .option("-v, --verbose", "Verbose output", false);
+    .option("-v, --verbose", "Verbose output", false)
+    .option("--debug", "Show full error details (stack traces)", false);
 
   registerLogsCommand(program);
   registerControlPlaneCommand(program);
