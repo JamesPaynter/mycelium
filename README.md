@@ -15,6 +15,7 @@ LLM-driven planner and Docker-isolated Codex workers that plan tasks, run them i
 - Architecture decisions (ADRs): `docs/architecture/adr/`.
 - Spec traceability matrix: `docs/spec-traceability.md` maps each spec principle to code, tests, and drills.
 - Control graph navigation tools: `docs/control-plane/repo-navigation-tools.md`.
+- Error handling runbook: `docs/ops/error-handling.md`.
 
 ## Repo layout
 - `src/app`: application use-cases and orchestrator wiring.
@@ -75,6 +76,11 @@ npm run dev -- autopilot --project <project-name> --local-worker --max-parallel 
 | `runs list` | List recorded runs (ids, status, timestamps) for a project. |
 | `logs [query|search|timeline|failures|doctor|summarize]` | Inspect JSONL logs directly or via SQLite index (`--use-index`). |
 | `clean` | Remove workspaces/containers/logs for a run (`--dry-run` and `--force` available). |
+
+## Error handling
+- CLI errors print a short block (title + message + optional hint/next) and exit non-zero.
+- Add `--debug` to include error codes, causes, and stack traces.
+- Example: `mycelium --debug run --project <project-name>`.
 
 ## Config quick reference
 - Planner/worker models: set `planner` and `worker` blocks (providers: `openai`, `anthropic`, `codex`, `mock`; `reasoning_effort` supported).
