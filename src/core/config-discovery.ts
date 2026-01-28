@@ -2,6 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { UserFacingError, USER_FACING_ERROR_CODES } from "./errors.js";
 import { buildMyceliumGitignore } from "./mycelium-gitignore.js";
 import { projectConfigPath } from "./paths.js";
 
@@ -84,7 +85,7 @@ export function initRepoConfig(args: { cwd?: string; force?: boolean }): InitRes
   const cwd = args.cwd ?? process.cwd();
   const repoRoot = findRepoRoot(cwd);
   if (!repoRoot) {
-    throw new Error("No git repository found in the current or parent directories.");
+    throw createMissingRepoError(cwd);
   }
 
   const configPath = repoConfigPath(repoRoot);
@@ -124,6 +125,16 @@ export function repoConfigPath(repoRoot: string): string {
 // =============================================================================
 // INTERNALS
 // =============================================================================
+
+function createMissingRepoError(cwd: string): UserFacingError {
+  const resolvedCwd = path.resolve(cwd);
+  return new UserFacingError({
+    code: USER_FACING_ERROR_CODES.config,
+    title: "Repository not found.",
+    message: `No git repository found in ${resolvedCwd} or its parent directories.`,
+    hint: "Run this command inside a git repo (or run `git init` first).",
+  });
+}
 
 function ensureRepoLayout(repoRoot: string, configDir: string, opts: { force: boolean }): void {
   fs.mkdirSync(configDir, { recursive: true });

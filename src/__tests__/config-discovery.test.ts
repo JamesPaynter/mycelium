@@ -4,7 +4,8 @@ import path from "node:path";
 
 import { afterEach, describe, expect, it } from "vitest";
 
-import { resolveProjectConfigPath } from "../core/config-discovery.js";
+import { initRepoConfig, resolveProjectConfigPath } from "../core/config-discovery.js";
+import { UserFacingError, USER_FACING_ERROR_CODES } from "../core/errors.js";
 
 const tempDirs: string[] = [];
 
@@ -12,6 +13,12 @@ function makeRepo(): string {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "config-discovery-"));
   tempDirs.push(dir);
   fs.mkdirSync(path.join(dir, ".git"));
+  return dir;
+}
+
+function makeDir(): string {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "config-discovery-"));
+  tempDirs.push(dir);
   return dir;
 }
 
@@ -100,5 +107,22 @@ describe("resolveProjectConfigPath", () => {
     expect(result.source).toBe("repo");
     expect(result.created).toBe(false);
     expect(result.configPath).toBe(configPath);
+  });
+
+  it("throws a user-facing error when initializing outside a git repo", () => {
+    const dir = makeDir();
+
+    let error: unknown;
+    try {
+      initRepoConfig({ cwd: dir });
+    } catch (err) {
+      error = err;
+    }
+
+    expect(error).toBeInstanceOf(UserFacingError);
+    const userError = error as UserFacingError;
+    expect(userError.code).toBe(USER_FACING_ERROR_CODES.config);
+    expect(userError.message).toContain(dir);
+    expect(userError.hint).toContain("git repo");
   });
 });
