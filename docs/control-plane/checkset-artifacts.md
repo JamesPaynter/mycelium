@@ -28,6 +28,7 @@ control_graph:
 
 The checkset falls back to the global doctor when:
 
+- impact confidence is low (missing dependency graph or low-confidence edges)
 - required components exceed `max_components_for_scoped`
 - any required component is missing a mapping
 - surface changes are detected but impact data is unavailable

@@ -45,6 +45,22 @@ describe("control-plane checkset policy", () => {
     expect(decision.required_components).toEqual(["component-a", "component-b"]);
   });
 
+  it("falls back when impact confidence is low", () => {
+    const decision = computeChecksetDecision({
+      touchedComponents: ["component-a"],
+      impactedComponents: ["component-a"],
+      impactConfidence: "low",
+      commandsByComponent: { "component-a": "npm run test:component-a" },
+      maxComponentsForScoped: 3,
+      fallbackCommand: "npm test",
+    });
+
+    expect(decision.is_fallback).toBe(true);
+    expect(decision.selected_command).toBe("npm test");
+    expect(decision.fallback_reason).toBe("low_confidence");
+    expect(decision.rationale).toContain("impact_confidence:low");
+  });
+
   it("falls back when a surface change is detected", () => {
     const decision = computeChecksetDecision({
       touchedComponents: ["component-a"],

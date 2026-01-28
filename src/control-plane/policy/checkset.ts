@@ -15,7 +15,8 @@ export type ChecksetFallbackReason =
   | "no_components"
   | "too_many_components"
   | "missing_command_mapping"
-  | "tier_high_risk";
+  | "tier_high_risk"
+  | "low_confidence";
 
 export type ChecksetWideningReason = "missing_dependency_graph" | "low_confidence_edges";
 
@@ -137,6 +138,16 @@ export function computeChecksetDecision(input: ChecksetDecisionInput): ChecksetD
       requiredComponents,
       rationale,
       reason: "no_components",
+    });
+  }
+
+  if (input.impactConfidence === "low") {
+    rationale.push("impact_confidence:low");
+    return buildFallbackDecision({
+      fallbackCommand: input.fallbackCommand,
+      requiredComponents,
+      rationale,
+      reason: "low_confidence",
     });
   }
 

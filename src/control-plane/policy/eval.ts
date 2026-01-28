@@ -191,7 +191,11 @@ function resolveTaskTouchedComponents(input: {
     input.componentResourcePrefix,
   );
 
-  return Array.from(new Set([...derivedComponents, ...declaredComponents])).sort();
+  if (derivedComponents.length > 0) {
+    return derivedComponents;
+  }
+
+  return declaredComponents;
 }
 
 function extractComponentIdsFromResources(resources: string[], prefix: string): string[] {
