@@ -5,7 +5,7 @@ import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { loadProjectConfig } from "../core/config-loader.js";
-import { ConfigError } from "../core/errors.js";
+import { ConfigError, UserFacingError, USER_FACING_ERROR_CODES } from "../core/errors.js";
 
 const tempDirs: string[] = [];
 
@@ -124,11 +124,35 @@ worker:
       error = err;
     }
 
-    expect(error).toBeInstanceOf(ConfigError);
-    const message = (error as Error).message;
+    expect(error).toBeInstanceOf(UserFacingError);
+    const userError = error as UserFacingError;
+    expect(userError.code).toBe(USER_FACING_ERROR_CODES.config);
+    expect(userError.message).toContain(configPath);
+    expect(userError.hint).toContain("Fix the config file");
+    expect(userError.cause).toBeInstanceOf(ConfigError);
+    const message = (userError.cause as ConfigError).message;
     expect(message).toContain("MISSING_PROJECT_REPO");
     expect(message).toContain(configPath);
     expect(message).toContain("repo_path");
+  });
+
+  it("wraps missing config errors with a hint to run mycelium init", () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "config-loader-missing-"));
+    tempDirs.push(dir);
+    const configPath = path.join(dir, "missing.yaml");
+
+    let error: unknown;
+    try {
+      loadProjectConfig(configPath);
+    } catch (err) {
+      error = err;
+    }
+
+    expect(error).toBeInstanceOf(UserFacingError);
+    const userError = error as UserFacingError;
+    expect(userError.code).toBe(USER_FACING_ERROR_CODES.config);
+    expect(userError.message).toContain(configPath);
+    expect(userError.hint).toContain("mycelium init");
   });
 
   it("surfaces validation errors with key paths and expected types", () => {
@@ -157,8 +181,13 @@ worker:
       error = err;
     }
 
-    expect(error).toBeInstanceOf(ConfigError);
-    const message = (error as Error).message;
+    expect(error).toBeInstanceOf(UserFacingError);
+    const userError = error as UserFacingError;
+    expect(userError.code).toBe(USER_FACING_ERROR_CODES.config);
+    expect(userError.message).toContain(configPath);
+    expect(userError.hint).toContain("Fix the config file");
+    expect(userError.cause).toBeInstanceOf(ConfigError);
+    const message = (userError.cause as ConfigError).message;
     expect(message).toContain("Invalid project config");
     expect(message).toContain("max_parallel");
     expect(message).toContain("Expected number");
