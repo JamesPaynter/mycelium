@@ -155,7 +155,12 @@ export function isMergeConflictError(err: unknown): boolean {
 
   const { stdout, stderr } = extractGitErrorOutput(err);
   const output = `${stdout}\n${stderr}`.toLowerCase();
-  return output.includes("automatic merge failed") || output.includes("merge conflict");
+  return (
+    output.includes("automatic merge failed") ||
+    output.includes("merge conflict") ||
+    output.includes("conflict (") ||
+    output.includes("conflict:")
+  );
 }
 
 function extractGitErrorOutput(err: GitError): { stdout: string; stderr: string } {
