@@ -2,6 +2,7 @@ import fsSync from "node:fs";
 import fs from "node:fs/promises";
 import path from "node:path";
 
+import { formatErrorMessage } from "../../../app/errors/format.js";
 import {
   createDerivedScopeSnapshot,
   deriveTaskWriteScopeReport,
@@ -252,14 +253,6 @@ export function normalizeOptionalString(value?: string): string | null {
 // =============================================================================
 // UTILITIES
 // =============================================================================
-
-function formatErrorMessage(error: unknown): string {
-  if (error instanceof Error) {
-    return error.message;
-  }
-
-  return String(error);
-}
 
 function sortRecord<T>(record: Record<string, T>): Record<string, T> {
   return Object.fromEntries(

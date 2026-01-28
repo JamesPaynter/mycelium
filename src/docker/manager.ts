@@ -15,6 +15,7 @@ import {
   startContainer as startDockerContainer,
   waitContainer,
 } from "./docker.js";
+import { firstContainerName } from "./names.js";
 import { streamContainerLogs, type LogStreamHandle } from "./streams.js";
 
 export type RunContainerOptions = {
@@ -290,10 +291,4 @@ function collectStream(stream: PassThrough): Promise<string> {
     stream.on("end", () => resolve(Buffer.concat(chunks).toString("utf8")));
     stream.on("error", reject);
   });
-}
-
-function firstContainerName(names?: string[]): string | undefined {
-  if (!names || names.length === 0) return undefined;
-  const raw = names[0] ?? "";
-  return raw.startsWith("/") ? raw.slice(1) : raw;
 }

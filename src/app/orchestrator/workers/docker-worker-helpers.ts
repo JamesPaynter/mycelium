@@ -1,25 +1,17 @@
 import path from "node:path";
 
 import type { DockerManager, ListedContainer } from "../../../docker/manager.js";
+import { buildWorkerContainerName, firstContainerName } from "../../../docker/names.js";
 
 import type { WorkerRunAttemptInput } from "./worker-runner.js";
 
 const LABEL_PREFIX = "mycelium";
-const CONTAINER_NAME_LIMIT = 120;
 
 export const CONTAINER_WORKDIR = "/workspace";
 export const CONTAINER_LOGS_DIR = "/run-logs";
 export const CONTAINER_CODEX_HOME = "/workspace/.mycelium/codex-home";
 
-export function buildWorkerContainerName(values: {
-  projectName: string;
-  runId: string;
-  taskId: string;
-  taskSlug: string;
-}): string {
-  const raw = `to-${values.projectName}-${values.runId}-${values.taskId}-${values.taskSlug}`;
-  return raw.replace(/[^a-zA-Z0-9_.-]/g, "-").slice(0, CONTAINER_NAME_LIMIT);
-}
+export { buildWorkerContainerName, firstContainerName };
 
 export function buildContainerLabels(values: {
   projectName: string;
@@ -140,12 +132,6 @@ export function containerLabel(
 ): string | undefined {
   if (!labels) return undefined;
   return labels[labelKey(key)];
-}
-
-export function firstContainerName(names?: string[]): string | undefined {
-  if (!names || names.length === 0) return undefined;
-  const raw = names[0] ?? "";
-  return raw.startsWith("/") ? raw.slice(1) : raw;
 }
 
 function labelKey(key: string): string {
