@@ -195,6 +195,44 @@ describe("UI orchestrator events API", () => {
     expect(payload.error.code).toBe("bad_request");
   });
 
+  it("returns internal_error with details when log reads fail", async () => {
+    const root = makeTempDir();
+    process.env.MYCELIUM_HOME = root;
+
+    const projectName = "demo-project";
+    const runId = "run-125";
+    const logsDir = ensureRunLogsDir(root, projectName, runId);
+    const logPath = path.join(logsDir, "orchestrator.jsonl");
+    writeJsonlFile(logPath, [JSON.stringify({ type: "bootstrap.start", task_id: "task-1" })]);
+    fs.chmodSync(logPath, 0o000);
+
+    const router = createUiRouter({
+      projectName,
+      runId,
+      staticRoot: path.join(root, "ui-static"),
+    });
+    const { baseUrl } = await startServer(router);
+
+    const requestUrl = buildEventsUrl(baseUrl, projectName, runId);
+    requestUrl.searchParams.set("cursor", "0");
+
+    const response = await fetch(requestUrl);
+    const payload = await response.json();
+
+    fs.chmodSync(logPath, 0o600);
+
+    expect(response.status).toBe(500);
+    expect(payload.ok).toBe(false);
+    expect(payload.error.code).toBe("internal_error");
+    expect(payload.error.message).toBe("Unexpected server error.");
+    expect(payload.error.details).toEqual(
+      expect.objectContaining({
+        reason: "unexpected_error",
+        error_code: expect.any(String),
+      }),
+    );
+  });
+
   it("returns not_found when run logs are missing", async () => {
     const root = makeTempDir();
     process.env.MYCELIUM_HOME = root;

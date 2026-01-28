@@ -738,7 +738,7 @@ export function createMapView({ appState } = {}) {
       return;
     }
 
-    const hint = error?.hint ?? "";
+    const hint = error?.details?.hint ?? error?.hint ?? "";
     showMessage({
       title: "Unable to load map",
       copy: error?.message ?? "Request failed.",
@@ -1729,7 +1729,8 @@ export function createMapView({ appState } = {}) {
   }
 
   function extractBaseSha(error) {
-    return findSha(error?.hint) ?? findSha(error?.message) ?? null;
+    const hint = error?.details?.hint ?? error?.hint;
+    return findSha(hint) ?? findSha(error?.message) ?? null;
   }
 
   function findSha(text) {

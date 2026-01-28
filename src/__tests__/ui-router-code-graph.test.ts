@@ -175,7 +175,7 @@ describe("UI code graph API", () => {
     expect(response.status).toBe(404);
     expect(payload.ok).toBe(false);
     expect(payload.error.code).toBe("MODEL_NOT_FOUND");
-    expect(payload.error.hint).toContain(baseSha);
+    expect(payload.error.details?.hint).toContain(baseSha);
   });
 
   it("returns components, deps, and stats when a model exists", async () => {

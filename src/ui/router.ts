@@ -5,6 +5,12 @@ import path from "node:path";
 import type { Paths } from "../core/paths.js";
 
 import type { CodeGraphError } from "./code-graph.js";
+import {
+  buildApiErrorPayload,
+  buildCodeGraphErrorPayload,
+  buildInternalErrorDetails,
+  type ApiErrorDetails,
+} from "./http/errors.js";
 import { queryCodeGraph, type CodeGraphQueryError } from "./queries/code-graph-queries.js";
 import {
   queryComplianceReport,
@@ -104,14 +110,21 @@ async function routeRequest(
     }
 
     await handleStaticRequest(res, method, url, options);
-  } catch {
+  } catch (error) {
     if (res.headersSent) {
       res.end();
       return;
     }
 
     if (url.pathname.startsWith("/api/")) {
-      sendApiError(res, 500, "internal_error", "Unexpected server error.", method === "HEAD");
+      sendApiError(
+        res,
+        500,
+        "internal_error",
+        "Unexpected server error.",
+        method === "HEAD",
+        buildInternalErrorDetails(error),
+      );
       return;
     }
 
@@ -695,8 +708,9 @@ function sendApiError(
   code: "not_found" | "bad_request" | "internal_error",
   message: string,
   isHead: boolean,
+  details?: ApiErrorDetails,
 ): void {
-  sendJson(res, status, { ok: false, error: { code, message } }, isHead);
+  sendJson(res, status, buildApiErrorPayload({ code, message, details }), isHead);
 }
 
 function sendCodeGraphError(
@@ -705,7 +719,7 @@ function sendCodeGraphError(
   error: CodeGraphError,
   isHead: boolean,
 ): void {
-  sendJson(res, status, { ok: false, error }, isHead);
+  sendJson(res, status, buildCodeGraphErrorPayload(error), isHead);
 }
 
 // =============================================================================
