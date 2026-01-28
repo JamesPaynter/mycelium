@@ -191,7 +191,7 @@ async function resolveRunSettings<RunOptions extends RunContextOptions>(
   return {
     runId,
     isResume,
-    reuseCompleted: input.options.reuseCompleted ?? !isResume,
+    reuseCompleted: input.options.reuseCompleted ?? true,
     importRunId: input.options.importRun,
     maxParallel: input.options.maxParallel ?? input.config.max_parallel,
   };
