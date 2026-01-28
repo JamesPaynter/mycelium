@@ -3,10 +3,16 @@ import path from "node:path";
 
 import fse from "fs-extra";
 
+import { UserFacingError, USER_FACING_ERROR_CODES } from "./errors.js";
 import type { PathsContext } from "./paths.js";
 import { runStateDir, runStatePath, runStateTempPath } from "./paths.js";
 import { listRunHistoryEntries, recordRunHistory } from "./run-history.js";
-import { loadRunState, recoverRunState, saveRunState } from "./run-state-io.js";
+import type { LoadRunStateOptions } from "./run-state-io.js";
+import {
+  loadRunState as loadRunStateFromDisk,
+  recoverRunState as recoverRunStateFromDisk,
+  saveRunState as saveRunStateToDisk,
+} from "./run-state-io.js";
 import {
   type BatchState,
   type RunState,
@@ -71,6 +77,84 @@ export type TaskSpendRow = {
   tokensUsed: number;
   estimatedCost: number;
 };
+
+// =============================================================================
+// RUN STATE ERROR NORMALIZATION
+// =============================================================================
+
+const RUN_STATE_RECOVERY_HINT =
+  "Run `mycelium resume` to recover the run, or `mycelium clean` to remove the run state.";
+
+const RUN_STATE_IO_TITLES = {
+  load: "Run state load failed.",
+  save: "Run state save failed.",
+  recover: "Run state recovery failed.",
+} as const;
+
+type RunStateIoAction = keyof typeof RUN_STATE_IO_TITLES;
+
+const RUN_STATE_IO_MESSAGES: Record<RunStateIoAction, (statePath: string) => string> = {
+  load: (statePath) => `Unable to load run state at ${statePath}.`,
+  save: (statePath) => `Unable to save run state at ${statePath}.`,
+  recover: (statePath) => `Unable to recover run state at ${statePath}.`,
+};
+
+function createRunStateIoError(
+  action: RunStateIoAction,
+  statePath: string,
+  error: unknown,
+): UserFacingError {
+  if (error instanceof UserFacingError) {
+    return error;
+  }
+
+  return new UserFacingError({
+    code: USER_FACING_ERROR_CODES.task,
+    title: RUN_STATE_IO_TITLES[action],
+    message: RUN_STATE_IO_MESSAGES[action](statePath),
+    hint: RUN_STATE_RECOVERY_HINT,
+    cause: error,
+  });
+}
+
+// =============================================================================
+// RUN STATE IO
+// =============================================================================
+
+export async function loadRunState(
+  statePath: string,
+  opts: LoadRunStateOptions = {},
+): Promise<RunState> {
+  try {
+    return await loadRunStateFromDisk(statePath, opts);
+  } catch (error) {
+    throw createRunStateIoError("load", statePath, error);
+  }
+}
+
+export async function saveRunState(
+  statePath: string,
+  state: RunState,
+  tempPath?: string,
+): Promise<void> {
+  try {
+    await saveRunStateToDisk(statePath, state, tempPath);
+  } catch (error) {
+    throw createRunStateIoError("save", statePath, error);
+  }
+}
+
+export async function recoverRunState(
+  statePath: string,
+  reason?: string,
+  tempPath?: string,
+): Promise<RunState> {
+  try {
+    return await recoverRunStateFromDisk(statePath, reason, tempPath);
+  } catch (error) {
+    throw createRunStateIoError("recover", statePath, error);
+  }
+}
 
 export class StateStore {
   private readonly paths?: PathsContext;
@@ -274,8 +358,6 @@ function buildTopSpenders(tasks: Record<string, TaskState>, limit = 5): TaskSpen
     })
     .slice(0, limit);
 }
-
-export { loadRunState, recoverRunState, saveRunState };
 
 function normalizeRunId(fileName: string): string {
   return fileName.replace(/^run-/, "").replace(/\.json$/, "");

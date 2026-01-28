@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+import { UserFacingError, USER_FACING_ERROR_CODES } from "./errors.js";
 import {
   applyTaskStatusOverride,
   completeBatch,
@@ -164,8 +165,20 @@ describe("state transitions", () => {
 
     state.tasks["901"].status = "running";
 
-    expect(() => {
+    let error: unknown;
+    try {
       applyTaskStatusOverride(state, "901", { status: "pending" });
-    }).toThrow("Cannot override running task 901 without --force");
+    } catch (err) {
+      error = err;
+    }
+
+    expect(error).toBeInstanceOf(UserFacingError);
+    const userError = error as UserFacingError;
+    expect(userError.code).toBe(USER_FACING_ERROR_CODES.task);
+    expect(userError.title).toBe("Run state transition invalid.");
+    expect(userError.message).toBe("Cannot override running task 901 without --force");
+    expect(userError.hint).toContain("mycelium resume");
+    expect(userError.hint).toContain("mycelium clean");
+    expect(userError.cause).toBeInstanceOf(Error);
   });
 });

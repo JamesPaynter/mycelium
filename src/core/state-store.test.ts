@@ -4,6 +4,7 @@ import path from "node:path";
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+import { UserFacingError, USER_FACING_ERROR_CODES } from "./errors.js";
 import { createPathsContext, orchestratorLogPath } from "./paths.js";
 import {
   findLatestRunId,
@@ -13,7 +14,7 @@ import {
   summarizeRunState,
   StateStore,
 } from "./state-store.js";
-import { createRunState, startBatch } from "./state.js";
+import { createRunState, startBatch, type RunState } from "./state.js";
 
 afterEach(() => {
   vi.useRealTimers();
@@ -154,6 +155,66 @@ describe("state store", () => {
       expect(resolved?.state.run_id).toBe("002");
     } finally {
       fs.rmSync(tmpHome, { recursive: true, force: true });
+    }
+  });
+
+  it("wraps invalid run state load errors with UserFacingError", async () => {
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "state-store-invalid-"));
+    const statePath = path.join(tmpDir, "run-bad.json");
+
+    try {
+      fs.writeFileSync(statePath, "{}\n", "utf8");
+      const store = new StateStore("demo", "bad-load", statePath);
+
+      let error: unknown;
+      try {
+        await store.load();
+      } catch (err) {
+        error = err;
+      }
+
+      expect(error).toBeInstanceOf(UserFacingError);
+      const userError = error as UserFacingError;
+      expect(userError.code).toBe(USER_FACING_ERROR_CODES.task);
+      expect(userError.title).toBe("Run state load failed.");
+      expect(userError.message).toBe(`Unable to load run state at ${statePath}.`);
+      expect(userError.hint).toContain("mycelium resume");
+      expect(userError.hint).toContain("mycelium clean");
+      expect(userError.cause).toBeInstanceOf(Error);
+      const cause = userError.cause as Error;
+      expect(cause.message).toContain(`Invalid run state at ${statePath}`);
+    } finally {
+      fs.rmSync(tmpDir, { recursive: true, force: true });
+    }
+  });
+
+  it("wraps invalid run state save errors with UserFacingError", async () => {
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "state-store-invalid-"));
+    const statePath = path.join(tmpDir, "run-save.json");
+
+    try {
+      const store = new StateStore("demo", "bad-save", statePath);
+      const invalidState = { run_id: "bad-save" } as RunState;
+
+      let error: unknown;
+      try {
+        await store.save(invalidState);
+      } catch (err) {
+        error = err;
+      }
+
+      expect(error).toBeInstanceOf(UserFacingError);
+      const userError = error as UserFacingError;
+      expect(userError.code).toBe(USER_FACING_ERROR_CODES.task);
+      expect(userError.title).toBe("Run state save failed.");
+      expect(userError.message).toBe(`Unable to save run state at ${statePath}.`);
+      expect(userError.hint).toContain("mycelium resume");
+      expect(userError.hint).toContain("mycelium clean");
+      expect(userError.cause).toBeInstanceOf(Error);
+      const cause = userError.cause as Error;
+      expect(cause.message).toContain("Cannot save run state");
+    } finally {
+      fs.rmSync(tmpDir, { recursive: true, force: true });
     }
   });
 
