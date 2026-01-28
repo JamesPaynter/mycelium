@@ -5,7 +5,7 @@ import fse from "fs-extra";
 import { cloneRepo, checkoutBranchInClone, createBranchInClone } from "../git/branches.js";
 import { branchExists, ensureCleanWorkingTree, getRemoteUrl, git } from "../git/git.js";
 
-import { TaskError } from "./errors.js";
+import { TaskError, UserFacingError, USER_FACING_ERROR_CODES } from "./errors.js";
 import type { PathsContext } from "./paths.js";
 import { runWorkspaceDir, taskWorkspaceDir } from "./paths.js";
 import { ensureDir, isGitRepo, pathExists } from "./utils.js";
@@ -114,6 +114,23 @@ async function ensureWorkspaceRuntimeIgnored(workspacePath: string): Promise<voi
   await fse.writeFile(excludePath, next, "utf8");
 }
 
+const WORKSPACE_RECOVERY_HINT =
+  "Run `mycelium clean` to remove the workspace, or choose a new run id.";
+
+function createWorkspaceValidationError(args: {
+  title: string;
+  message: string;
+  cause: Error;
+}): UserFacingError {
+  return new UserFacingError({
+    code: USER_FACING_ERROR_CODES.task,
+    title: args.title,
+    message: args.message,
+    hint: WORKSPACE_RECOVERY_HINT,
+    cause: args.cause,
+  });
+}
+
 async function assertExistingWorkspaceValid(
   workspacePath: string,
   repoPath: string,
@@ -121,9 +138,14 @@ async function assertExistingWorkspaceValid(
   recoverDirtyWorkspace: boolean,
 ): Promise<boolean> {
   if (!isGitRepo(workspacePath)) {
-    throw new TaskError(
+    const cause = new TaskError(
       `Workspace exists but is not a git repository: ${workspacePath}. Remove it or choose a new run id.`,
     );
+    throw createWorkspaceValidationError({
+      title: "Workspace invalid.",
+      message: "Existing workspace is not a git repository.",
+      cause,
+    });
   }
 
   const recovered = await ensureCleanWorkspaceOrRecover(workspacePath, recoverDirtyWorkspace);
@@ -135,16 +157,26 @@ async function assertExistingWorkspaceValid(
   ]);
 
   if (expectedLocal && originLocal && expectedLocal !== originLocal) {
-    throw new TaskError(
+    const cause = new TaskError(
       `Workspace ${workspacePath} points to ${originUrl ?? "<unknown>"} (expected ${repoPath}). Remove it or use a different run id.`,
     );
+    throw createWorkspaceValidationError({
+      title: "Workspace repository mismatch.",
+      message: "Existing workspace points to a different repository.",
+      cause,
+    });
   }
 
   const hasMainBranch = await branchExists(workspacePath, mainBranch);
   if (!hasMainBranch) {
-    throw new TaskError(
+    const cause = new TaskError(
       `Workspace ${workspacePath} is missing branch ${mainBranch}. Remove it and retry.`,
     );
+    throw createWorkspaceValidationError({
+      title: "Workspace missing base branch.",
+      message: "Existing workspace is missing the expected base branch.",
+      cause,
+    });
   }
 
   return recovered;
