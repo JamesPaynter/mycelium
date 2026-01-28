@@ -3,7 +3,7 @@ import path from "node:path";
 import fg from "fast-glob";
 import fse from "fs-extra";
 
-import { TaskError } from "./errors.js";
+import { TaskError, UserFacingError, USER_FACING_ERROR_CODES } from "./errors.js";
 import { detectTasksLayout, resolveTaskStageFromManifestPath } from "./task-layout.js";
 import {
   TaskManifestSchema,
@@ -40,7 +40,7 @@ export async function loadTaskSpecs(
 
   const exists = await fse.pathExists(tasksDirAbs);
   if (!exists) {
-    return { tasks: [], errors: [] };
+    throw createMissingTasksDirError(tasksDirAbs);
   }
 
   const layout = detectTasksLayout(tasksDirAbs);
@@ -90,7 +90,8 @@ export async function loadTaskSpecs(
   tasks.sort(compareTasksById);
 
   if (errors.length > 0 && strict) {
-    throw new TaskError(buildErrorMessage(errors));
+    const cause = new TaskError(buildErrorMessage(errors));
+    throw createInvalidTaskManifestError(cause);
   }
 
   return { tasks, errors };
@@ -162,4 +163,28 @@ function buildErrorMessage(errors: TaskValidationError[]): string {
     .join("\n");
 
   return `Invalid task manifest(s):\n${details}`;
+}
+
+const TASK_LOAD_HINT =
+  "Rerun `mycelium plan` to regenerate tasks, or check `tasks_dir` in your repo config.";
+
+function createMissingTasksDirError(tasksDirAbs: string): UserFacingError {
+  const cause = new TaskError(`Tasks directory not found at ${tasksDirAbs}.`);
+  return new UserFacingError({
+    code: USER_FACING_ERROR_CODES.task,
+    title: "Tasks directory missing.",
+    message: "Tasks directory not found.",
+    hint: TASK_LOAD_HINT,
+    cause,
+  });
+}
+
+function createInvalidTaskManifestError(cause: TaskError): UserFacingError {
+  return new UserFacingError({
+    code: USER_FACING_ERROR_CODES.task,
+    title: "Task manifests invalid.",
+    message: "One or more task manifests are invalid.",
+    hint: TASK_LOAD_HINT,
+    cause,
+  });
 }

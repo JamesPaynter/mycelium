@@ -3,6 +3,8 @@ import path from "node:path";
 
 import fse from "fs-extra";
 
+import { TaskError, UserFacingError, USER_FACING_ERROR_CODES } from "./errors.js";
+
 export type TasksLayout = "legacy" | "kanban";
 export type TaskStage = "backlog" | "active" | "legacy";
 export type TaskMoveStage = "backlog" | "active" | "archive";
@@ -11,6 +13,27 @@ export type TaskMoveResult = {
   fromPath: string;
   toPath: string;
 };
+
+// =============================================================================
+// ERROR NORMALIZATION
+// =============================================================================
+
+const TASK_LAYOUT_HINT =
+  "Rerun `mycelium plan` to regenerate tasks, or check `tasks_dir` in your repo config.";
+
+function createTaskLayoutError(args: {
+  title: string;
+  message: string;
+  detail: string;
+}): UserFacingError {
+  return new UserFacingError({
+    code: USER_FACING_ERROR_CODES.task,
+    title: args.title,
+    message: args.message,
+    hint: TASK_LAYOUT_HINT,
+    cause: new TaskError(args.detail),
+  });
+}
 
 // =============================================================================
 // LAYOUT DETECTION
@@ -112,7 +135,11 @@ export async function moveTaskDir(args: {
   runId?: string;
 }): Promise<TaskMoveResult> {
   if (args.fromStage === "legacy") {
-    throw new Error(`Cannot move task ${args.taskDirName} from legacy layout.`);
+    throw createTaskLayoutError({
+      title: "Task layout error.",
+      message: "Legacy tasks cannot be moved between stages.",
+      detail: `Cannot move task ${args.taskDirName} from legacy layout.`,
+    });
   }
 
   const fromPath = resolveTaskDir({
@@ -146,11 +173,19 @@ export async function moveTaskDir(args: {
     if (toExists) {
       return { moved: false, fromPath, toPath };
     }
-    throw new Error(`Task directory missing at ${fromPath}.`);
+    throw createTaskLayoutError({
+      title: "Task directory missing.",
+      message: "Task directory not found.",
+      detail: `Task directory missing at ${fromPath}.`,
+    });
   }
 
   if (toExists) {
-    throw new Error(`Task destination already exists at ${toPath}.`);
+    throw createTaskLayoutError({
+      title: "Task destination exists.",
+      message: "Task destination already exists.",
+      detail: `Task destination already exists at ${toPath}.`,
+    });
   }
 
   await fse.ensureDir(path.dirname(toPath));
@@ -161,7 +196,11 @@ export async function moveTaskDir(args: {
 
 function requireRunId(runId: string | undefined, taskDirName: string): string {
   if (!runId) {
-    throw new Error(`runId is required to archive task ${taskDirName}.`);
+    throw createTaskLayoutError({
+      title: "Task archive failed.",
+      message: "Run id is required to archive tasks.",
+      detail: `runId is required to archive task ${taskDirName}.`,
+    });
   }
   return runId;
 }

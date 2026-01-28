@@ -4,7 +4,7 @@ import path from "node:path";
 
 import { afterEach, describe, expect, it } from "vitest";
 
-import { TaskError } from "../core/errors.js";
+import { TaskError, UserFacingError, USER_FACING_ERROR_CODES } from "../core/errors.js";
 import { resolveTaskDir } from "../core/task-layout.js";
 import { loadTaskSpecs } from "../core/task-loader.js";
 
@@ -28,6 +28,29 @@ afterEach(() => {
 });
 
 describe("loadTaskSpecs", () => {
+  it("throws a user-facing error when the tasks directory is missing", async () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "task-loader-missing-"));
+    tempRoots.push(root);
+
+    let error: unknown;
+    try {
+      await loadTaskSpecs(root, ".tasks");
+    } catch (err) {
+      error = err;
+    }
+
+    expect(error).toBeInstanceOf(UserFacingError);
+    const userError = error as UserFacingError;
+    expect(userError.code).toBe(USER_FACING_ERROR_CODES.task);
+    expect(userError.title).toBe("Tasks directory missing.");
+    expect(userError.message).toBe("Tasks directory not found.");
+    expect(userError.hint).toContain("mycelium plan");
+    expect(userError.hint).toContain("tasks_dir");
+    expect(userError.cause).toBeInstanceOf(TaskError);
+    const cause = userError.cause as TaskError;
+    expect(cause.message).toContain(path.join(root, ".tasks"));
+  });
+
   it("loads manifests and sorts numerically by id", async () => {
     const { root, tasksDir } = createLegacyTasksDir();
 
@@ -50,7 +73,7 @@ describe("loadTaskSpecs", () => {
     expect(tasks[1].slug).toBe("second-task");
   });
 
-  it("validates resource locks against known resources", async () => {
+  it("wraps lock validation errors with user-facing messaging", async () => {
     const { root, tasksDir } = createLegacyTasksDir();
 
     writeTask(tasksDir, "001", {
@@ -59,9 +82,23 @@ describe("loadTaskSpecs", () => {
       locks: { reads: ["backend"], writes: ["unknown"] },
     });
 
-    await expect(
-      loadTaskSpecs(root, ".tasks", { knownResources: ["backend", "frontend"] }),
-    ).rejects.toBeInstanceOf(TaskError);
+    let error: unknown;
+    try {
+      await loadTaskSpecs(root, ".tasks", { knownResources: ["backend", "frontend"] });
+    } catch (err) {
+      error = err;
+    }
+
+    expect(error).toBeInstanceOf(UserFacingError);
+    const userError = error as UserFacingError;
+    expect(userError.code).toBe(USER_FACING_ERROR_CODES.task);
+    expect(userError.title).toBe("Task manifests invalid.");
+    expect(userError.message).toBe("One or more task manifests are invalid.");
+    expect(userError.hint).toContain("mycelium plan");
+    expect(userError.hint).toContain("tasks_dir");
+    expect(userError.cause).toBeInstanceOf(TaskError);
+    const cause = userError.cause as TaskError;
+    expect(cause.message).toContain("Invalid task manifest");
   });
 
   it("surfaces schema errors without throwing when strict=false", async () => {
@@ -93,7 +130,7 @@ describe("loadTaskSpecs", () => {
       verify: { doctor: "npm test" },
     });
 
-    await expect(loadTaskSpecs(root, ".tasks")).rejects.toBeInstanceOf(TaskError);
+    await expect(loadTaskSpecs(root, ".tasks")).rejects.toBeInstanceOf(UserFacingError);
   });
 
   it("accepts optional verify.lint entries", async () => {
