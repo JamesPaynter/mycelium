@@ -2,7 +2,7 @@ import path from "node:path";
 
 import Docker from "dockerode";
 
-import { DockerError } from "../core/errors.js";
+import { DockerError, UserFacingError, USER_FACING_ERROR_CODES } from "../core/errors.js";
 
 export const DEFAULT_CPU_PERIOD = 100_000;
 
@@ -80,18 +80,16 @@ export async function createContainer(
     });
 
     return container;
-  } catch (err: any) {
-    throw new DockerError(
-      `Failed to create container ${spec.name}: ${err?.message ?? String(err)}`,
-    );
+  } catch (err) {
+    throw createContainerUserFacingError(spec.name, err);
   }
 }
 
 export async function startContainer(container: Docker.Container): Promise<void> {
   try {
     await container.start();
-  } catch (err: any) {
-    throw new DockerError(`Failed to start container: ${err?.message ?? String(err)}`);
+  } catch (err) {
+    throw createStartContainerUserFacingError(err);
   }
 }
 
@@ -118,4 +116,76 @@ export async function findContainerByName(
   const match = containers.find((c) => (c.Names ?? []).includes(`/${name}`));
   if (!match) return null;
   return docker.getContainer(match.Id);
+}
+
+// =============================================================================
+// ERROR HELPERS
+// =============================================================================
+
+const DOCKER_UNAVAILABLE_HINT =
+  "Start the Docker daemon and retry, or run with --local-worker to bypass Docker.";
+
+const DOCKER_RUN_HINT = "Check that the container image and configuration are valid, then retry.";
+
+type DockerRunErrorDetails = {
+  message: string;
+  code?: string;
+  reason?: string;
+};
+
+function createContainerUserFacingError(name: string, err: unknown): UserFacingError {
+  const details = resolveDockerRunErrorDetails(err);
+  const detail = details.reason || details.message || "Unknown docker error.";
+  const dockerError = new DockerError(`Failed to create container ${name}: ${detail}`, err);
+
+  return new UserFacingError({
+    code: USER_FACING_ERROR_CODES.docker,
+    title: "Docker container creation failed.",
+    message: `Unable to create Docker container ${name}.`,
+    hint: isDockerUnavailableError(details) ? DOCKER_UNAVAILABLE_HINT : DOCKER_RUN_HINT,
+    cause: dockerError,
+  });
+}
+
+function createStartContainerUserFacingError(err: unknown): UserFacingError {
+  const details = resolveDockerRunErrorDetails(err);
+  const detail = details.reason || details.message || "Unknown docker error.";
+  const dockerError = new DockerError(`Failed to start container: ${detail}`, err);
+
+  return new UserFacingError({
+    code: USER_FACING_ERROR_CODES.docker,
+    title: "Docker container start failed.",
+    message: "Unable to start the Docker container.",
+    hint: isDockerUnavailableError(details) ? DOCKER_UNAVAILABLE_HINT : DOCKER_RUN_HINT,
+    cause: dockerError,
+  });
+}
+
+function resolveDockerRunErrorDetails(err: unknown): DockerRunErrorDetails {
+  if (!err || typeof err !== "object") {
+    return { message: String(err) };
+  }
+
+  const record = err as Record<string, unknown>;
+  const message = typeof record.message === "string" ? record.message : String(err);
+  const code = typeof record.code === "string" ? record.code : undefined;
+  const reason = typeof record.reason === "string" ? record.reason : undefined;
+
+  return { message, code, reason };
+}
+
+function isDockerUnavailableError(details: DockerRunErrorDetails): boolean {
+  if (details.code === "ENOENT" || details.code === "ECONNREFUSED") {
+    return true;
+  }
+
+  const text = `${details.message}\n${details.reason ?? ""}`.toLowerCase();
+  return (
+    text.includes("cannot connect to the docker daemon") ||
+    text.includes("is the docker daemon running") ||
+    text.includes("error during connect") ||
+    text.includes("docker.sock") ||
+    text.includes("connect econnrefused") ||
+    text.includes("connect enoent")
+  );
 }

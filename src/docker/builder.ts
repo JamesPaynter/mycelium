@@ -1,7 +1,7 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 
-import { DockerError } from "../core/errors.js";
+import { DockerError, UserFacingError, USER_FACING_ERROR_CODES } from "../core/errors.js";
 
 import { buildWorkerImage } from "./image.js";
 
@@ -30,11 +30,25 @@ async function ensureDockerfile(dockerfile: string): Promise<string> {
 
   try {
     await fs.access(resolved);
-  } catch {
-    throw new DockerError(
-      `Dockerfile not found at ${resolved}. Update your project config or provide a custom path.`,
-    );
+  } catch (err) {
+    throw createMissingDockerfileError(resolved, err);
   }
 
   return resolved;
+}
+
+// =============================================================================
+// ERROR HELPERS
+// =============================================================================
+
+function createMissingDockerfileError(pathValue: string, err: unknown): UserFacingError {
+  const dockerError = new DockerError(`Dockerfile not found at ${pathValue}.`, err);
+
+  return new UserFacingError({
+    code: USER_FACING_ERROR_CODES.docker,
+    title: "Dockerfile not found.",
+    message: `Dockerfile not found at ${pathValue}.`,
+    hint: "Update docker.dockerfile in your config or provide a custom path.",
+    cause: dockerError,
+  });
 }

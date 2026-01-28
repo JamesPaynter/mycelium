@@ -1,6 +1,8 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
-import { DEFAULT_CPU_PERIOD, createContainer } from "./docker.js";
+import { UserFacingError, USER_FACING_ERROR_CODES } from "../core/errors.js";
+
+import { DEFAULT_CPU_PERIOD, createContainer, startContainer } from "./docker.js";
 
 class RecordingDocker {
   readonly calls: any[] = [];
@@ -59,5 +61,49 @@ describe("createContainer", () => {
     const opts = docker.calls[0];
     expect(opts.HostConfig?.NetworkMode).toBe("bridge");
     expect(opts.User).toBeUndefined();
+  });
+
+  it("wraps container creation failures with a user-facing hint", async () => {
+    const error = Object.assign(
+      new Error("Cannot connect to the Docker daemon at unix:///var/run/docker.sock."),
+      { code: "ECONNREFUSED" },
+    );
+    const docker = {
+      createContainer: vi.fn().mockRejectedValueOnce(error),
+    };
+
+    const result = await createContainer(docker as any, {
+      name: "ct-err",
+      image: "worker:latest",
+      env: {},
+      binds: [],
+      workdir: "/workspace",
+    }).catch((err) => err);
+
+    expect(result).toBeInstanceOf(UserFacingError);
+
+    const userError = result as UserFacingError;
+    expect(userError.code).toBe(USER_FACING_ERROR_CODES.docker);
+    expect(userError.hint).toContain("--local-worker");
+    expect(userError.cause).toBeInstanceOf(Error);
+  });
+
+  it("wraps container start failures with a user-facing hint", async () => {
+    const error = Object.assign(
+      new Error("Cannot connect to the Docker daemon at unix:///var/run/docker.sock."),
+      { code: "ECONNREFUSED" },
+    );
+    const container = {
+      start: vi.fn().mockRejectedValueOnce(error),
+    };
+
+    const result = await startContainer(container as any).catch((err) => err);
+
+    expect(result).toBeInstanceOf(UserFacingError);
+
+    const userError = result as UserFacingError;
+    expect(userError.code).toBe(USER_FACING_ERROR_CODES.docker);
+    expect(userError.hint).toContain("--local-worker");
+    expect(userError.cause).toBeInstanceOf(Error);
   });
 });
