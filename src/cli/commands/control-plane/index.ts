@@ -29,8 +29,7 @@ import { registerPolicyCommands } from "./policy.js";
 import { registerSearchCommand } from "./search.js";
 import { registerSymbolCommands } from "./symbols.js";
 
-const MODEL_NOT_BUILT_MESSAGE =
-  "Control graph model not built. Run `mycelium cg build` to generate it.";
+const MODEL_NOT_BUILT_MESSAGE = "Control plane model not built.";
 const CONTROL_PLANE_DEPRECATION_WARNING = "deprecated: use `mycelium cg` (control graph).";
 const DEPRECATED_CONTROL_PLANE_ALIASES = new Set(["cp", "control-plane"]);
 
@@ -116,8 +115,17 @@ function resolveCommandContext(command: Command): ControlPlaneCommandRuntimeCont
   const flags = resolveControlPlaneFlags(command);
   return {
     flags,
-    output: { useJson: flags.useJson, prettyJson: flags.prettyJson },
+    output: {
+      useJson: flags.useJson,
+      prettyJson: flags.prettyJson,
+      debug: resolveDebugFlag(command),
+    },
   };
+}
+
+function resolveDebugFlag(command: Command): boolean {
+  const options = command.optsWithGlobals() as { debug?: boolean };
+  return Boolean(options.debug);
 }
 
 // =============================================================================
@@ -237,10 +245,16 @@ function resolveModelStoreError(error: unknown): ControlPlaneJsonError {
   }
 
   if (error instanceof Error) {
+    const details: Record<string, unknown> = { name: error.name };
+    const cause = resolveErrorCauseMessage(error);
+    if (cause) {
+      details.cause = cause;
+    }
+
     return {
       code: CONTROL_PLANE_ERROR_CODES.modelStoreError,
       message: error.message,
-      details: { name: error.name },
+      details,
     };
   }
 
@@ -249,6 +263,35 @@ function resolveModelStoreError(error: unknown): ControlPlaneJsonError {
     message: "Control graph command failed.",
     details: null,
   };
+}
+
+function resolveErrorCauseMessage(error: Error): string | undefined {
+  const cause = error.cause;
+  if (cause === null || cause === undefined) {
+    return undefined;
+  }
+
+  if (cause instanceof Error) {
+    const message = cause.message.trim();
+    if (message) {
+      return `${cause.name}: ${message}`;
+    }
+    return cause.name;
+  }
+
+  if (typeof cause === "string") {
+    const message = cause.trim();
+    return message.length > 0 ? message : undefined;
+  }
+
+  if (cause && typeof cause === "object" && "message" in cause) {
+    const record = cause as { message?: unknown };
+    if (typeof record.message === "string" && record.message.trim()) {
+      return record.message.trim();
+    }
+  }
+
+  return String(cause);
 }
 
 // =============================================================================

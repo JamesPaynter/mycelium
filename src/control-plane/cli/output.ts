@@ -6,6 +6,9 @@ export const CONTROL_PLANE_ERROR_CODES = {
   policyEvalError: "POLICY_EVAL_ERROR",
 } as const;
 
+const MODEL_NOT_BUILT_MESSAGE = "Control plane model not built.";
+const MODEL_NOT_BUILT_HINT = "Run `mycelium cp build` to generate it.";
+
 export type ControlPlaneErrorCode =
   (typeof CONTROL_PLANE_ERROR_CODES)[keyof typeof CONTROL_PLANE_ERROR_CODES];
 
@@ -17,6 +20,7 @@ export type ControlPlaneJsonError = {
   code: ControlPlaneErrorCode;
   message: string;
   details: Record<string, unknown> | null;
+  hint?: string;
 };
 
 export type ControlPlaneJsonEnvelope<T> =
@@ -32,6 +36,7 @@ export type ControlPlaneJsonEnvelope<T> =
 export type ControlPlaneOutputOptions = {
   useJson: boolean;
   prettyJson: boolean;
+  debug?: boolean;
 };
 
 // =============================================================================
@@ -53,12 +58,13 @@ export function emitControlPlaneError(
   error: ControlPlaneJsonError,
   output: ControlPlaneOutputOptions,
 ): void {
-  const normalized = normalizeError(error);
+  const debug = resolveDebugEnabled(output);
+  const normalized = normalizeError(error, { debug });
 
   if (output.useJson) {
     writeJson({ ok: false, error: normalized }, output);
   } else {
-    console.error(normalized.message);
+    console.error(renderControlPlaneError(normalized, { debug }));
   }
 
   process.exitCode = 1;
@@ -106,9 +112,108 @@ function writeJson(
   console.log(payload);
 }
 
-function normalizeError(error: ControlPlaneJsonError): ControlPlaneJsonError {
+function resolveDebugEnabled(output: ControlPlaneOutputOptions): boolean {
+  if (typeof output.debug === "boolean") {
+    return output.debug;
+  }
+
+  const flag = resolveDebugFlagFromArgv(process.argv);
+  return flag ?? false;
+}
+
+function resolveDebugFlagFromArgv(argv: string[]): boolean | undefined {
+  let debugFlag: boolean | undefined;
+
+  for (const arg of argv) {
+    if (arg === "--") {
+      break;
+    }
+
+    if (arg === "--debug") {
+      debugFlag = true;
+    }
+
+    if (arg === "--no-debug") {
+      debugFlag = false;
+    }
+  }
+
+  return debugFlag;
+}
+
+function normalizeError(
+  error: ControlPlaneJsonError,
+  options: { debug: boolean },
+): ControlPlaneJsonError {
+  const details = error.details ?? null;
+
+  if (error.code !== CONTROL_PLANE_ERROR_CODES.modelNotBuilt) {
+    return {
+      ...error,
+      details,
+    };
+  }
+
+  const normalizedMessage = MODEL_NOT_BUILT_MESSAGE;
+  const normalizedHint = MODEL_NOT_BUILT_HINT;
+  const originalMessage = error.message.trim();
+  const shouldIncludeOriginal =
+    options.debug && originalMessage.length > 0 && originalMessage !== normalizedMessage;
+
   return {
     ...error,
-    details: error.details ?? null,
+    message: normalizedMessage,
+    hint: normalizedHint,
+    details: shouldIncludeOriginal
+      ? appendDetails(details, { original_message: originalMessage })
+      : details,
   };
+}
+
+function appendDetails(
+  details: Record<string, unknown> | null,
+  additions: Record<string, unknown>,
+): Record<string, unknown> {
+  return {
+    ...(details ?? {}),
+    ...additions,
+  };
+}
+
+function renderControlPlaneError(
+  error: ControlPlaneJsonError,
+  options: { debug: boolean },
+): string {
+  const lines: string[] = [error.message];
+
+  if (error.hint) {
+    lines.push(`Hint: ${error.hint}`);
+  }
+
+  if (options.debug && error.details) {
+    lines.push(...formatDebugDetails(error.details));
+  }
+
+  return lines.join("\n");
+}
+
+function formatDebugDetails(details: Record<string, unknown>): string[] {
+  const payload = safeJsonStringify(details);
+  if (!payload) {
+    return [];
+  }
+
+  if (payload.includes("\n")) {
+    return ["Debug:", payload];
+  }
+
+  return [`Debug: ${payload}`];
+}
+
+function safeJsonStringify(value: unknown): string {
+  try {
+    return JSON.stringify(value, null, 2) ?? String(value);
+  } catch {
+    return String(value);
+  }
 }

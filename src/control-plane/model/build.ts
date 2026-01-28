@@ -41,6 +41,20 @@ export type ControlPlaneModelInfo = {
   metadata: ControlPlaneModelMetadata | null;
 };
 
+// =============================================================================
+// ERRORS
+// =============================================================================
+
+export class ControlPlaneModelBuildError extends Error {
+  constructor(
+    message: string,
+    public readonly cause?: unknown,
+  ) {
+    super(message, { cause });
+    this.name = "ControlPlaneModelBuildError";
+  }
+}
+
 const EXTRACTOR_VERSIONS: ControlPlaneExtractorVersions = {
   components: "v1",
   ownership: "v1",
@@ -121,6 +135,8 @@ export async function buildControlPlaneModel(
       metadata,
       reused: false,
     };
+  } catch (error) {
+    throw wrapBuildError(error);
   } finally {
     await lock.release();
   }
@@ -159,6 +175,14 @@ export async function getControlPlaneModelInfo(
 function hashModel(model: ControlPlaneModel): string {
   const payload = JSON.stringify(model, null, 2) + "\n";
   return crypto.createHash("sha256").update(payload).digest("hex");
+}
+
+function wrapBuildError(error: unknown): ControlPlaneModelBuildError {
+  if (error instanceof ControlPlaneModelBuildError) {
+    return error;
+  }
+
+  return new ControlPlaneModelBuildError("Control plane model build failed.", error);
 }
 
 function emitSymbolWarnings(warnings: string[]): void {

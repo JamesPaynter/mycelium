@@ -192,12 +192,13 @@ describe("control graph CLI", () => {
     const jsonLine = logSpy.mock.calls.map((call) => call.join(" ")).pop() ?? "";
     const payload = JSON.parse(jsonLine) as {
       ok: boolean;
-      error?: { code?: string; message?: string };
+      error?: { code?: string; message?: string; hint?: string };
     };
 
     expect(payload.ok).toBe(false);
     expect(payload.error?.code).toBe("MODEL_NOT_BUILT");
-    expect(payload.error?.message).toEqual(expect.any(String));
+    expect(payload.error?.message).toBe("Control plane model not built.");
+    expect(payload.error?.hint).toBe("Run `mycelium cp build` to generate it.");
     expect(process.exitCode).toBe(1);
   });
 
