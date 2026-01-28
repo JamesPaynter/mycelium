@@ -9,8 +9,9 @@ import { APIError as OpenAiApiError } from "openai/error";
 import type { ChatCompletion, ChatCompletionCreateParams } from "openai/resources/chat/completions";
 import { describe, expect, it } from "vitest";
 
+import { UserFacingError, USER_FACING_ERROR_CODES } from "../core/errors.js";
+
 import { AnthropicClient } from "./anthropic.js";
-import { LlmError } from "./client.js";
 import { OpenAiClient } from "./openai.js";
 
 class FakeOpenAiTransport {
@@ -154,6 +155,39 @@ describe("OpenAiClient", () => {
     expect(result.finishReason).toBe("stop");
   });
 
+  it("wraps OpenAI structured output parse failures with a user-facing summary", async () => {
+    const schema = {
+      type: "object",
+      properties: { status: { type: "string" } },
+      required: ["status"],
+      additionalProperties: false,
+    };
+
+    const transport = new FakeOpenAiTransport(makeOpenAiResponse("not json"));
+    const client = new OpenAiClient({ model: "gpt-4o-mini", transport });
+    const run = client.complete("Hello!", { schema });
+
+    const error = await run.catch((err) => err);
+
+    expect(error).toBeInstanceOf(UserFacingError);
+    const userError = error as UserFacingError;
+    expect(userError.title).toMatch(/structured output/i);
+    expect(userError.hint).toMatch(/schema/i);
+  });
+
+  it("wraps OpenAI empty responses with a user-facing summary", async () => {
+    const transport = new FakeOpenAiTransport(makeOpenAiResponse(""));
+    const client = new OpenAiClient({ model: "gpt-4o-mini", transport });
+    const run = client.complete("Hello!");
+
+    const error = await run.catch((err) => err);
+
+    expect(error).toBeInstanceOf(UserFacingError);
+    const userError = error as UserFacingError;
+    expect(userError.title).toMatch(/response/i);
+    expect(userError.message).toMatch(/assistant content/i);
+  });
+
   it("wraps OpenAI errors with actionable guidance", async () => {
     const apiError = new OpenAiApiError(
       401,
@@ -166,9 +200,13 @@ describe("OpenAiClient", () => {
     const client = new OpenAiClient({ model: "gpt-4o-mini", transport });
     const run = client.complete("Hi there");
 
-    await expect(run).rejects.toBeInstanceOf(LlmError);
-    await expect(run).rejects.toThrow(/status 401/i);
-    await expect(run).rejects.toThrow(/OPENAI_API_KEY/);
+    const error = await run.catch((err) => err);
+
+    expect(error).toBeInstanceOf(UserFacingError);
+    const userError = error as UserFacingError;
+    expect(userError.code).toBe(USER_FACING_ERROR_CODES.config);
+    expect(userError.message).toMatch(/api key/i);
+    expect(userError.hint).toMatch(/OPENAI_API_KEY/);
   });
 });
 
@@ -213,6 +251,28 @@ describe("AnthropicClient", () => {
     expect(result.finishReason).toBe("tool_use");
   });
 
+  it("wraps Anthropic structured output omissions with a user-facing summary", async () => {
+    const schema = {
+      type: "object",
+      properties: { status: { type: "string" } },
+      required: ["status"],
+      additionalProperties: false,
+    };
+
+    const transport = new FakeAnthropicTransport(
+      makeAnthropicResponse({ text: "No structured output", stopReason: "end_turn" }),
+    );
+    const client = new AnthropicClient({ model: "claude-3-5-sonnet-latest", transport });
+    const run = client.complete("Hello!", { schema });
+
+    const error = await run.catch((err) => err);
+
+    expect(error).toBeInstanceOf(UserFacingError);
+    const userError = error as UserFacingError;
+    expect(userError.title).toMatch(/structured output/i);
+    expect(userError.hint).toMatch(/schema/i);
+  });
+
   it("wraps Anthropic errors with actionable guidance", async () => {
     const apiError = new AnthropicApiError(
       401,
@@ -225,8 +285,12 @@ describe("AnthropicClient", () => {
     const client = new AnthropicClient({ model: "claude-3-5-sonnet-latest", transport });
     const run = client.complete("Hi there");
 
-    await expect(run).rejects.toBeInstanceOf(LlmError);
-    await expect(run).rejects.toThrow(/status 401/i);
-    await expect(run).rejects.toThrow(/ANTHROPIC_API_KEY/);
+    const error = await run.catch((err) => err);
+
+    expect(error).toBeInstanceOf(UserFacingError);
+    const userError = error as UserFacingError;
+    expect(userError.code).toBe(USER_FACING_ERROR_CODES.config);
+    expect(userError.message).toMatch(/api key/i);
+    expect(userError.hint).toMatch(/ANTHROPIC_API_KEY/);
   });
 });

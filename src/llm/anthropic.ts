@@ -8,7 +8,13 @@ import type {
   ToolUseBlock,
 } from "@anthropic-ai/sdk/resources/messages/messages";
 
+import { UserFacingError } from "../core/errors.js";
+
 import {
+  createMissingApiKeyError,
+  createResponseError,
+  createStructuredOutputResponseError,
+  createStructuredOutputSchemaError,
   ensureJsonObject,
   LlmClient,
   type LlmCompletionOptions,
@@ -75,9 +81,7 @@ export class AnthropicClient implements LlmClient {
     if (!options.transport) {
       const apiKey = options.apiKey ?? process.env.ANTHROPIC_API_KEY;
       if (!apiKey) {
-        throw new LlmError(
-          "Anthropic API key is required. Set ANTHROPIC_API_KEY or pass apiKey to AnthropicClient.",
-        );
+        throw createMissingApiKeyError("anthropic");
       }
 
       this.transport = createTransport({
@@ -95,7 +99,9 @@ export class AnthropicClient implements LlmClient {
     options: LlmCompletionOptions = {},
   ): Promise<LlmCompletionResult<TParsed>> {
     if (options.schema !== undefined) {
-      ensureJsonObject(options.schema);
+      ensureJsonObject(options.schema, () =>
+        createStructuredOutputSchemaError("Structured output schema must be a plain JSON object."),
+      );
     }
 
     const body = this.buildRequestBody(prompt, options);
@@ -115,7 +121,11 @@ export class AnthropicClient implements LlmClient {
 
     const text = extractText(response.content);
     if (!text) {
-      throw new LlmError("Anthropic response did not include assistant content.", response);
+      throw createResponseError(
+        "anthropic",
+        "Anthropic response did not include assistant content.",
+        response,
+      );
     }
 
     return {
@@ -149,7 +159,9 @@ export class AnthropicClient implements LlmClient {
   private buildStructuredOutputTool(schema: Record<string, unknown>): Tool {
     const inputSchema: Tool.InputSchema = { type: "object", ...schema };
     if (inputSchema.type !== "object") {
-      throw new LlmError('Anthropic structured outputs require a schema with type "object".');
+      throw createStructuredOutputSchemaError(
+        'Structured output schema must include type "object".',
+      );
     }
 
     return {
@@ -210,29 +222,38 @@ export class AnthropicClient implements LlmClient {
       | ToolUseBlock
       | undefined;
     if (!block) {
-      throw new LlmError(
+      throw createStructuredOutputResponseError(
+        "anthropic",
         "Anthropic response did not include a tool_use block for structured output.",
         message,
       );
     }
 
-    ensureJsonObject(block.input);
+    ensureJsonObject(block.input, () =>
+      createStructuredOutputResponseError(
+        "anthropic",
+        "Anthropic structured output was not a JSON object.",
+        message,
+      ),
+    );
     return block.input as T;
   }
 
-  private wrapError(error: unknown): LlmError {
+  private wrapError(error: unknown): Error {
+    if (error instanceof UserFacingError) {
+      return error;
+    }
+
     if (error instanceof APIError) {
       const status = error.status ?? "unknown";
       const detail =
         error.error && typeof error.error === "object" && "message" in error.error
           ? String((error.error as Record<string, unknown>).message)
           : error.message;
-      const hint =
-        status === 401 || status === 403
-          ? "Check ANTHROPIC_API_KEY and permissions."
-          : status === 429
-            ? "Rate limited by Anthropic."
-            : null;
+      if (status === 401 || status === 403) {
+        return createMissingApiKeyError("anthropic", error);
+      }
+      const hint = status === 429 ? "Rate limited by Anthropic." : null;
       const suffix = hint ? ` ${hint}` : "";
       return new LlmError(`Anthropic request failed (status ${status}): ${detail}${suffix}`, error);
     }

@@ -6,7 +6,13 @@ import type {
   ChatCompletionMessage,
 } from "openai/resources/chat/completions";
 
+import { UserFacingError } from "../core/errors.js";
+
 import {
+  createMissingApiKeyError,
+  createResponseError,
+  createStructuredOutputResponseError,
+  createStructuredOutputSchemaError,
   ensureJsonObject,
   LlmClient,
   type LlmCompletionOptions,
@@ -52,9 +58,7 @@ export class OpenAiClient implements LlmClient {
     if (!options.transport) {
       const apiKey = options.apiKey ?? process.env.OPENAI_API_KEY;
       if (!apiKey) {
-        throw new LlmError(
-          "OpenAI API key is required. Set OPENAI_API_KEY or pass apiKey to OpenAiClient.",
-        );
+        throw createMissingApiKeyError("openai");
       }
       this.transport = createTransport({
         apiKey,
@@ -71,7 +75,9 @@ export class OpenAiClient implements LlmClient {
     options: LlmCompletionOptions = {},
   ): Promise<LlmCompletionResult<TParsed>> {
     if (options.schema !== undefined) {
-      ensureJsonObject(options.schema);
+      ensureJsonObject(options.schema, () =>
+        createStructuredOutputSchemaError("Structured output schema must be a plain JSON object."),
+      );
     }
 
     const body = this.buildRequestBody(prompt, options);
@@ -83,7 +89,11 @@ export class OpenAiClient implements LlmClient {
     const text = extractText(choice?.message);
 
     if (!text) {
-      throw new LlmError("OpenAI response did not include assistant content.", response);
+      throw createResponseError(
+        "openai",
+        "OpenAI response did not include assistant content.",
+        response,
+      );
     }
 
     const parsed = options.schema ? this.parseJson<TParsed>(text) : undefined;
@@ -172,23 +182,29 @@ export class OpenAiClient implements LlmClient {
     try {
       return JSON.parse(text.trim()) as T;
     } catch (err) {
-      throw new LlmError("OpenAI returned invalid JSON for structured output.", err);
+      throw createStructuredOutputResponseError(
+        "openai",
+        "OpenAI returned invalid JSON for structured output.",
+        err,
+      );
     }
   }
 
-  private wrapError(error: unknown): LlmError {
+  private wrapError(error: unknown): Error {
+    if (error instanceof UserFacingError) {
+      return error;
+    }
+
     if (error instanceof APIError) {
       const status = error.status ?? "unknown";
       const detail =
         error.error && typeof error.error === "object" && "message" in error.error
           ? String((error.error as Record<string, unknown>).message)
           : error.message;
-      const hint =
-        status === 401 || status === 403
-          ? "Check OPENAI_API_KEY and permissions."
-          : status === 429
-            ? "Rate limited by OpenAI."
-            : null;
+      if (status === 401 || status === 403) {
+        return createMissingApiKeyError("openai", error);
+      }
+      const hint = status === 429 ? "Rate limited by OpenAI." : null;
       const suffix = hint ? ` ${hint}` : "";
       return new LlmError(`OpenAI request failed (status ${status}): ${detail}${suffix}`, error);
     }
@@ -225,7 +241,11 @@ function createTransport(args: {
       )) as ChatCompletion;
 
       if (!response.choices) {
-        throw new LlmError("Received unexpected streaming response from OpenAI.");
+        throw createResponseError(
+          "openai",
+          "OpenAI returned an unexpected streaming response.",
+          response,
+        );
       }
 
       return response;
