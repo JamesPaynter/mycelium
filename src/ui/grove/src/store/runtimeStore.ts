@@ -76,7 +76,12 @@ function buildOrchestratorEventsUrl(projectName: string, runId: string, cursor: 
   return `/api/projects/${encodeURIComponent(projectName)}/runs/${encodeURIComponent(runId)}/orchestrator/events?${params.toString()}`;
 }
 
-function buildTaskEventsUrl(projectName: string, runId: string, taskId: string, cursor: Cursor): string {
+function buildTaskEventsUrl(
+  projectName: string,
+  runId: string,
+  taskId: string,
+  cursor: Cursor,
+): string {
   const cursorValue = cursor === "tail" ? "tail" : String(cursor);
   const params = new URLSearchParams({ cursor: cursorValue, maxBytes: String(256_000) });
   return `/api/projects/${encodeURIComponent(projectName)}/runs/${encodeURIComponent(runId)}/tasks/${encodeURIComponent(taskId)}/events?${params.toString()}`;
@@ -86,12 +91,9 @@ function deriveActiveTaskIds(summary: any): string[] {
   const tasks = Array.isArray(summary?.tasks) ? summary.tasks : [];
   const active = tasks
     .filter((t: any) =>
-      [
-        "running",
-        "needs_human_review",
-        "needs_rescope",
-        "rescope_required",
-      ].includes(String(t?.status)),
+      ["running", "needs_human_review", "needs_rescope", "rescope_required"].includes(
+        String(t?.status),
+      ),
     )
     .map((t: any) => String(t.id))
     .filter(Boolean);
@@ -130,7 +132,11 @@ function baselineActionForTaskStatus(status: string): string {
   }
 }
 
-function baselineBubbleForTaskStatus(summary: any, status: string, taskId: string): { kind: "speech" | "thought"; text: string } | null {
+function baselineBubbleForTaskStatus(
+  summary: any,
+  status: string,
+  taskId: string,
+): { kind: "speech" | "thought"; text: string } | null {
   switch (status) {
     case "running":
       return { kind: "thought", text: "Working…" };
@@ -152,7 +158,9 @@ function baselineBubbleForTaskStatus(summary: any, status: string, taskId: strin
   }
 }
 
-function baselineBloomForRunStatus(status: string): { action: string; kind: "speech" | "thought"; text: string } | null {
+function baselineBloomForRunStatus(
+  status: string,
+): { action: string; kind: "speech" | "thought"; text: string } | null {
   switch (status) {
     case "running":
       return { action: "idle", kind: "thought", text: "Running" };
@@ -265,9 +273,7 @@ export const useGroveRuntimeStore = create<GroveRuntimeState>((set, get) => ({
 
     const groveAgents = useGroveStore.getState().agents;
     const existingWorkerIds = new Set(
-      groveAgents
-        .filter((a) => a.role === "worker" && a.taskId)
-        .map((a) => String(a.taskId)),
+      groveAgents.filter((a) => a.role === "worker" && a.taskId).map((a) => String(a.taskId)),
     );
 
     const trackedTaskIds = Array.from(new Set([...activeTaskIds, ...existingWorkerIds]))

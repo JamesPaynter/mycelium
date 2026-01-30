@@ -134,13 +134,17 @@ function getValidatorName(ev: any): string | null {
 }
 
 function getFailureReason(ev: any): string | null {
-  const fromPayload = ev?.payload?.reason ?? ev?.payload?.error ?? ev?.payload?.message ?? ev?.payload?.summary;
+  const fromPayload =
+    ev?.payload?.reason ?? ev?.payload?.error ?? ev?.payload?.message ?? ev?.payload?.summary;
   if (typeof fromPayload === "string" && fromPayload.trim()) return fromPayload.trim();
   if (typeof ev?.reason === "string" && ev.reason.trim()) return ev.reason.trim();
   return null;
 }
 
-function classifyWorkerEvent(type: string, ev: any): { kind: BubbleKind; action: string; text: string } | null {
+function classifyWorkerEvent(
+  type: string,
+  ev: any,
+): { kind: BubbleKind; action: string; text: string } | null {
   const normalized = type.toLowerCase();
 
   if (normalized === "worker.start") {
@@ -152,8 +156,10 @@ function classifyWorkerEvent(type: string, ev: any): { kind: BubbleKind; action:
   }
 
   if (normalized.startsWith("git.")) {
-    if (normalized === "git.commit" || normalized.startsWith("git.commit.")) return { kind: "speech", action: "git", text: "Commit" };
-    if (normalized === "git.checkpoint" || normalized.startsWith("git.checkpoint")) return { kind: "speech", action: "git", text: "Checkpoint" };
+    if (normalized === "git.commit" || normalized.startsWith("git.commit."))
+      return { kind: "speech", action: "git", text: "Commit" };
+    if (normalized === "git.checkpoint" || normalized.startsWith("git.checkpoint"))
+      return { kind: "speech", action: "git", text: "Checkpoint" };
     return { kind: "speech", action: "git", text: "Git" };
   }
 
@@ -164,8 +170,10 @@ function classifyWorkerEvent(type: string, ev: any): { kind: BubbleKind; action:
   }
 
   if (normalized.startsWith("doctor.")) {
-    if (normalized === "doctor.pass") return { kind: "speech", action: "doctor", text: "Doctor passed" };
-    if (normalized === "doctor.fail") return { kind: "speech", action: "doctor", text: "Doctor failed" };
+    if (normalized === "doctor.pass")
+      return { kind: "speech", action: "doctor", text: "Doctor passed" };
+    if (normalized === "doctor.fail")
+      return { kind: "speech", action: "doctor", text: "Doctor failed" };
     return { kind: "speech", action: "doctor", text: "Doctor…" };
   }
 
@@ -187,7 +195,11 @@ function classifyWorkerEvent(type: string, ev: any): { kind: BubbleKind; action:
 
   if (normalized === "task.retry") {
     const attempt = ev?.attempt ?? ev?.payload?.attempt;
-    return { kind: "speech", action: "coding", text: attempt ? `Retrying (attempt ${attempt})` : "Retrying…" };
+    return {
+      kind: "speech",
+      action: "coding",
+      text: attempt ? `Retrying (attempt ${attempt})` : "Retrying…",
+    };
   }
 
   if (normalized === "task.complete") {
@@ -202,7 +214,10 @@ function classifyWorkerEvent(type: string, ev: any): { kind: BubbleKind; action:
   return null;
 }
 
-function classifyOrchestratorTaskEvent(type: string, ev: any): { kind: BubbleKind; action: string; text: string } | null {
+function classifyOrchestratorTaskEvent(
+  type: string,
+  ev: any,
+): { kind: BubbleKind; action: string; text: string } | null {
   const normalized = type.toLowerCase();
 
   if (normalized.startsWith("workspace.prepare.")) {
@@ -228,17 +243,27 @@ function classifyOrchestratorTaskEvent(type: string, ev: any): { kind: BubbleKin
   return null;
 }
 
-function classifyPlannerEvent(type: string): { kind: BubbleKind; action: string; text: string } | null {
+function classifyPlannerEvent(
+  type: string,
+): { kind: BubbleKind; action: string; text: string } | null {
   const normalized = type.toLowerCase();
-  if (normalized === "batch.start") return { kind: "speech", action: "planning", text: "Batch start" };
-  if (normalized === "batch.dry_run") return { kind: "thought", action: "planning", text: "Dry run" };
-  if (normalized === "batch.merging") return { kind: "speech", action: "merging", text: "Merging…" };
-  if (normalized === "batch.merge_conflict") return { kind: "speech", action: "error", text: "Merge conflict" };
-  if (normalized === "batch.complete") return { kind: "speech", action: "idle", text: "Batch done" };
+  if (normalized === "batch.start")
+    return { kind: "speech", action: "planning", text: "Batch start" };
+  if (normalized === "batch.dry_run")
+    return { kind: "thought", action: "planning", text: "Dry run" };
+  if (normalized === "batch.merging")
+    return { kind: "speech", action: "merging", text: "Merging…" };
+  if (normalized === "batch.merge_conflict")
+    return { kind: "speech", action: "error", text: "Merge conflict" };
+  if (normalized === "batch.complete")
+    return { kind: "speech", action: "idle", text: "Batch done" };
   return null;
 }
 
-function classifyBloomEvent(type: string, ev: any): { kind: BubbleKind; action: string; text: string } | null {
+function classifyBloomEvent(
+  type: string,
+  ev: any,
+): { kind: BubbleKind; action: string; text: string } | null {
   const normalized = type.toLowerCase();
 
   if (normalized === "run.start") return { kind: "speech", action: "idle", text: "Run started" };
@@ -246,27 +271,40 @@ function classifyBloomEvent(type: string, ev: any): { kind: BubbleKind; action: 
   if (normalized === "run.paused") return { kind: "speech", action: "blocked", text: "Paused" };
   if (normalized === "run.blocked") {
     const reason = ev?.payload?.reason ?? ev?.payload?.message;
-    return { kind: "speech", action: "blocked", text: reason ? `Blocked: ${truncate(String(reason), 60)}` : "Blocked" };
+    return {
+      kind: "speech",
+      action: "blocked",
+      text: reason ? `Blocked: ${truncate(String(reason), 60)}` : "Blocked",
+    };
   }
   if (normalized === "run.stop") return { kind: "speech", action: "blocked", text: "Stopped" };
-  if (normalized === "run.complete") return { kind: "speech", action: "celebrate", text: "Complete" };
+  if (normalized === "run.complete")
+    return { kind: "speech", action: "celebrate", text: "Complete" };
 
   return null;
 }
 
-function classifyAuditorEvent(type: string, ev: any): { kind: BubbleKind; action: string; text: string } | null {
+function classifyAuditorEvent(
+  type: string,
+  ev: any,
+): { kind: BubbleKind; action: string; text: string } | null {
   const normalized = type.toLowerCase();
 
   if (normalized.startsWith("doctor.integration.")) {
-    if (normalized.endsWith(".start")) return { kind: "speech", action: "test", text: "Integration tests" };
-    if (normalized.endsWith(".fail")) return { kind: "speech", action: "error", text: "Integration failed" };
-    if (normalized.endsWith(".pass")) return { kind: "speech", action: "test", text: "Integration passed" };
+    if (normalized.endsWith(".start"))
+      return { kind: "speech", action: "test", text: "Integration tests" };
+    if (normalized.endsWith(".fail"))
+      return { kind: "speech", action: "error", text: "Integration failed" };
+    if (normalized.endsWith(".pass"))
+      return { kind: "speech", action: "test", text: "Integration passed" };
     return { kind: "speech", action: "test", text: "Integration" };
   }
 
   if (normalized.startsWith("doctor.canary.")) {
-    if (normalized.endsWith(".start")) return { kind: "speech", action: "test", text: "Doctor canary" };
-    if (normalized.includes("fail")) return { kind: "speech", action: "error", text: "Canary failed" };
+    if (normalized.endsWith(".start"))
+      return { kind: "speech", action: "test", text: "Doctor canary" };
+    if (normalized.includes("fail"))
+      return { kind: "speech", action: "error", text: "Canary failed" };
     return { kind: "speech", action: "test", text: "Canary" };
   }
 
@@ -276,9 +314,12 @@ function classifyAuditorEvent(type: string, ev: any): { kind: BubbleKind; action
   }
 
   if (normalized.startsWith("ledger.write.")) {
-    if (normalized.endsWith(".start")) return { kind: "thought", action: "thinking", text: "Writing ledger…" };
-    if (normalized.endsWith(".complete")) return { kind: "speech", action: "idle", text: "Ledger written" };
-    if (normalized.endsWith(".error")) return { kind: "speech", action: "error", text: "Ledger error" };
+    if (normalized.endsWith(".start"))
+      return { kind: "thought", action: "thinking", text: "Writing ledger…" };
+    if (normalized.endsWith(".complete"))
+      return { kind: "speech", action: "idle", text: "Ledger written" };
+    if (normalized.endsWith(".error"))
+      return { kind: "speech", action: "error", text: "Ledger error" };
     return { kind: "thought", action: "thinking", text: "Ledger…" };
   }
 
@@ -322,7 +363,9 @@ export const useGroveStore = create<GroveState>((set, get) => {
   }
 
   function findReusablePlanner(): Agent | undefined {
-    return get().agents.find((a) => a.role === "planner" && !a.isLeaving && a.state === "idle" && !a.batchId);
+    return get().agents.find(
+      (a) => a.role === "planner" && !a.isLeaving && a.state === "idle" && !a.batchId,
+    );
   }
 
   function findAuditorForValidator(validatorName: string): Agent | undefined {
@@ -330,7 +373,9 @@ export const useGroveStore = create<GroveState>((set, get) => {
   }
 
   function findReusableAuditor(): Agent | undefined {
-    return get().agents.find((a) => a.role === "auditor" && !a.isLeaving && a.state === "idle" && !a.validatorName);
+    return get().agents.find(
+      (a) => a.role === "auditor" && !a.isLeaving && a.state === "idle" && !a.validatorName,
+    );
   }
 
   return {
@@ -498,7 +543,10 @@ export const useGroveStore = create<GroveState>((set, get) => {
       const dx = x - agent.x;
       const dy = y - agent.y;
       const distance = Math.max(1e-3, Math.hypot(dx, dy));
-      const durationMs = Math.max(MIN_MOVE_DURATION_MS, (distance / WALK_SPEED_PERCENT_PER_SEC) * 1000);
+      const durationMs = Math.max(
+        MIN_MOVE_DURATION_MS,
+        (distance / WALK_SPEED_PERCENT_PER_SEC) * 1000,
+      );
 
       updateAgent(agentId, {
         x,
@@ -552,10 +600,18 @@ export const useGroveStore = create<GroveState>((set, get) => {
           const batchId = getBatchId(ev) || "batch";
           const planner = get().spawnPlanner(String(batchId));
           if (planner) {
-            const upd = classifyPlannerEvent(type) ?? { kind: "speech", action: "planning", text: `Batch ${batchId}` };
+            const upd = classifyPlannerEvent(type) ?? {
+              kind: "speech",
+              action: "planning",
+              text: `Batch ${batchId}`,
+            };
             get().touchAgent(planner.id);
             get().setAgentAction(planner.id, upd.action);
-            get().showBubble(planner.id, upd.kind, upd.text.replace("Batch start", `Batch ${batchId}`));
+            get().showBubble(
+              planner.id,
+              upd.kind,
+              upd.text.replace("Batch start", `Batch ${batchId}`),
+            );
             if (type.toLowerCase() === "batch.complete") {
               updateAgent(planner.id, { batchId: undefined, action: "idle" });
             }
@@ -570,14 +626,24 @@ export const useGroveStore = create<GroveState>((set, get) => {
           type.toLowerCase().startsWith("doctor.canary") ||
           type.toLowerCase().startsWith("ledger.write")
         ) {
-          const name = getValidatorName(ev) || (type.toLowerCase().startsWith("doctor") ? "doctor" : "validator");
+          const name =
+            getValidatorName(ev) ||
+            (type.toLowerCase().startsWith("doctor") ? "doctor" : "validator");
           const auditor = get().spawnAuditor(String(name));
           if (auditor) {
-            const upd = classifyAuditorEvent(type, ev) ?? { kind: "speech", action: "test", text: String(name) };
+            const upd = classifyAuditorEvent(type, ev) ?? {
+              kind: "speech",
+              action: "test",
+              text: String(name),
+            };
             get().touchAgent(auditor.id);
             get().setAgentAction(auditor.id, upd.action);
             get().showBubble(auditor.id, upd.kind, upd.text);
-            if (type.toLowerCase().endsWith(".pass") || type.toLowerCase().endsWith(".fail") || type.toLowerCase().endsWith(".complete")) {
+            if (
+              type.toLowerCase().endsWith(".pass") ||
+              type.toLowerCase().endsWith(".fail") ||
+              type.toLowerCase().endsWith(".complete")
+            ) {
               updateAgent(auditor.id, { validatorName: undefined, action: "idle" });
             }
           }
