@@ -1,7 +1,7 @@
+import { spawn } from "node:child_process";
 import fs from "node:fs";
 import fsPromises from "node:fs/promises";
 import path from "node:path";
-import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
 
 // =============================================================================
@@ -40,7 +40,6 @@ async function buildUiAssets(source, target) {
   );
 }
 
-
 // =============================================================================
 // GROVE BUILD
 // =============================================================================
@@ -54,9 +53,7 @@ async function buildGroveAssets(packageRoot) {
 
   const groveNodeModules = path.join(groveDir, "node_modules");
   if (!fs.existsSync(groveNodeModules)) {
-    throw new Error(
-      "Grove UI dependencies not installed. Run: npm --prefix src/ui/grove install",
-    );
+    throw new Error("Grove UI dependencies not installed. Run: npm --prefix src/ui/grove install");
   }
 
   await runCommand(npmCommand(), ["run", "build"], { cwd: groveDir });
@@ -84,7 +81,6 @@ function runCommand(command, args, options) {
     });
   });
 }
-
 
 // =============================================================================
 // PACKAGE ROOT

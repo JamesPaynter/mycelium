@@ -21,8 +21,8 @@ export interface SpriteAnimRef {
 
 export interface SpriteSet {
   idleFacingBase: string; // e.g. "characters/Worker/rotations"
-  walkBase: string;       // e.g. "characters/Worker/animations/walking-8-frames"
-  walkFrames: number;     // frames per direction
+  walkBase: string; // e.g. "characters/Worker/animations/walking-8-frames"
+  walkFrames: number; // frames per direction
   idleAnims?: SpriteAnimRef[];
   walkFrameMs?: number;
   idleFrameMs?: number;
@@ -33,10 +33,13 @@ export const DEFAULT_IDLE_FRAME_MS = 140;
 
 export function makeFacing(assetBase: string, base: string): Record<Direction8, string> {
   const prefix = assetBase.replace(/\/$/, "");
-  return DIRECTIONS.reduce((acc, dir) => {
-    acc[dir] = `${prefix}/${base}/${dir}.png`;
-    return acc;
-  }, {} as Record<Direction8, string>);
+  return DIRECTIONS.reduce(
+    (acc, dir) => {
+      acc[dir] = `${prefix}/${base}/${dir}.png`;
+      return acc;
+    },
+    {} as Record<Direction8, string>,
+  );
 }
 
 export function makeWalk(
@@ -45,12 +48,15 @@ export function makeWalk(
   frames = 8,
 ): Record<Direction8, string[]> {
   const prefix = assetBase.replace(/\/$/, "");
-  return DIRECTIONS.reduce((acc, dir) => {
-    acc[dir] = Array.from({ length: frames }).map(
-      (_, idx) => `${prefix}/${base}/${dir}/frame_${String(idx).padStart(3, "0")}.png`,
-    );
-    return acc;
-  }, {} as Record<Direction8, string[]>);
+  return DIRECTIONS.reduce(
+    (acc, dir) => {
+      acc[dir] = Array.from({ length: frames }).map(
+        (_, idx) => `${prefix}/${base}/${dir}/frame_${String(idx).padStart(3, "0")}.png`,
+      );
+      return acc;
+    },
+    {} as Record<Direction8, string[]>,
+  );
 }
 
 export function makeAnim(assetBase: string, anim: SpriteAnimRef): string[] {
@@ -73,10 +79,23 @@ export const DEFAULT_SPRITE_SETS: Record<RoleKey, SpriteSet> = {
     walkFrames: 8,
     idleAnims: [
       { base: `${BLOOM_BASE}/animations/custom-Finger guns + wink`, frames: 16 },
-      { base: `${BLOOM_BASE}/animations/custom-Spore bubble gum (blows a spore bubble, it pops in`, frames: 16 },
-      { base: `${BLOOM_BASE}/animations/custom-Character does an energetic praise moment: quick b`, frames: 16 },
-      { base: `${BLOOM_BASE}/animations/custom-Summons a tiny cupcake. admires it, it vanishes`, frames: 16 },
-      { base: `${BLOOM_BASE}/animations/custom-Tiny mushrooms applaud (little side mushrooms`, frames: 16, dir: "tend/south" },
+      {
+        base: `${BLOOM_BASE}/animations/custom-Spore bubble gum (blows a spore bubble, it pops in`,
+        frames: 16,
+      },
+      {
+        base: `${BLOOM_BASE}/animations/custom-Character does an energetic praise moment: quick b`,
+        frames: 16,
+      },
+      {
+        base: `${BLOOM_BASE}/animations/custom-Summons a tiny cupcake. admires it, it vanishes`,
+        frames: 16,
+      },
+      {
+        base: `${BLOOM_BASE}/animations/custom-Tiny mushrooms applaud (little side mushrooms`,
+        frames: 16,
+        dir: "tend/south",
+      },
       { base: `${BLOOM_BASE}/animations/drinking`, frames: 6 },
       { base: `${BLOOM_BASE}/animations/picking-up`, frames: 5 },
     ],

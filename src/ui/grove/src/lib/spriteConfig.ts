@@ -3,7 +3,9 @@ import { DEFAULT_SPRITE_SETS } from "./sprites";
 
 export type ActionName = string;
 
-export type SpriteActionOverrides = Partial<Pick<SpriteSet, "idleFacingBase" | "walkBase" | "walkFrames" | "idleFrameMs" | "walkFrameMs">> & {
+export type SpriteActionOverrides = Partial<
+  Pick<SpriteSet, "idleFacingBase" | "walkBase" | "walkFrames" | "idleFrameMs" | "walkFrameMs">
+> & {
   idleAnim?: SpriteAnimRef;
   idleAnims?: SpriteAnimRef[];
 };
