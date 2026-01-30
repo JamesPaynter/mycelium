@@ -59,6 +59,9 @@ COPY --from=build /app/dist ./dist
 COPY --from=build /app/templates ./templates
 COPY bin ./bin
 
+# Ensure mycelium CLI is discoverable even if PATH is reset by subprocesses.
+RUN ln -s /app/bin/mycelium /usr/local/bin/mycelium
+
 # Create non-root user for worker processes
 RUN if ! id -u worker >/dev/null 2>&1; then useradd -m -s /bin/bash worker; fi \
   && mkdir -p /workspace \

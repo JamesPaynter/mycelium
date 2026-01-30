@@ -57,13 +57,13 @@ export function buildInitialPrompt(args: {
 
   const repoNavigation = [
     "Repo navigation tools (use before grepping):",
-    "Prefer `mycelium cp` for ownership, dependencies, blast radius, and symbol navigation.",
-    "- mycelium cp components list",
-    "- mycelium cp owner <path>",
-    "- mycelium cp blast <path>",
-    "- mycelium cp symbols find <query>",
-    "- mycelium cp symbols def <symbol>",
-    "- mycelium cp symbols refs <symbol>",
+    "Prefer `mycelium cg` for ownership, dependencies, blast radius, and symbol navigation.",
+    "- mycelium cg components list",
+    "- mycelium cg owner <path>",
+    "- mycelium cg blast <path>",
+    "- mycelium cg symbols find <query>",
+    "- mycelium cg symbols def <symbol>",
+    "- mycelium cg symbols refs <symbol>",
   ].join("\n");
 
   if (args.strictTddContext?.stage === "tests") {
