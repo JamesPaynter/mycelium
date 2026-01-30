@@ -1799,6 +1799,20 @@ body {
   display: none;
 }
 
+.grove-error {
+  margin-top: 16px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: rgba(200, 75, 75, 0.12);
+  border: 1px solid rgba(200, 75, 75, 0.4);
+  color: var(--danger);
+  font-size: 0.85rem;
+}
+
+.grove-error.hidden {
+  display: none;
+}
+
 @keyframes bob {
   0% {
     transform: translateY(0);

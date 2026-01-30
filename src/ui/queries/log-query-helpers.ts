@@ -6,6 +6,7 @@ import path from "node:path";
 // =============================================================================
 
 type OptionalNumberParseResult = { ok: true; value: number | null } | { ok: false };
+export type CursorParam = number | "tail";
 
 export function parseOptionalString(value: string | null): string | undefined {
   if (value === null) return undefined;
@@ -50,8 +51,21 @@ export function parseOptionalPositiveInteger(value: string | null): OptionalNumb
 
 export function parseCursorParam(
   value: string | null,
-): { ok: true; value: number } | { ok: false } {
-  const parsed = parseOptionalNonNegativeInteger(value);
+): { ok: true; value: CursorParam } | { ok: false } {
+  if (value === null) {
+    return { ok: true, value: 0 };
+  }
+
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return { ok: true, value: 0 };
+  }
+
+  if (trimmed === "tail") {
+    return { ok: true, value: "tail" };
+  }
+
+  const parsed = parseOptionalNonNegativeInteger(trimmed);
   if (!parsed.ok) {
     return { ok: false };
   }

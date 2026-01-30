@@ -23,7 +23,7 @@ module.exports = {
       typescript: true,
     },
   },
-  ignorePatterns: ["dist/", "node_modules/", "test/fixtures/"],
+  ignorePatterns: ["dist/", "node_modules/", "src/ui/grove/**", "test/fixtures/"],
   overrides: [
     {
       files: ["src/ui/static/**/*.js"],

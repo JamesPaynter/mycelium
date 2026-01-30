@@ -1,3 +1,4 @@
+import fs from "node:fs/promises";
 import path from "node:path";
 
 import {
@@ -93,13 +94,16 @@ export async function queryOrchestratorEvents(params: {
     return { ok: false, error: { code: "not_found", message: "Run logs not found." } };
   }
 
+  let cursor: number;
+  if (cursorResult.value === "tail") {
+    const stat = await fs.stat(logPath);
+    cursor = stat.size;
+  } else {
+    cursor = cursorResult.value;
+  }
+
   const readOptions = maxBytesResult.value === null ? {} : { maxBytes: maxBytesResult.value };
-  const result = await readJsonlFromCursor(
-    logPath,
-    cursorResult.value,
-    { taskId, typeGlob },
-    readOptions,
-  );
+  const result = await readJsonlFromCursor(logPath, cursor, { taskId, typeGlob }, readOptions);
 
   return {
     ok: true,
@@ -144,8 +148,20 @@ export async function queryTaskEvents(params: {
     return { ok: false, error: { code: "not_found", message: "Task logs not found." } };
   }
 
+  let cursor: number;
+  if (cursorResult.value === "tail") {
+    try {
+      const stat = await fs.stat(logPath);
+      cursor = stat.size;
+    } catch {
+      cursor = 0;
+    }
+  } else {
+    cursor = cursorResult.value;
+  }
+
   const readOptions = maxBytesResult.value === null ? {} : { maxBytes: maxBytesResult.value };
-  const result = await readJsonlFromCursor(logPath, cursorResult.value, { typeGlob }, readOptions);
+  const result = await readJsonlFromCursor(logPath, cursor, { typeGlob }, readOptions);
 
   return {
     ok: true,

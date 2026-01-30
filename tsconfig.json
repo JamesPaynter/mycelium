@@ -13,5 +13,6 @@
     "sourceMap": true,
     "types": ["node", "vitest"]
   },
+  "exclude": ["src/ui/grove/**"],
   "include": ["index.ts", "src/**/*.ts", "worker/**/*.ts"]
 }
