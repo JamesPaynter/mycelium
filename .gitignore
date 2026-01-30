@@ -17,6 +17,8 @@ dist-electron
 dist-ssr
 release
 *.local
+*.gz
+*.tgz
 
 # Editor directories and files
 .vscode/*
