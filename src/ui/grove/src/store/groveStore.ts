@@ -152,15 +152,11 @@ function classifyWorkerEvent(
   }
 
   if (normalized.startsWith("bootstrap.")) {
-    return { kind: "speech", action: "bootstrap", text: "Bootstrapping…" };
+    return { kind: "thought", action: "bootstrap", text: "Bootstrapping" };
   }
 
   if (normalized.startsWith("git.")) {
-    if (normalized === "git.commit" || normalized.startsWith("git.commit."))
-      return { kind: "speech", action: "git", text: "Commit" };
-    if (normalized === "git.checkpoint" || normalized.startsWith("git.checkpoint"))
-      return { kind: "speech", action: "git", text: "Checkpoint" };
-    return { kind: "speech", action: "git", text: "Git" };
+    return { kind: "thought", action: "git", text: "Git…" };
   }
 
   if (normalized.startsWith("lint.")) {
@@ -174,7 +170,7 @@ function classifyWorkerEvent(
       return { kind: "speech", action: "doctor", text: "Doctor passed" };
     if (normalized === "doctor.fail")
       return { kind: "speech", action: "doctor", text: "Doctor failed" };
-    return { kind: "speech", action: "doctor", text: "Doctor…" };
+    return { kind: "thought", action: "doctor", text: "Doctor…" };
   }
 
   if (normalized.startsWith("tdd.stage.")) {
@@ -183,13 +179,23 @@ function classifyWorkerEvent(
     return { kind: "thought", action: "test", text: label };
   }
 
-  if (
-    normalized.startsWith("codex.") ||
-    normalized.startsWith("turn.") ||
-    normalized.startsWith("agent.") ||
-    normalized.startsWith("llm.") ||
-    normalized.startsWith("mock.")
-  ) {
+  if (normalized.startsWith("codex.")) {
+    return { kind: "thought", action: "thinking", text: "Prompting Codex" };
+  }
+
+  if (normalized.startsWith("turn.")) {
+    return { kind: "thought", action: "thinking", text: "Turn started" };
+  }
+
+  if (normalized.startsWith("agent.")) {
+    return { kind: "thought", action: "thinking", text: "Agent…" };
+  }
+
+  if (normalized.startsWith("llm.")) {
+    return { kind: "thought", action: "thinking", text: "LLM…" };
+  }
+
+  if (normalized.startsWith("mock.")) {
     return { kind: "thought", action: "thinking", text: "Thinking…" };
   }
 
@@ -203,12 +209,16 @@ function classifyWorkerEvent(
   }
 
   if (normalized === "task.complete") {
-    return { kind: "speech", action: "celebrate", text: "Done" };
+    return { kind: "speech", action: "celebrate", text: "Complete" };
   }
 
   if (normalized === "task.failed") {
-    const reason = getFailureReason(ev) ?? "Failed";
-    return { kind: "speech", action: "error", text: truncate(reason, 70) };
+    const reason = getFailureReason(ev);
+    return {
+      kind: "speech",
+      action: "error",
+      text: reason ? `Task failed: ${truncate(reason, 70)}` : "Task failed",
+    };
   }
 
   return null;
@@ -220,21 +230,34 @@ function classifyOrchestratorTaskEvent(
 ): { kind: BubbleKind; action: string; text: string } | null {
   const normalized = type.toLowerCase();
 
+  if (normalized === "workspace.prepare.start") {
+    return { kind: "thought", action: "bootstrap", text: "Preparing workspace" };
+  }
+  if (normalized === "workspace.prepare.complete") {
+    return { kind: "thought", action: "bootstrap", text: "Workspace ready" };
+  }
   if (normalized.startsWith("workspace.prepare.")) {
-    return { kind: "speech", action: "bootstrap", text: "Preparing workspace" };
+    return { kind: "thought", action: "bootstrap", text: "Preparing workspace" };
+  }
+  if (normalized === "task.lock_derivation") {
+    return { kind: "thought", action: "thinking", text: "Deriving locks" };
   }
   if (normalized === "task.stage.move") {
-    return { kind: "speech", action: "coding", text: "Working…" };
+    return { kind: "thought", action: "thinking", text: "Moving stage" };
   }
   if (normalized === "task.blast_radius") {
     return { kind: "thought", action: "thinking", text: "Assessing changes" };
   }
   if (normalized === "task.complete") {
-    return { kind: "speech", action: "celebrate", text: "Done" };
+    return { kind: "speech", action: "celebrate", text: "Complete" };
   }
   if (normalized === "task.failed") {
-    const reason = getFailureReason(ev) ?? "Failed";
-    return { kind: "speech", action: "error", text: truncate(reason, 70) };
+    const reason = getFailureReason(ev);
+    return {
+      kind: "speech",
+      action: "error",
+      text: reason ? `Task failed: ${truncate(reason, 70)}` : "Task failed",
+    };
   }
   if (normalized === "task.reset") {
     return { kind: "speech", action: "idle", text: "Reset" };
@@ -247,16 +270,27 @@ function classifyPlannerEvent(
   type: string,
 ): { kind: BubbleKind; action: string; text: string } | null {
   const normalized = type.toLowerCase();
+
+  if (normalized.startsWith("doctor.integration.")) {
+    if (normalized.endsWith(".start"))
+      return { kind: "thought", action: "merging", text: "Integrating" };
+    if (normalized.endsWith(".pass"))
+      return { kind: "speech", action: "celebrate", text: "Integration ok" };
+    if (normalized.endsWith(".fail"))
+      return { kind: "speech", action: "error", text: "Integration failed" };
+    return { kind: "thought", action: "merging", text: "Integrating" };
+  }
+
   if (normalized === "batch.start")
     return { kind: "speech", action: "planning", text: "Batch start" };
   if (normalized === "batch.dry_run")
     return { kind: "thought", action: "planning", text: "Dry run" };
   if (normalized === "batch.merging")
-    return { kind: "speech", action: "merging", text: "Merging…" };
+    return { kind: "thought", action: "merging", text: "Merging changes" };
   if (normalized === "batch.merge_conflict")
     return { kind: "speech", action: "error", text: "Merge conflict" };
   if (normalized === "batch.complete")
-    return { kind: "speech", action: "idle", text: "Batch done" };
+    return { kind: "speech", action: "celebrate", text: "Batch complete" };
   return null;
 }
 
@@ -266,20 +300,24 @@ function classifyBloomEvent(
 ): { kind: BubbleKind; action: string; text: string } | null {
   const normalized = type.toLowerCase();
 
-  if (normalized === "run.start") return { kind: "speech", action: "idle", text: "Run started" };
-  if (normalized === "run.resume") return { kind: "speech", action: "idle", text: "Resumed" };
+  if (normalized === "run.start")
+    return { kind: "speech", action: "celebrate", text: "Run started" };
+  if (normalized === "run.resume")
+    return { kind: "speech", action: "celebrate", text: "Run resumed" };
   if (normalized === "run.paused") return { kind: "speech", action: "blocked", text: "Paused" };
   if (normalized === "run.blocked") {
-    const reason = ev?.payload?.reason ?? ev?.payload?.message;
+    const reason = getFailureReason(ev) ?? ev?.payload?.message;
     return {
       kind: "speech",
       action: "blocked",
       text: reason ? `Blocked: ${truncate(String(reason), 60)}` : "Blocked",
     };
   }
-  if (normalized === "run.stop") return { kind: "speech", action: "blocked", text: "Stopped" };
+  if (normalized === "run.stop") return { kind: "speech", action: "idle", text: "Run stopped" };
   if (normalized === "run.complete")
-    return { kind: "speech", action: "celebrate", text: "Complete" };
+    return { kind: "speech", action: "celebrate", text: "Run complete" };
+  if (normalized === "run.summary")
+    return { kind: "thought", action: "thinking", text: "Summarising" };
 
   return null;
 }
@@ -290,37 +328,17 @@ function classifyAuditorEvent(
 ): { kind: BubbleKind; action: string; text: string } | null {
   const normalized = type.toLowerCase();
 
-  if (normalized.startsWith("doctor.integration.")) {
-    if (normalized.endsWith(".start"))
-      return { kind: "speech", action: "test", text: "Integration tests" };
-    if (normalized.endsWith(".fail"))
-      return { kind: "speech", action: "error", text: "Integration failed" };
-    if (normalized.endsWith(".pass"))
-      return { kind: "speech", action: "test", text: "Integration passed" };
-    return { kind: "speech", action: "test", text: "Integration" };
-  }
-
   if (normalized.startsWith("doctor.canary.")) {
-    if (normalized.endsWith(".start"))
-      return { kind: "speech", action: "test", text: "Doctor canary" };
+    if (normalized.endsWith(".start")) return { kind: "thought", action: "test", text: "Canary…" };
     if (normalized.includes("fail"))
-      return { kind: "speech", action: "error", text: "Canary failed" };
-    return { kind: "speech", action: "test", text: "Canary" };
+      return { kind: "speech", action: "test", text: "Canary failed" };
+    if (normalized.includes("pass")) return { kind: "speech", action: "test", text: "Canary ok" };
+    return { kind: "thought", action: "test", text: "Canary…" };
   }
 
   if (normalized === "validator.block") {
     const name = getValidatorName(ev) ?? "Validator";
     return { kind: "speech", action: "blocked", text: `${name} blocked` };
-  }
-
-  if (normalized.startsWith("ledger.write.")) {
-    if (normalized.endsWith(".start"))
-      return { kind: "thought", action: "thinking", text: "Writing ledger…" };
-    if (normalized.endsWith(".complete"))
-      return { kind: "speech", action: "idle", text: "Ledger written" };
-    if (normalized.endsWith(".error"))
-      return { kind: "speech", action: "error", text: "Ledger error" };
-    return { kind: "thought", action: "thinking", text: "Ledger…" };
   }
 
   return null;
@@ -585,50 +603,57 @@ export const useGroveStore = create<GroveState>((set, get) => {
       for (const ev of events) {
         const type = String(ev?.type || "");
         if (!type) continue;
+        const normalized = type.toLowerCase();
 
-        // Bloom (run-level)
-        const bloomUpdate = classifyBloomEvent(type, ev);
-        if (bloomUpdate) {
-          get().touchAgent("bloom");
-          get().setAgentAction("bloom", bloomUpdate.action);
-          get().showBubble("bloom", bloomUpdate.kind, bloomUpdate.text);
+        // Worker events (prefer task-id)
+        const taskId = getTaskId(ev);
+        if (taskId) {
+          const worker = get().spawnWorker(String(taskId));
+          if (!worker) continue;
+
+          // Determine whether this is orchestrator-level task.* or worker-level
+          const upd =
+            classifyWorkerEvent(type, ev) ??
+            (normalized.startsWith("task.") || normalized.startsWith("workspace.")
+              ? classifyOrchestratorTaskEvent(type, ev)
+              : null);
+
+          if (upd) {
+            get().touchAgent(worker.id);
+            get().setAgentAction(worker.id, upd.action);
+            get().showBubble(worker.id, upd.kind, upd.text);
+          }
           continue;
         }
 
-        // Planner (batch-level)
-        if (type.toLowerCase().startsWith("batch.")) {
-          const batchId = getBatchId(ev) || "batch";
-          const planner = get().spawnPlanner(String(batchId));
+        // Planner (batch-level + integrations)
+        if (normalized.startsWith("batch.") || normalized.startsWith("doctor.integration.")) {
+          const isIntegration = normalized.startsWith("doctor.integration.");
+          const batchId = isIntegration ? null : getBatchId(ev) || "batch";
+          const planner = get().spawnPlanner(batchId ? String(batchId) : undefined);
           if (planner) {
             const upd = classifyPlannerEvent(type) ?? {
               kind: "speech",
               action: "planning",
-              text: `Batch ${batchId}`,
+              text: isIntegration ? "Integrating" : `Batch ${batchId ?? "batch"}`,
             };
+            const bubbleText = isIntegration
+              ? upd.text
+              : upd.text.replace("Batch start", `Batch ${batchId ?? "batch"}`);
             get().touchAgent(planner.id);
             get().setAgentAction(planner.id, upd.action);
-            get().showBubble(
-              planner.id,
-              upd.kind,
-              upd.text.replace("Batch start", `Batch ${batchId}`),
-            );
-            if (type.toLowerCase() === "batch.complete") {
-              updateAgent(planner.id, { batchId: undefined, action: "idle" });
+            get().showBubble(planner.id, upd.kind, bubbleText);
+            if (normalized === "batch.complete") {
+              updateAgent(planner.id, { batchId: undefined });
             }
           }
           continue;
         }
 
-        // Auditor (run-level validation / ledger)
-        if (
-          type.toLowerCase().startsWith("validator.") ||
-          type.toLowerCase().startsWith("doctor.integration") ||
-          type.toLowerCase().startsWith("doctor.canary") ||
-          type.toLowerCase().startsWith("ledger.write")
-        ) {
+        // Auditor (run-level validation)
+        if (normalized.startsWith("validator.") || normalized.startsWith("doctor.canary.")) {
           const name =
-            getValidatorName(ev) ||
-            (type.toLowerCase().startsWith("doctor") ? "doctor" : "validator");
+            getValidatorName(ev) || (normalized.startsWith("doctor") ? "doctor" : "validator");
           const auditor = get().spawnAuditor(String(name));
           if (auditor) {
             const upd = classifyAuditorEvent(type, ev) ?? {
@@ -640,9 +665,9 @@ export const useGroveStore = create<GroveState>((set, get) => {
             get().setAgentAction(auditor.id, upd.action);
             get().showBubble(auditor.id, upd.kind, upd.text);
             if (
-              type.toLowerCase().endsWith(".pass") ||
-              type.toLowerCase().endsWith(".fail") ||
-              type.toLowerCase().endsWith(".complete")
+              normalized.endsWith(".pass") ||
+              normalized.endsWith(".fail") ||
+              normalized.endsWith(".complete")
             ) {
               updateAgent(auditor.id, { validatorName: undefined, action: "idle" });
             }
@@ -650,25 +675,12 @@ export const useGroveStore = create<GroveState>((set, get) => {
           continue;
         }
 
-        // Worker events (prefer task-id)
-        const taskId = getTaskId(ev);
-        if (taskId) {
-          const worker = get().spawnWorker(String(taskId));
-          if (!worker) continue;
-
-          // Determine whether this is orchestrator-level task.* or worker-level
-          const upd =
-            classifyWorkerEvent(type, ev) ??
-            (type.toLowerCase().startsWith("task.") || type.toLowerCase().startsWith("workspace.")
-              ? classifyOrchestratorTaskEvent(type, ev)
-              : null);
-
-          if (upd) {
-            get().touchAgent(worker.id);
-            get().setAgentAction(worker.id, upd.action);
-            get().showBubble(worker.id, upd.kind, upd.text);
-          }
-          continue;
+        // Bloom (run-level)
+        const bloomUpdate = classifyBloomEvent(type, ev);
+        if (bloomUpdate) {
+          get().touchAgent("bloom");
+          get().setAgentAction("bloom", bloomUpdate.action);
+          get().showBubble("bloom", bloomUpdate.kind, bloomUpdate.text);
         }
       }
     },
