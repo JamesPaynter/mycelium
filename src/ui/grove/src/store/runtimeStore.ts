@@ -142,7 +142,7 @@ function baselineBubbleForTaskStatus(
       return { kind: "thought", text: "Working…" };
     case "needs_human_review": {
       const detail = summarizeHumanReview(summary, taskId);
-      return { kind: "speech", text: detail ? `Needs review — ${detail}` : "Needs human review" };
+      return { kind: "speech", text: detail ? `Needs review: ${detail}` : "Needs review" };
     }
     case "needs_rescope":
     case "rescope_required":
