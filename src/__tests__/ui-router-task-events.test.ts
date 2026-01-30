@@ -52,7 +52,7 @@ function ensureRunLogsDir(root: string, projectName: string, runId: string): str
   return dir;
 }
 
-function ensureTaskEventsLog(
+function ensureTaskLogDir(
   root: string,
   projectName: string,
   runId: string,
@@ -62,6 +62,17 @@ function ensureTaskEventsLog(
   const runDir = ensureRunLogsDir(root, projectName, runId);
   const taskDir = path.join(runDir, "tasks", `${taskId}-${taskSlug}`);
   fs.mkdirSync(taskDir, { recursive: true });
+  return taskDir;
+}
+
+function ensureTaskEventsLog(
+  root: string,
+  projectName: string,
+  runId: string,
+  taskId: string,
+  taskSlug: string,
+): string {
+  const taskDir = ensureTaskLogDir(root, projectName, runId, taskId, taskSlug);
   return path.join(taskDir, "events.jsonl");
 }
 
@@ -215,15 +226,16 @@ describe("UI task events API", () => {
     expect(payload.error.code).toBe("bad_request");
   });
 
-  it("returns not_found when task logs are missing", async () => {
+  it("supports cursor=tail when task logs are missing or present", async () => {
     const root = makeTempDir();
     process.env.MYCELIUM_HOME = root;
 
     const projectName = "demo-project";
     const runId = "run-202";
     const taskId = "task-3";
-
-    ensureRunLogsDir(root, projectName, runId);
+    const taskSlug = "compile";
+    const taskDir = ensureTaskLogDir(root, projectName, runId, taskId, taskSlug);
+    const logPath = path.join(taskDir, "events.jsonl");
 
     const router = createUiRouter({
       projectName,
@@ -232,14 +244,42 @@ describe("UI task events API", () => {
     });
     const { baseUrl } = await startServer(router);
 
-    const requestUrl = buildTaskEventsUrl(baseUrl, projectName, runId, taskId);
-    requestUrl.searchParams.set("cursor", "0");
+    const expectedFile = path.posix.join("tasks", `${taskId}-${taskSlug}`, "events.jsonl");
 
-    const response = await fetch(requestUrl);
+    const missingUrl = buildTaskEventsUrl(baseUrl, projectName, runId, taskId);
+    missingUrl.searchParams.set("cursor", "tail");
+
+    const response = await fetch(missingUrl);
     const payload = await response.json();
 
-    expect(response.status).toBe(404);
-    expect(payload.ok).toBe(false);
-    expect(payload.error.code).toBe("not_found");
+    expect(response.status).toBe(200);
+    expect(payload.ok).toBe(true);
+    expect(payload.result.file).toBe(expectedFile);
+    expect(payload.result.lines).toEqual([]);
+    expect(payload.result.cursor).toBe(0);
+    expect(payload.result.truncated).toBe(false);
+    expect(payload.result.nextCursor).toBe(0);
+
+    const lines = [
+      JSON.stringify({ type: "compile.start" }),
+      JSON.stringify({ type: "compile.finish" }),
+    ];
+    writeJsonlFile(logPath, lines);
+
+    const tailUrl = buildTaskEventsUrl(baseUrl, projectName, runId, taskId);
+    tailUrl.searchParams.set("cursor", "tail");
+
+    const tailResponse = await fetch(tailUrl);
+    const tailPayload = await tailResponse.json();
+
+    const expectedSize = Buffer.byteLength(lines.join("\n") + "\n", "utf8");
+
+    expect(tailResponse.status).toBe(200);
+    expect(tailPayload.ok).toBe(true);
+    expect(tailPayload.result.file).toBe(expectedFile);
+    expect(tailPayload.result.lines).toEqual([]);
+    expect(tailPayload.result.cursor).toBe(expectedSize);
+    expect(tailPayload.result.truncated).toBe(false);
+    expect(tailPayload.result.nextCursor).toBe(expectedSize);
   });
 });

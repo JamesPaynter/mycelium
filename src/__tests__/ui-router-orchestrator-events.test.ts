@@ -195,6 +195,58 @@ describe("UI orchestrator events API", () => {
     expect(payload.error.code).toBe("bad_request");
   });
 
+  it("supports cursor=tail when logs are missing or present", async () => {
+    const root = makeTempDir();
+    process.env.MYCELIUM_HOME = root;
+
+    const projectName = "demo-project";
+    const runId = "run-126";
+    const logsDir = ensureRunLogsDir(root, projectName, runId);
+    const logPath = path.join(logsDir, "orchestrator.jsonl");
+
+    const router = createUiRouter({
+      projectName,
+      runId,
+      staticRoot: path.join(root, "ui-static"),
+    });
+    const { baseUrl } = await startServer(router);
+
+    const missingUrl = buildEventsUrl(baseUrl, projectName, runId);
+    missingUrl.searchParams.set("cursor", "tail");
+
+    const response = await fetch(missingUrl);
+    const payload = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(payload.ok).toBe(true);
+    expect(payload.result.file).toBe("orchestrator.jsonl");
+    expect(payload.result.lines).toEqual([]);
+    expect(payload.result.cursor).toBe(0);
+    expect(payload.result.truncated).toBe(false);
+    expect(payload.result.nextCursor).toBe(0);
+
+    const lines = [
+      JSON.stringify({ type: "bootstrap.start", task_id: "task-1" }),
+      JSON.stringify({ type: "bootstrap.finish", task_id: "task-1" }),
+    ];
+    writeJsonlFile(logPath, lines);
+
+    const tailUrl = buildEventsUrl(baseUrl, projectName, runId);
+    tailUrl.searchParams.set("cursor", "tail");
+
+    const tailResponse = await fetch(tailUrl);
+    const tailPayload = await tailResponse.json();
+    const expectedSize = Buffer.byteLength(lines.join("\n") + "\n", "utf8");
+
+    expect(tailResponse.status).toBe(200);
+    expect(tailPayload.ok).toBe(true);
+    expect(tailPayload.result.file).toBe("orchestrator.jsonl");
+    expect(tailPayload.result.lines).toEqual([]);
+    expect(tailPayload.result.cursor).toBe(expectedSize);
+    expect(tailPayload.result.truncated).toBe(false);
+    expect(tailPayload.result.nextCursor).toBe(expectedSize);
+  });
+
   it("returns internal_error with details when log reads fail", async () => {
     const root = makeTempDir();
     process.env.MYCELIUM_HOME = root;

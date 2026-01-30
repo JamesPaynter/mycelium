@@ -1,16 +1,11 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 
-import {
-  findTaskLogDir,
-  readJsonlFromCursor,
-  taskEventsLogPathForId,
-} from "../../core/log-query.js";
+import { findTaskLogDir, readJsonlFromCursor } from "../../core/log-query.js";
 import { resolveRunLogsDir, type Paths } from "../../core/paths.js";
 import { readDoctorLogSnippet } from "../../core/run-logs.js";
 
 import {
-  fileExists,
   findValidatorReportPath,
   normalizeLogPath,
   parseCursorParam,
@@ -89,18 +84,8 @@ export async function queryOrchestratorEvents(params: {
   }
 
   const logPath = path.join(resolved.dir, "orchestrator.jsonl");
-  const logExists = await fileExists(logPath);
-  if (!logExists) {
-    return { ok: false, error: { code: "not_found", message: "Run logs not found." } };
-  }
-
-  let cursor: number;
-  if (cursorResult.value === "tail") {
-    const stat = await fs.stat(logPath);
-    cursor = stat.size;
-  } else {
-    cursor = cursorResult.value;
-  }
+  const cursor =
+    cursorResult.value === "tail" ? await resolveTailCursor(logPath) : cursorResult.value;
 
   const readOptions = maxBytesResult.value === null ? {} : { maxBytes: maxBytesResult.value };
   const result = await readJsonlFromCursor(logPath, cursor, { taskId, typeGlob }, readOptions);
@@ -143,22 +128,14 @@ export async function queryTaskEvents(params: {
     return { ok: false, error: { code: "not_found", message: "Run logs not found." } };
   }
 
-  const logPath = taskEventsLogPathForId(resolved.dir, params.taskId);
-  if (!logPath) {
+  const taskLogDir = findTaskLogDir(resolved.dir, params.taskId);
+  if (!taskLogDir) {
     return { ok: false, error: { code: "not_found", message: "Task logs not found." } };
   }
 
-  let cursor: number;
-  if (cursorResult.value === "tail") {
-    try {
-      const stat = await fs.stat(logPath);
-      cursor = stat.size;
-    } catch {
-      cursor = 0;
-    }
-  } else {
-    cursor = cursorResult.value;
-  }
+  const logPath = path.join(taskLogDir, "events.jsonl");
+  const cursor =
+    cursorResult.value === "tail" ? await resolveTailCursor(logPath) : cursorResult.value;
 
   const readOptions = maxBytesResult.value === null ? {} : { maxBytes: maxBytesResult.value };
   const result = await readJsonlFromCursor(logPath, cursor, { typeGlob }, readOptions);
@@ -312,4 +289,24 @@ export async function queryValidatorReport(params: {
       report: report.value,
     },
   };
+}
+
+// =============================================================================
+// INTERNAL HELPERS
+// =============================================================================
+
+async function resolveTailCursor(filePath: string): Promise<number> {
+  try {
+    const stat = await fs.stat(filePath);
+    return stat.size;
+  } catch (err) {
+    if (isMissingFile(err)) return 0;
+    throw err;
+  }
+}
+
+function isMissingFile(err: unknown): boolean {
+  if (!err || typeof err !== "object") return false;
+  if (!("code" in err)) return false;
+  return (err as { code?: string }).code === "ENOENT";
 }
