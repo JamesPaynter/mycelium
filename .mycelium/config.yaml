@@ -23,7 +23,7 @@ planning_dir: .mycelium/planning
 manifest_enforcement: off
 
 control_plane:
-  enabled: false
+  enabled: true
   scope_mode: off
   lock_mode: declared
 
