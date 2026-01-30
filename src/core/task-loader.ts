@@ -4,7 +4,11 @@ import fg from "fast-glob";
 import fse from "fs-extra";
 
 import { TaskError, UserFacingError, USER_FACING_ERROR_CODES } from "./errors.js";
-import { detectTasksLayout, resolveTaskStageFromManifestPath } from "./task-layout.js";
+import {
+  detectTasksLayout,
+  resolveTaskStageDir,
+  resolveTaskStageFromManifestPath,
+} from "./task-layout.js";
 import {
   TaskManifestSchema,
   formatManifestIssues,
@@ -46,20 +50,28 @@ export async function loadTaskSpecs(
   const layout = detectTasksLayout(tasksDirAbs);
   const manifestGlobs =
     layout === "legacy"
-      ? ["*/manifest.json"]
-      : ["backlog/*/manifest.json", "active/*/manifest.json"];
-  const manifestPaths = await fg(manifestGlobs, { cwd: tasksDirAbs, absolute: true });
+      ? ["**/manifest.json"]
+      : ["backlog/**/manifest.json", "active/**/manifest.json"];
+  const manifestPaths = await fg(manifestGlobs, {
+    cwd: tasksDirAbs,
+    absolute: true,
+    onlyFiles: true,
+    ignore: layout === "legacy" ? ["archive/**"] : [],
+  });
   const tasks: TaskSpec[] = [];
   const errors: TaskValidationError[] = [];
 
   for (const manifestPath of manifestPaths) {
     const taskDir = path.dirname(manifestPath);
-    const taskDirName = path.basename(taskDir);
     const stage = resolveTaskStageFromManifestPath({
       tasksRoot: tasksDirAbs,
       manifestPath,
       layout,
     });
+    const stageDir = resolveTaskStageDir(tasksDirAbs, stage);
+    const rawTaskDirName = path.relative(stageDir, taskDir);
+    const taskDirName =
+      rawTaskDirName && rawTaskDirName !== "." ? rawTaskDirName : path.basename(taskDir);
 
     const parsedManifest = await parseManifest(manifestPath);
     if (!parsedManifest.success) {
@@ -67,6 +79,16 @@ export async function loadTaskSpecs(
         manifestPath,
         taskId: parsedManifest.taskId,
         issues: parsedManifest.issues,
+      });
+      continue;
+    }
+
+    const specPath = path.join(taskDir, "spec.md");
+    if (!(await fse.pathExists(specPath))) {
+      errors.push({
+        manifestPath,
+        taskId: parsedManifest.manifest.id,
+        issues: ["Missing spec.md alongside manifest."],
       });
       continue;
     }

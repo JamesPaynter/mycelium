@@ -13,6 +13,7 @@ import { runProject } from "../core/executor.js";
 import { orchestratorLogPath } from "../core/paths.js";
 import { resolveTaskManifestPath, resolveTaskSpecPath } from "../core/task-layout.js";
 import { loadTaskSpecs } from "../core/task-loader.js";
+import { buildTaskDirName } from "../core/task-manifest.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const FIXTURE_REPO = path.resolve(__dirname, "../../test/fixtures/toy-repo");
@@ -115,6 +116,99 @@ describe("acceptance: cross-run ledger dependencies", () => {
 
       const runTwo = await runProject(projectName, config, {
         runId: `${projectName}-run-2-${Date.now()}`,
+        tasks: ["002"],
+        maxParallel: 1,
+        useDocker: false,
+        buildImage: false,
+      });
+
+      expect(runTwo.state.status).toBe("complete");
+      expect(runTwo.state.tasks["002"]?.status).toBe("complete");
+
+      const events = await readJsonl(orchestratorLogPath(projectName, runTwo.runId));
+      const externalSatisfied = events.find((event) => event.type === "deps.external_satisfied");
+      expect(externalSatisfied).toBeDefined();
+      expect(externalSatisfied?.task_id).toBe("002");
+      expect(externalSatisfied?.deps).toEqual(
+        expect.arrayContaining([expect.objectContaining({ dep_id: "001" })]),
+      );
+    },
+  );
+
+  it(
+    "reuses ledger completions when archived tasks are nested under run directories",
+    { timeout: 60_000 },
+    async () => {
+      const tmpRoot = await fs.mkdtemp(path.join(os.tmpdir(), "mycelium-ledger-archive-"));
+      tempRoots.push(tmpRoot);
+
+      const repoDir = path.join(tmpRoot, "repo");
+      await fse.copy(FIXTURE_REPO, repoDir);
+      await initGitRepo(repoDir);
+
+      const configPath = path.join(tmpRoot, "project.yaml");
+      const tasksDir = ".mycelium/tasks";
+      await writeProjectConfig(configPath, repoDir, tasksDir);
+
+      const plannerOutputPath = path.join(tmpRoot, "mock-planner-output.json");
+      await fs.writeFile(
+        plannerOutputPath,
+        JSON.stringify(
+          buildPlannerOutput({
+            tasks: [
+              buildTask({
+                id: "001",
+                name: "seed-ledger",
+                writes: ["notes/seed-ledger.txt"],
+              }),
+              buildTask({
+                id: "002",
+                name: "downstream-task",
+                writes: ["src/downstream-task.txt"],
+                dependencies: ["001"],
+              }),
+            ],
+          }),
+        ),
+      );
+
+      process.env.MYCELIUM_HOME = path.join(tmpRoot, "mycelium-home");
+      process.env.MOCK_LLM = "1";
+      process.env.MOCK_LLM_OUTPUT_PATH = plannerOutputPath;
+      delete process.env.MOCK_LLM_OUTPUT;
+      delete process.env.MOCK_CODEX_USAGE;
+
+      const projectName = "cross-run-ledger-archive";
+      const config = loadProjectConfig(configPath);
+
+      const planResult = await planProject(projectName, config, {
+        input: "docs/planning/implementation-plan.md",
+      });
+      expect(planResult.tasks).toHaveLength(2);
+
+      const runOneId = "run-20260130-120000";
+      const runOne = await runProject(projectName, config, {
+        runId: runOneId,
+        tasks: ["001"],
+        maxParallel: 1,
+        useDocker: false,
+        buildImage: false,
+      });
+
+      expect(runOne.state.status).toBe("complete");
+      expect(runOne.state.tasks["001"]?.status).toBe("complete");
+
+      const taskDirName = buildTaskDirName({ id: "001", name: "seed-ledger" });
+      const tasksRoot = path.join(repoDir, tasksDir);
+      const archivedTaskDir = path.join(tasksRoot, "archive", runOneId, taskDirName);
+      expect(await fse.pathExists(archivedTaskDir)).toBe(true);
+
+      const nestedArchiveDir = path.join(tasksRoot, "archive", runOneId, "nested", taskDirName);
+      await fse.ensureDir(path.dirname(nestedArchiveDir));
+      await fse.move(archivedTaskDir, nestedArchiveDir);
+
+      const runTwo = await runProject(projectName, config, {
+        runId: "run-20260130-121000",
         tasks: ["002"],
         maxParallel: 1,
         useDocker: false,
@@ -270,13 +364,17 @@ async function initGitRepo(repoDir: string): Promise<void> {
   await execa("git", ["checkout", "-B", "main"], { cwd: repoDir });
 }
 
-async function writeProjectConfig(configPath: string, repoDir: string): Promise<void> {
+async function writeProjectConfig(
+  configPath: string,
+  repoDir: string,
+  tasksDir = ".tasks",
+): Promise<void> {
   const dockerfile = path.join(process.cwd(), "templates/Dockerfile");
   const buildContext = process.cwd();
   const configContents = [
     `repo_path: ${repoDir}`,
     "main_branch: main",
-    "tasks_dir: .tasks",
+    `tasks_dir: ${tasksDir}`,
     "planning_dir: .mycelium/planning",
     "doctor: 'node -e \"process.exit(0)\"'",
     "max_parallel: 2",

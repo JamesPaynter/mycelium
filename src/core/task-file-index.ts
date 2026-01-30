@@ -3,11 +3,7 @@ import path from "node:path";
 import fg from "fast-glob";
 import fse from "fs-extra";
 
-import {
-  resolveTaskManifestPath,
-  resolveTaskSpecPath,
-  resolveTasksArchiveDir,
-} from "./task-layout.js";
+import { detectTasksLayout, resolveTaskManifestPath, resolveTaskSpecPath } from "./task-layout.js";
 import type { TaskSpec } from "./task-manifest.js";
 
 export type TaskFileLocation = {
@@ -44,17 +40,22 @@ export async function buildTaskFileIndex(args: {
     index.set(task.manifest.id, { manifestPath, specPath });
   }
 
-  const archiveDir = resolveTasksArchiveDir(args.tasksRoot);
-  if (!(await fse.pathExists(archiveDir))) {
+  if (!(await fse.pathExists(args.tasksRoot))) {
     return index;
   }
 
-  const archiveManifestPaths = await fg("archive/*/*/manifest.json", {
+  const layout = detectTasksLayout(args.tasksRoot);
+  const manifestGlobs =
+    layout === "legacy"
+      ? ["**/manifest.json"]
+      : ["backlog/**/manifest.json", "active/**/manifest.json", "archive/**/manifest.json"];
+  const manifestPaths = await fg(manifestGlobs, {
     cwd: args.tasksRoot,
     absolute: true,
+    onlyFiles: true,
   });
 
-  for (const manifestPath of archiveManifestPaths) {
+  for (const manifestPath of manifestPaths) {
     const taskId = await readTaskIdFromManifest(manifestPath);
     if (!taskId || index.has(taskId)) {
       continue;
