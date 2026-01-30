@@ -9,6 +9,9 @@ const repoRoot = path.resolve(__dirname, "..", "..", ".."); // <repo>/src/ui/gro
 export default defineConfig({
   plugins: [react()],
   base: "/grove/",
+  define: {
+    "process.env.NODE_ENV": JSON.stringify("production"),
+  },
   publicDir: path.resolve(__dirname, "public"),
   build: {
     outDir: path.resolve(repoRoot, "dist", "ui", "grove"),
