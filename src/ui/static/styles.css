@@ -1738,6 +1738,31 @@ body {
   white-space: pre-wrap;
 }
 
+.event-json {
+  line-height: 1.5;
+}
+
+.json-key {
+  color: var(--accent-strong);
+  font-weight: 600;
+}
+
+.json-string {
+  color: var(--garden-cap-deep);
+}
+
+.json-number {
+  color: var(--amber);
+}
+
+.json-boolean {
+  color: var(--ok);
+}
+
+.json-null {
+  color: var(--danger);
+}
+
 .diagnostics h3 {
   margin: 0;
 }

@@ -314,6 +314,7 @@ export function renderTaskInspector(container, appState, options = {}) {
   const { fetchApi, showCloseButton = false, onClose } = options;
   const EVENTS_POLL_INTERVAL_MS = 2000;
   const MAX_EVENTS_PER_VIEW = 240;
+  const MAX_JSON_PARSE_DEPTH = 6;
 
   if (!container) {
     return buildNoopInspector();
@@ -1158,7 +1159,7 @@ export function renderTaskInspector(container, appState, options = {}) {
     summary.appendChild(meta);
 
     const pre = document.createElement("pre");
-    pre.textContent = formatJson(event.payload) || event.raw;
+    renderEventPayload(pre, event);
 
     card.append(summary, pre);
     return card;
@@ -1166,6 +1167,172 @@ export function renderTaskInspector(container, appState, options = {}) {
 
   function setDetailError(message) {
     setErrorMessage(elements.detailError, message);
+  }
+
+  // =============================================================================
+  // EVENT PAYLOAD FORMATTING
+  // =============================================================================
+
+  function renderEventPayload(pre, event) {
+    const payloadState = resolveEventPayloadState(event);
+    if (!payloadState) {
+      pre.textContent = "";
+      return;
+    }
+
+    if (payloadState.isJson) {
+      renderJsonPayload(pre, payloadState.value);
+      return;
+    }
+
+    pre.textContent = payloadState.text;
+  }
+
+  function resolveEventPayloadState(event) {
+    const payload = event?.payload ?? null;
+    const rawText = typeof event?.raw === "string" ? event.raw : "";
+
+    if (payload === null || payload === undefined) {
+      return { isJson: false, text: rawText };
+    }
+
+    if (typeof payload === "string") {
+      const parsed = tryParseJsonContainer(payload);
+      if (parsed !== null) {
+        return { isJson: true, value: normalizeJsonValue(parsed, 0) };
+      }
+      return { isJson: false, text: payload };
+    }
+
+    if (typeof payload === "number" || typeof payload === "boolean") {
+      return { isJson: true, value: payload };
+    }
+
+    if (typeof payload === "object") {
+      return { isJson: true, value: normalizeJsonValue(payload, 0) };
+    }
+
+    return { isJson: false, text: String(payload) };
+  }
+
+  function normalizeJsonValue(value, depth) {
+    if (depth >= MAX_JSON_PARSE_DEPTH) {
+      return value;
+    }
+
+    if (Array.isArray(value)) {
+      return value.map((item) => normalizeJsonValue(item, depth + 1));
+    }
+
+    if (value && typeof value === "object") {
+      const normalized = {};
+      for (const [key, item] of Object.entries(value)) {
+        normalized[key] = normalizeJsonValue(item, depth + 1);
+      }
+      return normalized;
+    }
+
+    if (typeof value === "string") {
+      const parsed = tryParseJsonContainer(value);
+      if (parsed !== null) {
+        return normalizeJsonValue(parsed, depth + 1);
+      }
+    }
+
+    return value;
+  }
+
+  function tryParseJsonContainer(value) {
+    if (typeof value !== "string") {
+      return null;
+    }
+
+    const trimmed = value.trim();
+    if (!trimmed) {
+      return null;
+    }
+
+    const firstChar = trimmed[0];
+    const lastChar = trimmed[trimmed.length - 1];
+    const looksLikeContainer =
+      (firstChar === "{" && lastChar === "}") || (firstChar === "[" && lastChar === "]");
+
+    if (!looksLikeContainer) {
+      return null;
+    }
+
+    try {
+      return JSON.parse(trimmed);
+    } catch (_error) {
+      return null;
+    }
+  }
+
+  function renderJsonPayload(pre, payload) {
+    const formatted = formatJson(payload);
+    if (!formatted) {
+      pre.textContent = "";
+      return;
+    }
+    pre.classList.add("event-json");
+    pre.textContent = "";
+    pre.appendChild(buildJsonHighlightFragment(formatted));
+  }
+
+  function buildJsonHighlightFragment(jsonText) {
+    const fragment = document.createDocumentFragment();
+    if (!jsonText) {
+      return fragment;
+    }
+
+    const tokenRegex =
+      /("(\\u[a-zA-Z0-9]{4}|\\[^u]|[^\\"])*"(\s*:)?|\b(true|false|null)\b|-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?)/g;
+
+    let lastIndex = 0;
+    let match = tokenRegex.exec(jsonText);
+
+    while (match) {
+      const matchIndex = match.index;
+      if (matchIndex > lastIndex) {
+        fragment.appendChild(document.createTextNode(jsonText.slice(lastIndex, matchIndex)));
+      }
+
+      const token = match[0];
+      const tokenClass = getJsonTokenClass(token);
+      if (tokenClass) {
+        const span = document.createElement("span");
+        span.className = tokenClass;
+        span.textContent = token;
+        fragment.appendChild(span);
+      } else {
+        fragment.appendChild(document.createTextNode(token));
+      }
+
+      lastIndex = tokenRegex.lastIndex;
+      match = tokenRegex.exec(jsonText);
+    }
+
+    if (lastIndex < jsonText.length) {
+      fragment.appendChild(document.createTextNode(jsonText.slice(lastIndex)));
+    }
+
+    return fragment;
+  }
+
+  function getJsonTokenClass(token) {
+    if (token.startsWith('"')) {
+      return token.endsWith(":") ? "json-key" : "json-string";
+    }
+
+    if (token === "true" || token === "false") {
+      return "json-boolean";
+    }
+
+    if (token === "null") {
+      return "json-null";
+    }
+
+    return "json-number";
   }
 }
 
