@@ -2,6 +2,44 @@
   "version": 1,
   "roles": {
     "bloom": {
+      "default": {
+        "idleFacingBase": "characters/bloommind/rotations",
+        "walkBase": "characters/bloommind/animations/walking-8-frames",
+        "walkFrames": 8,
+        "idleAnims": [
+          {
+            "base": "characters/bloommind/animations/custom-Finger guns + wink",
+            "frames": 16
+          },
+          {
+            "base": "characters/bloommind/animations/custom-Spore bubble gum (blows a spore bubble, it pops in",
+            "frames": 16
+          },
+          {
+            "base": "characters/bloommind/animations/custom-Character does an energetic praise moment: quick b",
+            "frames": 16
+          },
+          {
+            "base": "characters/bloommind/animations/custom-Summons a tiny cupcake. admires it, it vanishes",
+            "frames": 16
+          },
+          {
+            "base": "characters/bloommind/animations/custom-Tiny mushrooms applaud (little side mushrooms",
+            "frames": 16,
+            "dir": "tend/south"
+          },
+          {
+            "base": "characters/bloommind/animations/drinking",
+            "frames": 6
+          },
+          {
+            "base": "characters/bloommind/animations/picking-up",
+            "frames": 5
+          }
+        ],
+        "walkFrameMs": 110,
+        "idleFrameMs": 140
+      },
       "idle": {
         "idleAnim": {
           "base": "characters/bloommind/animations/drinking",
@@ -40,13 +78,17 @@
     },
     "worker": {
       "default": {
+        "idleFacingBase": "characters/Worker/rotations",
+        "walkBase": "characters/Worker/animations/walking-8-frames",
+        "walkFrames": 8,
         "idleAnims": [
           {
             "base": "characters/Worker/animations/breathing-idle",
-            "frames": 4,
-            "dir": "south"
+            "frames": 4
           }
-        ]
+        ],
+        "walkFrameMs": 110,
+        "idleFrameMs": 140
       },
       "idle": {},
       "coding": {},
@@ -61,14 +103,26 @@
       "error": {}
     },
     "planner": {
-      "default": {},
+      "default": {
+        "idleFacingBase": "characters/planner/rotations",
+        "walkBase": "characters/planner/animations/walking-8-frames",
+        "walkFrames": 8,
+        "walkFrameMs": 110,
+        "idleFrameMs": 140
+      },
       "planning": {},
       "merging": {},
       "idle": {},
       "error": {}
     },
     "auditor": {
-      "default": {},
+      "default": {
+        "idleFacingBase": "characters/auditor/rotations",
+        "walkBase": "characters/auditor/animations/walking-8-frames",
+        "walkFrames": 8,
+        "walkFrameMs": 110,
+        "idleFrameMs": 140
+      },
       "test": {},
       "blocked": {},
       "thinking": {},

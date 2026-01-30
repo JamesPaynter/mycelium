@@ -6,6 +6,7 @@ export type ActionName = string;
 export type SpriteActionOverrides = Partial<
   Pick<SpriteSet, "idleFacingBase" | "walkBase" | "walkFrames" | "idleFrameMs" | "walkFrameMs">
 > & {
+  idleFacingFrames?: number;
   idleAnim?: SpriteAnimRef;
   idleAnims?: SpriteAnimRef[];
 };
@@ -20,6 +21,10 @@ type ResolvedConfig = {
 };
 
 let cached: { assetBase: string; config: ResolvedConfig } | null = null;
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return !!value && typeof value === "object" && !Array.isArray(value);
+}
 
 function normalizeAssetBase(assetBase: string): string {
   if (!assetBase) return "/grove";
@@ -65,7 +70,7 @@ export async function loadSpriteActionsConfig(assetBase: string): Promise<Resolv
     }
 
     const parsed = (await res.json()) as SpriteActionsConfig;
-    const roles = parsed?.roles ?? {};
+    const roles = isRecord(parsed?.roles) ? parsed.roles : {};
 
     const resolved: ResolvedConfig = {
       roles: {
@@ -77,11 +82,21 @@ export async function loadSpriteActionsConfig(assetBase: string): Promise<Resolv
     };
 
     for (const roleKey of Object.keys(resolved.roles) as RoleKey[]) {
-      const roleOverrides = (roles as any)?.[roleKey] ?? {};
-      const actionKeys = Object.keys(roleOverrides);
-      for (const action of actionKeys) {
-        const overrides = roleOverrides[action] as SpriteActionOverrides;
-        resolved.roles[roleKey][action] = mergeSet(DEFAULT_SPRITE_SETS[roleKey], overrides);
+      const roleOverrides = isRecord((roles as Record<string, unknown>)[roleKey])
+        ? ((roles as Record<string, unknown>)[roleKey] as Record<string, unknown>)
+        : {};
+      const defaultOverrides = isRecord(roleOverrides.default)
+        ? (roleOverrides.default as SpriteActionOverrides)
+        : undefined;
+      const roleDefault = mergeSet(DEFAULT_SPRITE_SETS[roleKey], defaultOverrides);
+      resolved.roles[roleKey].default = roleDefault;
+
+      for (const [action, overrides] of Object.entries(roleOverrides)) {
+        if (action === "default") continue;
+        const actionOverrides = isRecord(overrides)
+          ? (overrides as SpriteActionOverrides)
+          : undefined;
+        resolved.roles[roleKey][action] = mergeSet(roleDefault, actionOverrides);
       }
     }
 
