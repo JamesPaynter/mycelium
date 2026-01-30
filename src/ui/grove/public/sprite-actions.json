@@ -1,0 +1,79 @@
+{
+  "version": 1,
+  "roles": {
+    "bloom": {
+      "idle": {
+        "idleAnim": {
+          "base": "characters/bloommind/animations/drinking",
+          "frames": 6,
+          "dir": "south"
+        }
+      },
+      "thinking": {
+        "idleAnim": {
+          "base": "characters/bloommind/animations/custom-Spore bubble gum (blows a spore bubble, it pops in",
+          "frames": 16,
+          "dir": "south"
+        }
+      },
+      "blocked": {
+        "idleAnim": {
+          "base": "characters/bloommind/animations/picking-up",
+          "frames": 5,
+          "dir": "south"
+        }
+      },
+      "celebrate": {
+        "idleAnim": {
+          "base": "characters/bloommind/animations/custom-Finger guns + wink",
+          "frames": 16,
+          "dir": "south"
+        }
+      },
+      "error": {
+        "idleAnim": {
+          "base": "characters/bloommind/animations/custom-Character does an energetic praise moment: quick b",
+          "frames": 16,
+          "dir": "south"
+        }
+      }
+    },
+    "worker": {
+      "default": {
+        "idleAnims": [
+          {
+            "base": "characters/Worker/animations/breathing-idle",
+            "frames": 4,
+            "dir": "south"
+          }
+        ]
+      },
+      "idle": {},
+      "coding": {},
+      "thinking": {},
+      "git": {},
+      "bootstrap": {},
+      "lint": {},
+      "doctor": {},
+      "test": {},
+      "blocked": {},
+      "celebrate": {},
+      "error": {}
+    },
+    "planner": {
+      "default": {},
+      "planning": {},
+      "merging": {},
+      "idle": {},
+      "error": {}
+    },
+    "auditor": {
+      "default": {},
+      "test": {},
+      "blocked": {},
+      "thinking": {},
+      "idle": {},
+      "error": {}
+    }
+  }
+}

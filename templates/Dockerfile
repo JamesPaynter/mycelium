@@ -28,6 +28,7 @@ COPY templates ./templates
 COPY worker ./worker
 
 RUN npm ci
+RUN npm --prefix src/ui/grove install
 RUN npm run build
 RUN ln -s ../templates dist/templates || true
 

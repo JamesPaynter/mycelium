@@ -1,0 +1,6 @@
+.DS_Store
+.git
+.mycelium
+node_modules
+src/ui/grove/node_modules
+dist
