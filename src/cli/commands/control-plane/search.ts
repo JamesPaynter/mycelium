@@ -6,6 +6,8 @@ import { execa } from "execa";
 import type { ControlPlaneCommandContext } from "./index.js";
 
 const DEFAULT_MAX_RESULTS = 200;
+const AT_OPTION_HELP =
+  "Run this query against the repo at the specified git revision (uses a temporary worktree).";
 
 type SearchOptions = {
   max?: number;
@@ -30,6 +32,7 @@ export function registerSearchCommand(
       (value) => parseInt(value, 10),
       DEFAULT_MAX_RESULTS,
     )
+    .option("--at <commitish>", AT_OPTION_HELP)
     .option("--glob <pattern>", "Limit search to matching paths (repeatable)", collectGlobs, [])
     .action(async (query, opts, command) => {
       await handleSearch(ctx, String(query), opts as SearchOptions, command);
@@ -46,13 +49,39 @@ async function handleSearch(
   opts: SearchOptions,
   command: Command,
 ): Promise<void> {
-  const { flags } = ctx.resolveCommandContext(command);
+  const { flags, output } = ctx.resolveCommandContext(command);
   const repoRoot = path.resolve(flags.repoPath);
   const maxResults = normalizeMaxResults(opts.max);
   const globs = normalizeGlobs(opts.glob);
+  let resolvedAt = flags.at;
+
+  if (flags.at) {
+    try {
+      const modelResult = await ctx.loadControlPlaneModel({
+        repoRoot,
+        baseSha: flags.revision.baseSha,
+        ref: flags.revision.ref,
+        at: flags.at,
+        shouldBuild: flags.shouldBuild,
+      });
+
+      if (!modelResult) {
+        ctx.emitModelNotBuiltError(ctx.modelNotBuiltMessage, output);
+        return;
+      }
+
+      resolvedAt = modelResult.baseSha;
+    } catch (error) {
+      ctx.emitControlPlaneError(ctx.resolveModelStoreError(error), output);
+      return;
+    }
+  }
 
   try {
     const args = ["grep", "-n", "--color=never", "-e", query];
+    if (resolvedAt) {
+      args.push(resolvedAt);
+    }
     if (globs.length > 0) {
       args.push("--", ...globs);
     }
