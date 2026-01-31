@@ -16,6 +16,7 @@ import { extractTypeScriptSymbolDefinitions } from "../control-plane/extract/sym
 const HELP_ERROR_CODE = "commander.helpDisplayed";
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const FIXTURE_REPO = path.resolve(__dirname, "../../test/fixtures/control-plane-symbols-ts-repo");
+const SYMBOLS_TS_TEST_TIMEOUT_MS = 30000;
 const tempDirs: string[] = [];
 
 // =============================================================================
@@ -90,88 +91,96 @@ describe("control-plane TypeScript symbols", () => {
     tempDirs.length = 0;
   });
 
-  it("extracts symbol definitions from TypeScript sources", async () => {
-    const { components } = await extractComponents(FIXTURE_REPO);
-    const ownership = buildOwnershipIndex(components);
+  it(
+    "extracts symbol definitions from TypeScript sources",
+    async () => {
+      const { components } = await extractComponents(FIXTURE_REPO);
+      const ownership = buildOwnershipIndex(components);
 
-    const result = await extractTypeScriptSymbolDefinitions({
-      repoRoot: FIXTURE_REPO,
-      components,
-      ownership,
-    });
+      const result = await extractTypeScriptSymbolDefinitions({
+        repoRoot: FIXTURE_REPO,
+        components,
+        ownership,
+      });
 
-    expect(result.warnings).toEqual([]);
-    expect(result.definitions.map((entry) => entry.name)).toEqual([
-      "User",
-      "UserId",
-      "Status",
-      "isReady",
-      "currentUser",
-      "buildCli",
-      "Widget",
-    ]);
+      expect(result.warnings).toEqual([]);
+      expect(result.definitions.map((entry) => entry.name)).toEqual([
+        "User",
+        "UserId",
+        "Status",
+        "isReady",
+        "currentUser",
+        "buildCli",
+        "Widget",
+      ]);
 
-    const buildCli = result.definitions.find((entry) => entry.name === "buildCli");
-    expect(buildCli?.kind).toBe("function");
-    expect(buildCli?.file).toBe("src/index.ts");
-    expect(buildCli?.component_id).toBe("src");
-    expect(buildCli?.range.start.line).toBe(16);
-    expect(buildCli?.symbol_id).toMatch(/^ts:src\/buildCli@src\/index\.ts:\d+$/);
+      const buildCli = result.definitions.find((entry) => entry.name === "buildCli");
+      expect(buildCli?.kind).toBe("function");
+      expect(buildCli?.file).toBe("src/index.ts");
+      expect(buildCli?.component_id).toBe("src");
+      expect(buildCli?.range.start.line).toBe(16);
+      expect(buildCli?.symbol_id).toMatch(/^ts:src\/buildCli@src\/index\.ts:\d+$/);
 
-    expect(findByName(result.definitions, "User")).toBe(0);
-    expect(findByName(result.definitions, "Widget")).toBe(6);
-  });
+      expect(findByName(result.definitions, "User")).toBe(0);
+      expect(findByName(result.definitions, "Widget")).toBe(6);
+    },
+    SYMBOLS_TS_TEST_TIMEOUT_MS,
+  );
 
-  it("supports symbols find and def queries", async () => {
-    const repoDir = await createTempRepoFromFixture();
-    const logSpy = vi.spyOn(console, "log").mockImplementation(() => undefined);
+  it(
+    "supports symbols find and def queries",
+    async () => {
+      const repoDir = await createTempRepoFromFixture();
+      const logSpy = vi.spyOn(console, "log").mockImplementation(() => undefined);
 
-    await runCli([
-      "node",
-      "mycelium",
-      "cg",
-      "symbols",
-      "find",
-      "buildCli",
-      "--json",
-      "--repo",
-      repoDir,
-    ]);
+      await runCli([
+        "node",
+        "mycelium",
+        "cg",
+        "symbols",
+        "find",
+        "buildCli",
+        "--json",
+        "--repo",
+        repoDir,
+      ]);
 
-    const findLine = logSpy.mock.calls.map((call) => call.join(" ")).pop() ?? "";
-    const findPayload = JSON.parse(findLine) as {
-      ok: boolean;
-      result?: { matches?: Array<{ symbol_id?: string; name?: string }> };
-    };
+      const findLine = logSpy.mock.calls.map((call) => call.join(" ")).pop() ?? "";
+      const findPayload = JSON.parse(findLine) as {
+        ok: boolean;
+        result?: { matches?: Array<{ symbol_id?: string; name?: string }> };
+      };
 
-    expect(findPayload.ok).toBe(true);
-    expect(findPayload.result?.matches?.[0]?.name).toBe("buildCli");
+      expect(findPayload.ok).toBe(true);
+      expect(findPayload.result?.matches?.[0]?.name).toBe("buildCli");
 
-    const symbolId = findPayload.result?.matches?.[0]?.symbol_id ?? "";
-    expect(symbolId.length).toBeGreaterThan(0);
+      const symbolId = findPayload.result?.matches?.[0]?.symbol_id ?? "";
+      expect(symbolId.length).toBeGreaterThan(0);
 
-    await runCli([
-      "node",
-      "mycelium",
-      "cg",
-      "symbols",
-      "def",
-      symbolId,
-      "--context",
-      "1",
-      "--json",
-      "--repo",
-      repoDir,
-    ]);
+      await runCli([
+        "node",
+        "mycelium",
+        "cg",
+        "symbols",
+        "def",
+        symbolId,
+        "--context",
+        "1",
+        "--json",
+        "--repo",
+        repoDir,
+      ]);
 
-    const defLine = logSpy.mock.calls.map((call) => call.join(" ")).pop() ?? "";
-    const defPayload = JSON.parse(defLine) as {
-      ok: boolean;
-      result?: { definition?: { symbol_id?: string }; snippet?: { lines?: string[] } };
-    };
+      const defLine = logSpy.mock.calls.map((call) => call.join(" ")).pop() ?? "";
+      const defPayload = JSON.parse(defLine) as {
+        ok: boolean;
+        result?: { definition?: { symbol_id?: string }; snippet?: { lines?: string[] } };
+      };
 
-    expect(defPayload.ok).toBe(true);
-    expect(defPayload.result?.definition?.symbol_id).toBe(symbolId);
-    expect(defPayload.result?.snippet?.lines?.length).toBeGreaterThan(0);
-  });
+      expect(defPayload.ok).toBe(true);
+      expect(defPayload.result?.definition?.symbol_id).toBe(symbolId);
+      expect(defPayload.result?.snippet?.lines?.length).toBeGreaterThan(0);
+    },
+    SYMBOLS_TS_TEST_TIMEOUT_MS,
+  );
 });

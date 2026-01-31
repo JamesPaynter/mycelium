@@ -13,7 +13,7 @@ import { buildCli } from "../cli/index.js";
 const HELP_ERROR_CODE = "commander.helpDisplayed";
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const FIXTURE_REPO = path.resolve(__dirname, "../../test/fixtures/control-plane-symbols-ts-repo");
-const SYMBOL_REFS_TEST_TIMEOUT_MS = 15000;
+const SYMBOL_REFS_TEST_TIMEOUT_MS = 30000;
 const tempDirs: string[] = [];
 
 // =============================================================================

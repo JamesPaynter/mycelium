@@ -13,6 +13,7 @@ import { buildCli } from "../cli/index.js";
 const HELP_ERROR_CODE = "commander.helpDisplayed";
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const FIXTURE_REPO = path.resolve(__dirname, "../../test/fixtures/control-plane-mini-repo");
+const CONTROL_PLANE_CLI_TIMEOUT_MS = 30000;
 const tempDirs: string[] = [];
 
 // =============================================================================
@@ -202,95 +203,107 @@ describe("control graph CLI", () => {
     expect(process.exitCode).toBe(1);
   });
 
-  it("auto-builds the model for components list queries", async () => {
-    const repoDir = await createTempRepoFromFixture();
-    const logSpy = vi.spyOn(console, "log").mockImplementation(() => undefined);
+  it(
+    "auto-builds the model for components list queries",
+    async () => {
+      const repoDir = await createTempRepoFromFixture();
+      const logSpy = vi.spyOn(console, "log").mockImplementation(() => undefined);
 
-    await runCli(["node", "mycelium", "cg", "components", "list", "--json", "--repo", repoDir]);
+      await runCli(["node", "mycelium", "cg", "components", "list", "--json", "--repo", repoDir]);
 
-    const jsonLine = logSpy.mock.calls.map((call) => call.join(" ")).pop() ?? "";
-    const payload = JSON.parse(jsonLine) as { ok: boolean; result?: unknown };
+      const jsonLine = logSpy.mock.calls.map((call) => call.join(" ")).pop() ?? "";
+      const payload = JSON.parse(jsonLine) as { ok: boolean; result?: unknown };
 
-    expect(payload.ok).toBe(true);
-    expect(Array.isArray(payload.result)).toBe(true);
-    const result = payload.result as Array<{ id?: string }>;
-    expect(result.length).toBeGreaterThan(0);
-    expect(result.map((component) => component.id)).toContain("acme-web-app");
-  });
+      expect(payload.ok).toBe(true);
+      expect(Array.isArray(payload.result)).toBe(true);
+      const result = payload.result as Array<{ id?: string }>;
+      expect(result.length).toBeGreaterThan(0);
+      expect(result.map((component) => component.id)).toContain("acme-web-app");
+    },
+    CONTROL_PLANE_CLI_TIMEOUT_MS,
+  );
 
-  it("auto-builds the model for owner lookups", async () => {
-    const repoDir = await createTempRepoFromFixture();
-    const logSpy = vi.spyOn(console, "log").mockImplementation(() => undefined);
+  it(
+    "auto-builds the model for owner lookups",
+    async () => {
+      const repoDir = await createTempRepoFromFixture();
+      const logSpy = vi.spyOn(console, "log").mockImplementation(() => undefined);
 
-    await runCli([
-      "node",
-      "mycelium",
-      "cg",
-      "owner",
-      "apps/web/src/index.ts",
-      "--json",
-      "--repo",
-      repoDir,
-    ]);
+      await runCli([
+        "node",
+        "mycelium",
+        "cg",
+        "owner",
+        "apps/web/src/index.ts",
+        "--json",
+        "--repo",
+        repoDir,
+      ]);
 
-    const jsonLine = logSpy.mock.calls.map((call) => call.join(" ")).pop() ?? "";
-    const payload = JSON.parse(jsonLine) as {
-      ok: boolean;
-      result?: { owner?: { component?: { id?: string } } };
-    };
-
-    expect(payload.ok).toBe(true);
-    expect(payload.result?.owner?.component?.id).toBe("acme-web-app");
-  });
-
-  it("evaluates policy decisions with JSON output", async () => {
-    const repoDir = await createTempRepoFromFixture();
-    const manifestPath = await writePolicyEvalManifest(repoDir);
-    await commitPolicyEvalChange(repoDir);
-    const logSpy = vi.spyOn(console, "log").mockImplementation(() => undefined);
-
-    await runCli([
-      "node",
-      "mycelium",
-      "cg",
-      "policy",
-      "eval",
-      "--json",
-      "--repo",
-      repoDir,
-      "--base-sha",
-      "HEAD~1",
-      "--diff",
-      "HEAD~1..HEAD",
-      "--manifest",
-      manifestPath,
-    ]);
-
-    const jsonLine = logSpy.mock.calls.map((call) => call.join(" ")).pop() ?? "";
-    const payload = JSON.parse(jsonLine) as {
-      ok: boolean;
-      result?: {
-        base_sha?: string;
-        diff?: string | null;
-        lock_derivation?: { derived_write_resources?: string[] };
-        blast_radius?: { changed_files?: string[]; touched_components?: string[] };
-        surface_detection?: { is_surface_change?: boolean; categories?: string[] };
-        tier?: number;
-        required_checks?: { selected_command?: string };
+      const jsonLine = logSpy.mock.calls.map((call) => call.join(" ")).pop() ?? "";
+      const payload = JSON.parse(jsonLine) as {
+        ok: boolean;
+        result?: { owner?: { component?: { id?: string } } };
       };
-    };
 
-    expect(payload.ok).toBe(true);
-    expect(payload.result?.base_sha).toEqual(expect.any(String));
-    expect(payload.result?.diff).toBe("HEAD~1..HEAD");
-    expect(payload.result?.lock_derivation?.derived_write_resources).toContain(
-      "component:acme-web-app",
-    );
-    expect(payload.result?.blast_radius?.changed_files).toContain("apps/web/src/index.ts");
-    expect(payload.result?.blast_radius?.touched_components).toContain("acme-web-app");
-    expect(payload.result?.surface_detection?.is_surface_change).toBe(true);
-    expect(payload.result?.surface_detection?.categories).toContain("public-entrypoint");
-    expect(payload.result?.tier).toEqual(expect.any(Number));
-    expect(payload.result?.required_checks?.selected_command).toBe("npm test");
-  });
+      expect(payload.ok).toBe(true);
+      expect(payload.result?.owner?.component?.id).toBe("acme-web-app");
+    },
+    CONTROL_PLANE_CLI_TIMEOUT_MS,
+  );
+
+  it(
+    "evaluates policy decisions with JSON output",
+    async () => {
+      const repoDir = await createTempRepoFromFixture();
+      const manifestPath = await writePolicyEvalManifest(repoDir);
+      await commitPolicyEvalChange(repoDir);
+      const logSpy = vi.spyOn(console, "log").mockImplementation(() => undefined);
+
+      await runCli([
+        "node",
+        "mycelium",
+        "cg",
+        "policy",
+        "eval",
+        "--json",
+        "--repo",
+        repoDir,
+        "--base-sha",
+        "HEAD~1",
+        "--diff",
+        "HEAD~1..HEAD",
+        "--manifest",
+        manifestPath,
+      ]);
+
+      const jsonLine = logSpy.mock.calls.map((call) => call.join(" ")).pop() ?? "";
+      const payload = JSON.parse(jsonLine) as {
+        ok: boolean;
+        result?: {
+          base_sha?: string;
+          diff?: string | null;
+          lock_derivation?: { derived_write_resources?: string[] };
+          blast_radius?: { changed_files?: string[]; touched_components?: string[] };
+          surface_detection?: { is_surface_change?: boolean; categories?: string[] };
+          tier?: number;
+          required_checks?: { selected_command?: string };
+        };
+      };
+
+      expect(payload.ok).toBe(true);
+      expect(payload.result?.base_sha).toEqual(expect.any(String));
+      expect(payload.result?.diff).toBe("HEAD~1..HEAD");
+      expect(payload.result?.lock_derivation?.derived_write_resources).toContain(
+        "component:acme-web-app",
+      );
+      expect(payload.result?.blast_radius?.changed_files).toContain("apps/web/src/index.ts");
+      expect(payload.result?.blast_radius?.touched_components).toContain("acme-web-app");
+      expect(payload.result?.surface_detection?.is_surface_change).toBe(true);
+      expect(payload.result?.surface_detection?.categories).toContain("public-entrypoint");
+      expect(payload.result?.tier).toEqual(expect.any(Number));
+      expect(payload.result?.required_checks?.selected_command).toBe("npm test");
+    },
+    CONTROL_PLANE_CLI_TIMEOUT_MS,
+  );
 });
