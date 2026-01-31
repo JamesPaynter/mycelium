@@ -4,14 +4,10 @@
 
 import path from "node:path";
 
-import { withGitWorktreeAtRevision } from "../git/worktree.js";
+import { withControlPlaneModel } from "../query/at-revision.js";
 import { ControlPlaneStore } from "../storage.js";
 
-import {
-  buildControlPlaneModel,
-  buildControlPlaneModelSnapshot,
-  getControlPlaneModelInfo,
-} from "./build.js";
+import { buildControlPlaneModel, getControlPlaneModelInfo } from "./build.js";
 import type { ControlPlaneModel } from "./schema.js";
 
 // =============================================================================
@@ -47,16 +43,15 @@ export async function loadControlPlaneModelForQuery(
       return null;
     }
 
-    return withGitWorktreeAtRevision(repoRoot, at, async (snapshot) => {
-      const result = await buildControlPlaneModelSnapshot({
-        repoRoot: snapshot.worktreeRoot,
-        baseSha: snapshot.sha,
-      });
+    return withControlPlaneModel({ kind: "git-rev", repoRoot, rev: at }, async (model, ctx) => {
+      if (!ctx.sha) {
+        throw new Error("Resolved git revision missing SHA.");
+      }
 
       return {
-        model: result.model,
-        baseSha: result.base_sha,
-        repoRoot: snapshot.worktreeRoot,
+        model,
+        baseSha: ctx.sha,
+        repoRoot: ctx.repoRoot,
       };
     });
   }
