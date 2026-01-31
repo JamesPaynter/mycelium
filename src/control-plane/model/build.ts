@@ -41,6 +41,18 @@ export type ControlPlaneModelInfo = {
   metadata: ControlPlaneModelMetadata | null;
 };
 
+export type ControlPlaneModelSnapshot = {
+  base_sha: string;
+  model: ControlPlaneModel;
+  metadata: ControlPlaneModelMetadata;
+};
+
+export type ControlPlaneSnapshotOptions = {
+  repoRoot: string;
+  baseSha?: string | null;
+  ref?: string | null;
+};
+
 // =============================================================================
 // ERRORS
 // =============================================================================
@@ -103,28 +115,9 @@ export async function buildControlPlaneModel(
       };
     }
 
-    const { components } = await extractComponents(repoRoot);
-    const ownership = buildOwnershipIndex(components);
-    const deps = await buildControlPlaneDependencies({ repoRoot, components });
-    const symbolResult = await extractTypeScriptSymbolDefinitions({
+    const { model, metadata } = await buildControlPlaneModelArtifacts({
       repoRoot,
-      components,
-      ownership,
-    });
-
-    const model = createEmptyModel();
-    model.components = components;
-    model.ownership = ownership;
-    model.deps = deps;
-    model.symbols_ts = { definitions: symbolResult.definitions };
-    emitSymbolWarnings(symbolResult.warnings);
-    const modelHash = hashModel(model);
-    const metadata = createControlPlaneMetadata({
       baseSha,
-      repoRoot,
-      schemaVersion: MODEL_SCHEMA_VERSION,
-      extractorVersions: EXTRACTOR_VERSIONS,
-      modelHash,
     });
 
     await store.writeModel(baseSha, model, metadata);
@@ -139,6 +132,32 @@ export async function buildControlPlaneModel(
     throw wrapBuildError(error);
   } finally {
     await lock.release();
+  }
+}
+
+export async function buildControlPlaneModelSnapshot(
+  options: ControlPlaneSnapshotOptions,
+): Promise<ControlPlaneModelSnapshot> {
+  const repoRoot = path.resolve(options.repoRoot);
+  const baseSha = await resolveBaseSha({
+    repoRoot,
+    baseSha: options.baseSha ?? null,
+    ref: options.ref ?? null,
+  });
+
+  try {
+    const { model, metadata } = await buildControlPlaneModelArtifacts({
+      repoRoot,
+      baseSha,
+    });
+
+    return {
+      base_sha: baseSha,
+      model,
+      metadata,
+    };
+  } catch (error) {
+    throw wrapBuildError(error);
   }
 }
 
@@ -171,6 +190,37 @@ export async function getControlPlaneModelInfo(
 // =============================================================================
 // INTERNAL HELPERS
 // =============================================================================
+
+async function buildControlPlaneModelArtifacts(input: {
+  repoRoot: string;
+  baseSha: string;
+}): Promise<{ model: ControlPlaneModel; metadata: ControlPlaneModelMetadata }> {
+  const { components } = await extractComponents(input.repoRoot);
+  const ownership = buildOwnershipIndex(components);
+  const deps = await buildControlPlaneDependencies({ repoRoot: input.repoRoot, components });
+  const symbolResult = await extractTypeScriptSymbolDefinitions({
+    repoRoot: input.repoRoot,
+    components,
+    ownership,
+  });
+
+  const model = createEmptyModel();
+  model.components = components;
+  model.ownership = ownership;
+  model.deps = deps;
+  model.symbols_ts = { definitions: symbolResult.definitions };
+  emitSymbolWarnings(symbolResult.warnings);
+  const modelHash = hashModel(model);
+  const metadata = createControlPlaneMetadata({
+    baseSha: input.baseSha,
+    repoRoot: input.repoRoot,
+    schemaVersion: MODEL_SCHEMA_VERSION,
+    extractorVersions: EXTRACTOR_VERSIONS,
+    modelHash,
+  });
+
+  return { model, metadata };
+}
 
 function hashModel(model: ControlPlaneModel): string {
   const payload = JSON.stringify(model, null, 2) + "\n";

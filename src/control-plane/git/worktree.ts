@@ -48,6 +48,20 @@ export async function createGitWorktreeAtRevision(
   };
 }
 
+export async function withGitWorktreeAtRevision<T>(
+  repoRoot: string,
+  revision: string,
+  handler: (snapshot: GitWorktreeSnapshot) => Promise<T>,
+): Promise<T> {
+  const snapshot = await createGitWorktreeAtRevision(repoRoot, revision);
+
+  try {
+    return await handler(snapshot);
+  } finally {
+    await snapshot.cleanup();
+  }
+}
+
 // =============================================================================
 // INTERNAL HELPERS
 // =============================================================================

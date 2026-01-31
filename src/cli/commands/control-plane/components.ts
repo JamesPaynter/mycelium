@@ -6,6 +6,9 @@ import { resolveOwnershipForPath } from "../../../control-plane/extract/ownershi
 
 import type { ControlPlaneCommandContext } from "./index.js";
 
+const AT_OPTION_HELP =
+  "Run this query against the repo at the specified git revision (uses a temporary worktree).";
+
 // =============================================================================
 // COMMAND REGISTRATION
 // =============================================================================
@@ -19,6 +22,7 @@ export function registerComponentsCommands(
   components
     .command("list")
     .description("List known components")
+    .option("--at <commitish>", AT_OPTION_HELP)
     .action(async (...args) => {
       await handleComponentsList(ctx, resolveCommandFromArgs(args));
     });
@@ -27,6 +31,7 @@ export function registerComponentsCommands(
     .command("show")
     .description("Show component details")
     .argument("<id>", "Component id")
+    .option("--at <commitish>", AT_OPTION_HELP)
     .action(async (id, ...rest) => {
       await handleComponentsShow(ctx, String(id), resolveCommandFromArgs(rest));
     });
@@ -35,6 +40,7 @@ export function registerComponentsCommands(
     .command("owner")
     .description("Show owning component for a path")
     .argument("<path>", "Path to inspect")
+    .option("--at <commitish>", AT_OPTION_HELP)
     .action(async (targetPath, ...rest) => {
       await handleOwnerLookup(ctx, String(targetPath), resolveCommandFromArgs(rest));
     });
@@ -55,6 +61,7 @@ async function handleComponentsList(
       repoRoot: flags.repoPath,
       baseSha: flags.revision.baseSha,
       ref: flags.revision.ref,
+      at: flags.at,
       shouldBuild: flags.shouldBuild,
     });
 
@@ -81,6 +88,7 @@ async function handleComponentsShow(
       repoRoot: flags.repoPath,
       baseSha: flags.revision.baseSha,
       ref: flags.revision.ref,
+      at: flags.at,
       shouldBuild: flags.shouldBuild,
     });
 
@@ -110,6 +118,7 @@ async function handleOwnerLookup(
       repoRoot: flags.repoPath,
       baseSha: flags.revision.baseSha,
       ref: flags.revision.ref,
+      at: flags.at,
       shouldBuild: flags.shouldBuild,
     });
 
