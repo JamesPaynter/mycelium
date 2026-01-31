@@ -58,12 +58,13 @@ export function buildInitialPrompt(args: {
   const repoNavigation = [
     "Repo navigation tools (use before grepping):",
     "Prefer `mycelium cg` for ownership, dependencies, blast radius, and symbol navigation.",
-    "- mycelium cg components list",
-    "- mycelium cg owner <path>",
-    "- mycelium cg blast <path>",
-    "- mycelium cg symbols find <query>",
-    "- mycelium cg symbols def <symbol>",
-    "- mycelium cg symbols refs <symbol>",
+    "- Components list (orientation/boundaries): mycelium cg components list --json --repo .",
+    "- Owner lookup: mycelium cg owner <path> --json --repo .",
+    "- Blast radius: mycelium cg blast <path> --json --repo .",
+    "- Symbol search: mycelium cg symbols find <query> --json --repo .",
+    "- Definition lookup (requires `symbol_id` from `mycelium cg symbols find`): mycelium cg symbols def <symbol_id> --json --repo .",
+    "- Symbol refs: mycelium cg symbols refs <symbol_id> --json --repo .",
+    "If `mycelium cg` is unavailable or errors, fall back to local code search (`git ls-files`, `rg`, `grep`, reading files) and continue without failing the task.",
   ].join("\n");
 
   if (args.strictTddContext?.stage === "tests") {
@@ -86,6 +87,10 @@ export function buildInitialPrompt(args: {
   ];
 
   return sections.filter((part) => Boolean(part)).join("\n\n");
+}
+
+export function buildDeveloperPrompt(args: Parameters<typeof buildInitialPrompt>[0]): string {
+  return buildInitialPrompt(args);
 }
 
 export function buildRetryPrompt(args: {
