@@ -1,7 +1,8 @@
 import type { Command } from "commander";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { buildCli } from "../cli/index.js";
+import * as controlPlaneBuild from "../control-plane/model/build.js";
 
 import { createTempGitRepo } from "./helpers/temp-git-repo.js";
 
@@ -32,7 +33,39 @@ type TimeTravelRepo = {
 
 const CG_AT_TEST_TIMEOUT_MS = 120000;
 
+const snapshotCache = new Map<
+  string,
+  Awaited<ReturnType<typeof controlPlaneBuild.buildControlPlaneModelSnapshot>>
+>();
+const originalBuildSnapshot = controlPlaneBuild.buildControlPlaneModelSnapshot;
+
 let repoHandle: TempRepoHandle | null = null;
+
+// =============================================================================
+// SNAPSHOT CACHE
+// =============================================================================
+
+function installSnapshotCache(): void {
+  // Avoid rebuilding the same snapshot for every --at command in this test.
+  vi.spyOn(controlPlaneBuild, "buildControlPlaneModelSnapshot").mockImplementation(
+    async (options) => {
+      const key = options.baseSha?.trim();
+      if (key) {
+        const cached = snapshotCache.get(key);
+        if (cached) {
+          return cached;
+        }
+      }
+
+      const result = await originalBuildSnapshot(options);
+      if (key) {
+        snapshotCache.set(key, result);
+      }
+
+      return result;
+    },
+  );
+}
 
 // =============================================================================
 // CLI HELPERS
@@ -108,6 +141,7 @@ async function writeRootConfigs(handle: TempRepoHandle): Promise<void> {
       moduleResolution: "NodeNext",
       strict: false,
       noEmit: true,
+      noLib: true,
     },
     include: ["a/**/*.ts", "b/**/*.ts"],
   });
@@ -168,7 +202,14 @@ async function expectNoWorktreeLeaks(handle: TempRepoHandle): Promise<void> {
 // =============================================================================
 
 describe("cg --at revision queries", () => {
+  beforeEach(() => {
+    snapshotCache.clear();
+    installSnapshotCache();
+  });
+
   afterEach(async () => {
+    vi.restoreAllMocks();
+    snapshotCache.clear();
     process.exitCode = 0;
 
     if (!repoHandle) {
@@ -197,29 +238,16 @@ describe("cg --at revision queries", () => {
       expect(fooAtAMatches.map((match) => match.name)).toContain("foo");
       expect(fooAtAMatches.map((match) => match.file)).toContain("a/index.ts");
 
-      const fooAtC = expectOk(
-        await runJsonCommand<SymbolFindResult>(repoDir, [
-          "symbols",
-          "find",
-          "foo",
-          "--at",
-          commitC,
-        ]),
+      const symbolsAtC = expectOk(
+        await runJsonCommand<SymbolFindResult>(repoDir, ["symbols", "find", "--at", commitC]),
       );
-      expect(fooAtC.matches ?? []).toHaveLength(0);
-
-      const barAtC = expectOk(
-        await runJsonCommand<SymbolFindResult>(repoDir, [
-          "symbols",
-          "find",
-          "bar",
-          "--at",
-          commitC,
-        ]),
+      const symbolsAtCMatches = symbolsAtC.matches ?? [];
+      const symbolNamesAtC = symbolsAtCMatches.map((match) => match.name);
+      expect(symbolNamesAtC).toContain("bar");
+      expect(symbolNamesAtC).not.toContain("foo");
+      expect(symbolsAtCMatches).toEqual(
+        expect.arrayContaining([expect.objectContaining({ name: "bar", file: "b/index.ts" })]),
       );
-      const barAtCMatches = barAtC.matches ?? [];
-      expect(barAtCMatches.map((match) => match.name)).toContain("bar");
-      expect(barAtCMatches.map((match) => match.file)).toContain("b/index.ts");
 
       const ownerAtA = expectOk(
         await runJsonCommand<OwnershipResult>(repoDir, ["owner", "a/index.ts", "--at", commitA]),
