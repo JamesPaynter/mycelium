@@ -19,6 +19,9 @@ import {
 
 import type { ControlPlaneCommandContext } from "./index.js";
 
+const AT_OPTION_HELP =
+  "Run this query against the repo at the specified git revision (uses a temporary worktree).";
+
 // =============================================================================
 // SYMBOL COMMANDS
 // =============================================================================
@@ -33,6 +36,7 @@ export function registerSymbolCommands(
     .command("find")
     .description("Search for symbols")
     .argument("[query...]", "Search terms")
+    .option("--at <commitish>", AT_OPTION_HELP)
     .option("--kind <kind...>", "Filter by symbol kind")
     .option("--component <id>", "Filter by component id")
     .option("--path <glob>", "Filter by file path glob")
@@ -50,6 +54,7 @@ export function registerSymbolCommands(
     .command("def")
     .description("Show symbol definitions")
     .argument("<symbol_id>", "Symbol id")
+    .option("--at <commitish>", AT_OPTION_HELP)
     .option("--context <n>", "Include snippet context lines", (value) => parseInt(value, 10))
     .action(async (symbolId, opts, command) => {
       await handleSymbolsDef(String(symbolId), opts as SymbolDefOptions, command, sharedContext);
@@ -59,6 +64,7 @@ export function registerSymbolCommands(
     .command("refs")
     .description("Show symbol references")
     .argument("<symbol_id>", "Symbol id")
+    .option("--at <commitish>", AT_OPTION_HELP)
     .option("--limit <n>", "Limit number of references (default: 50)", (value) =>
       parseInt(value, 10),
     )
@@ -82,6 +88,7 @@ async function handleSymbolsFind(
       repoRoot: flags.repoPath,
       baseSha: flags.revision.baseSha,
       ref: flags.revision.ref,
+      at: flags.at,
       shouldBuild: flags.shouldBuild,
     });
 
@@ -120,6 +127,7 @@ async function handleSymbolsDef(
       repoRoot: flags.repoPath,
       baseSha: flags.revision.baseSha,
       ref: flags.revision.ref,
+      at: flags.at,
       shouldBuild: flags.shouldBuild,
     });
 
@@ -136,7 +144,7 @@ async function handleSymbolsDef(
     const snippet =
       definition && context
         ? await loadSymbolSnippet({
-            repoRoot: flags.repoPath,
+            repoRoot: modelResult.repoRoot,
             filePath: definition.file,
             line: definition.range.start.line,
             context,
@@ -168,6 +176,7 @@ async function handleSymbolsRefs(
       repoRoot: flags.repoPath,
       baseSha: flags.revision.baseSha,
       ref: flags.revision.ref,
+      at: flags.at,
       shouldBuild: flags.shouldBuild,
     });
 
@@ -199,7 +208,7 @@ async function handleSymbolsRefs(
     }
 
     const referenceResult = await resolveTypeScriptSymbolReferences({
-      repoRoot: flags.repoPath,
+      repoRoot: modelResult.repoRoot,
       components: modelResult.model.components,
       ownership: modelResult.model.ownership,
       definition,

@@ -19,8 +19,12 @@ import {
   buildControlPlaneModel,
   getControlPlaneModelInfo,
 } from "../../../control-plane/model/build.js";
-import type { ControlPlaneModel } from "../../../control-plane/model/schema.js";
-import { ControlPlaneBuildLockError, ControlPlaneStore } from "../../../control-plane/storage.js";
+import type {
+  ControlPlaneModelQueryOptions,
+  ControlPlaneModelQueryResult,
+} from "../../../control-plane/model/storage.js";
+import { loadControlPlaneModelForQuery } from "../../../control-plane/model/storage.js";
+import { ControlPlaneBuildLockError } from "../../../control-plane/storage.js";
 
 import { registerBlastRadiusCommand } from "./blast-radius.js";
 import { registerComponentsCommands } from "./components.js";
@@ -38,19 +42,16 @@ const DEPRECATED_CONTROL_PLANE_ALIASES = new Set(["cp", "control-plane"]);
 // =============================================================================
 
 type ControlPlaneCommandRuntimeContext = {
-  flags: ControlPlaneFlagOptions;
+  flags: ControlPlaneQueryFlags;
   output: ControlPlaneOutputOptions;
 };
 
 export type ControlPlaneCommandContext = {
   modelNotBuiltMessage: string;
   resolveCommandContext: (command: Command) => ControlPlaneCommandRuntimeContext;
-  loadControlPlaneModel: (options: {
-    repoRoot: string;
-    baseSha: string | null;
-    ref: string | null;
-    shouldBuild: boolean;
-  }) => Promise<{ model: ControlPlaneModel; baseSha: string } | null>;
+  loadControlPlaneModel: (
+    options: ControlPlaneModelQueryOptions,
+  ) => Promise<ControlPlaneModelQueryResult | null>;
   emitControlPlaneResult: <T>(result: T, output: ControlPlaneOutputOptions) => void;
   emitControlPlaneError: (error: ControlPlaneJsonError, output: ControlPlaneOutputOptions) => void;
   emitModelNotBuiltError: (
@@ -59,6 +60,10 @@ export type ControlPlaneCommandContext = {
     details?: Record<string, unknown> | null,
   ) => void;
   resolveModelStoreError: (error: unknown) => ControlPlaneJsonError;
+};
+
+type ControlPlaneQueryFlags = ControlPlaneFlagOptions & {
+  at: string | null;
 };
 
 // =============================================================================
@@ -113,8 +118,9 @@ export function registerControlPlaneCommand(program: Command): void {
 
 function resolveCommandContext(command: Command): ControlPlaneCommandRuntimeContext {
   const flags = resolveControlPlaneFlags(command);
+  const at = resolveAtOption(command);
   return {
-    flags,
+    flags: { ...flags, at },
     output: {
       useJson: flags.useJson,
       prettyJson: flags.prettyJson,
@@ -126,6 +132,12 @@ function resolveCommandContext(command: Command): ControlPlaneCommandRuntimeCont
 function resolveDebugFlag(command: Command): boolean {
   const options = command.optsWithGlobals() as { debug?: boolean };
   return Boolean(options.debug);
+}
+
+function resolveAtOption(command: Command): string | null {
+  const options = command.optsWithGlobals() as { at?: string };
+  const trimmed = options.at?.trim();
+  return trimmed && trimmed.length > 0 ? trimmed : null;
 }
 
 // =============================================================================
@@ -302,30 +314,8 @@ async function loadControlPlaneModel(options: {
   repoRoot: string;
   baseSha: string | null;
   ref: string | null;
+  at?: string | null;
   shouldBuild: boolean;
-}): Promise<{ model: ControlPlaneModel; baseSha: string } | null> {
-  if (options.shouldBuild) {
-    const buildResult = await buildControlPlaneModel({
-      repoRoot: options.repoRoot,
-      baseSha: options.baseSha,
-      ref: options.ref,
-    });
-    const store = new ControlPlaneStore(options.repoRoot);
-    const model = await store.readModel(buildResult.base_sha);
-    return model ? { model, baseSha: buildResult.base_sha } : null;
-  }
-
-  const info = await getControlPlaneModelInfo({
-    repoRoot: options.repoRoot,
-    baseSha: options.baseSha,
-    ref: options.ref,
-  });
-
-  if (!info.exists) {
-    return null;
-  }
-
-  const store = new ControlPlaneStore(options.repoRoot);
-  const model = await store.readModel(info.base_sha);
-  return model ? { model, baseSha: info.base_sha } : null;
+}): Promise<ControlPlaneModelQueryResult | null> {
+  return loadControlPlaneModelForQuery(options);
 }

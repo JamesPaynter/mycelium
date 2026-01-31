@@ -7,6 +7,9 @@ import {
 
 import type { ControlPlaneCommandContext } from "./index.js";
 
+const AT_OPTION_HELP =
+  "Run this query against the repo at the specified git revision (uses a temporary worktree).";
+
 // =============================================================================
 // TYPES
 // =============================================================================
@@ -28,6 +31,7 @@ export function registerDependencyCommands(
     .command("deps")
     .description("Show dependencies for a component")
     .argument("<component>", "Component id")
+    .option("--at <commitish>", AT_OPTION_HELP)
     .option("--transitive", "Include transitive dependencies", false)
     .option("--limit <n>", "Limit number of edges", (value) => parseInt(value, 10))
     .action(async (componentId, opts, command) => {
@@ -44,6 +48,7 @@ export function registerDependencyCommands(
     .command("rdeps")
     .description("Show reverse dependencies for a component")
     .argument("<component>", "Component id")
+    .option("--at <commitish>", AT_OPTION_HELP)
     .option("--transitive", "Include transitive dependencies", false)
     .option("--limit <n>", "Limit number of edges", (value) => parseInt(value, 10))
     .action(async (componentId, opts, command) => {
@@ -75,6 +80,7 @@ async function handleDependencyQuery(
       repoRoot: flags.repoPath,
       baseSha: flags.revision.baseSha,
       ref: flags.revision.ref,
+      at: flags.at,
       shouldBuild: flags.shouldBuild,
     });
 

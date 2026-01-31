@@ -116,6 +116,20 @@ async function commitPolicyEvalChange(repoDir: string): Promise<void> {
   await execa("git", ["commit", "-m", "policy eval change"], { cwd: repoDir });
 }
 
+async function commitTimeTravelSymbol(repoDir: string): Promise<void> {
+  const targetPath = path.join(repoDir, "apps", "web", "src", "index.ts");
+  const payload = [
+    "",
+    "export function timeTravelMarker(): string {",
+    '  return "future";',
+    "}",
+    "",
+  ].join("\n");
+  await fs.appendFile(targetPath, payload, "utf8");
+  await execa("git", ["add", "-A"], { cwd: repoDir });
+  await execa("git", ["commit", "-m", "add time travel marker"], { cwd: repoDir });
+}
+
 // =============================================================================
 // TESTS
 // =============================================================================
@@ -248,6 +262,64 @@ describe("control graph CLI", () => {
 
       expect(payload.ok).toBe(true);
       expect(payload.result?.owner?.component?.id).toBe("acme-web-app");
+    },
+    CONTROL_PLANE_CLI_TIMEOUT_MS,
+  );
+
+  it(
+    "supports --at for symbol search queries",
+    async () => {
+      const repoDir = await createTempRepoFromFixture();
+      await commitTimeTravelSymbol(repoDir);
+
+      const logSpy = vi.spyOn(console, "log").mockImplementation(() => undefined);
+
+      await runCli([
+        "node",
+        "mycelium",
+        "cg",
+        "symbols",
+        "find",
+        "timeTravelMarker",
+        "--json",
+        "--repo",
+        repoDir,
+      ]);
+
+      const jsonLine = logSpy.mock.calls.map((call) => call.join(" ")).pop() ?? "";
+      const payload = JSON.parse(jsonLine) as {
+        ok: boolean;
+        result?: { matches?: Array<{ name?: string }> };
+      };
+
+      expect(payload.ok).toBe(true);
+      const matches = payload.result?.matches ?? [];
+      expect(matches.map((match) => match.name)).toContain("timeTravelMarker");
+
+      logSpy.mockClear();
+
+      await runCli([
+        "node",
+        "mycelium",
+        "cg",
+        "symbols",
+        "find",
+        "timeTravelMarker",
+        "--json",
+        "--repo",
+        repoDir,
+        "--at",
+        "HEAD~1",
+      ]);
+
+      const atLine = logSpy.mock.calls.map((call) => call.join(" ")).pop() ?? "";
+      const atPayload = JSON.parse(atLine) as {
+        ok: boolean;
+        result?: { matches?: Array<{ name?: string }> };
+      };
+
+      expect(atPayload.ok).toBe(true);
+      expect(atPayload.result?.matches ?? []).toHaveLength(0);
     },
     CONTROL_PLANE_CLI_TIMEOUT_MS,
   );
