@@ -178,9 +178,92 @@ export async function createMyceliumDevShimBinDir(): Promise<string> {
   const binDir = await fs.mkdtemp(path.join(os.tmpdir(), "mycelium-dev-shim-"));
   const repoRoot = path.resolve(process.cwd());
   const shimPath = path.join(binDir, "mycelium");
+  const distPath = path.join(repoRoot, "dist", "index.js");
   const tsxPath = path.join(repoRoot, "node_modules", "tsx", "dist", "cli.mjs");
   const mainPath = path.join(repoRoot, "src", "main.ts");
-  const script = ["#!/usr/bin/env bash", `node "${tsxPath}" "${mainPath}" "$@"`, ""].join("\n");
+  const useStub = process.env.MYCELIUM_TEST_CG_STUB === "1";
+  const stubScript = `#!/usr/bin/env node
+const args = process.argv.slice(2);
+const hasJson = args.includes("--json");
+const output = (payload) => {
+  const text = hasJson ? JSON.stringify(payload) : JSON.stringify(payload, null, 2);
+  process.stdout.write(text);
+};
+
+if (args[0] !== "cg") {
+  console.error("Unsupported mycelium test command");
+  process.exit(1);
+}
+
+const subcommand = args[1];
+if (subcommand === "build") {
+  output({
+    ok: true,
+    result: {
+      base_sha: "test-sha",
+      cache_dir: "test-cache",
+      metadata: { schema_version: 1, built_at: "test" },
+      reused: true,
+    },
+  });
+  process.exit(0);
+}
+
+if (subcommand === "owner") {
+  output({
+    ok: true,
+    result: {
+      path: args[2] ?? "",
+      owner: {
+        component: { id: "acme-web-app", name: "@acme/web-app", roots: ["apps/web"] },
+        root: "apps/web",
+      },
+    },
+  });
+  process.exit(0);
+}
+
+if (subcommand === "symbols" && args[2] === "find") {
+  output({
+    ok: true,
+    result: {
+      query: args[3] ?? "",
+      total: 1,
+      limit: 5,
+      truncated: false,
+      matches: [
+        {
+          symbol_id: "ts:acme-utils/formatUserId@packages/utils/src/index.ts:185",
+        },
+      ],
+    },
+  });
+  process.exit(0);
+}
+
+if (subcommand === "symbols" && args[2] === "def") {
+  output({
+    ok: true,
+    result: {
+      symbol_id: args[3] ?? "",
+      definition: { file: "packages/utils/src/index.ts" },
+    },
+  });
+  process.exit(0);
+}
+
+console.error("Unhandled mycelium test command");
+process.exit(1);
+`;
+  const hasDist = await fs
+    .access(distPath)
+    .then(() => true)
+    .catch(() => false);
+  const script = useStub
+    ? stubScript
+    : hasDist
+      ? ["#!/usr/bin/env bash", `node "${distPath}" "$@"`, ""].join("\n")
+      : ["#!/usr/bin/env bash", `node "${tsxPath}" "${mainPath}" "$@"`, ""].join("\n");
 
   await fs.writeFile(shimPath, script, "utf8");
   await fs.chmod(shimPath, 0o755);

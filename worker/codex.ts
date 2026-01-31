@@ -390,13 +390,13 @@ class MockCodexRunner {
         return null;
       }
 
-      symbolDefinitionPath = this.readString(
-        (
-          definitionResult.parsedJson as {
-            result?: { definition?: { location?: { path?: unknown } } };
-          }
-        )?.result?.definition?.location?.path,
-      );
+      const definition = (
+        definitionResult.parsedJson as {
+          result?: { definition?: { file?: unknown; location?: { path?: unknown } } };
+        }
+      )?.result?.definition;
+      symbolDefinitionPath =
+        this.readString(definition?.location?.path) ?? this.readString(definition?.file);
     }
 
     return {
