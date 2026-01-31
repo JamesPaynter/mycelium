@@ -437,6 +437,7 @@ async function handleValidatorReportRequest(
   sendApiOk(res, result.result, method === "HEAD");
 }
 
+// eslint-disable-next-line max-statements -- explicit route branching keeps paths easy to scan.
 function matchApiRoute(pathname: string): ApiRouteMatch {
   const segments = pathname.split("/").filter(Boolean);
   if (segments.length === 4) {
@@ -702,6 +703,7 @@ function sendApiOk(res: ServerResponse, result: unknown, isHead: boolean): void 
   sendJson(res, 200, { ok: true, result }, isHead);
 }
 
+// eslint-disable-next-line max-params -- keep response arguments explicit at call sites.
 function sendApiError(
   res: ServerResponse,
   status: number,

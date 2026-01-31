@@ -310,6 +310,7 @@ export function createListView({ appState, actions, fetchApi }) {
 // TASK INSPECTOR
 // =============================================================================
 
+// eslint-disable-next-line max-statements -- inspector flow is clearer inline for UI wiring.
 export function renderTaskInspector(container, appState, options = {}) {
   const { fetchApi, showCloseButton = false, onClose } = options;
   const EVENTS_POLL_INTERVAL_MS = 2000;
@@ -721,6 +722,7 @@ export function renderTaskInspector(container, appState, options = {}) {
   // DOM FRAME
   // =============================================================================
 
+  // eslint-disable-next-line max-statements -- layout composition reads better as a single flow.
   function buildInspectorFrame() {
     container.classList.add("task-inspector");
     container.innerHTML = "";
