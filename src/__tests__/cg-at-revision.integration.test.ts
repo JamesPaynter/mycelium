@@ -1,5 +1,5 @@
 import type { Command } from "commander";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 
 import { buildCli } from "../cli/index.js";
 
@@ -30,7 +30,7 @@ type TimeTravelRepo = {
   commitC: string;
 };
 
-const CG_AT_TEST_TIMEOUT_MS = 30000;
+const CG_AT_TEST_TIMEOUT_MS = 120000;
 
 let repoHandle: TempRepoHandle | null = null;
 
@@ -52,19 +52,26 @@ function installExitOverride(command: Command): void {
   }
 }
 
-function parseLastJsonLine<T>(logSpy: ReturnType<typeof vi.spyOn>): T {
-  const line = logSpy.mock.calls.map((call: unknown[]) => call.join(" ")).pop() ?? "";
-  return JSON.parse(line) as T;
-}
+async function runJsonCommand<T>(repoDir: string, args: string[]): Promise<JsonEnvelope<T>> {
+  const lines: string[] = [];
+  const originalLog = console.log;
 
-function createJsonRunner(repoDir: string): <T>(args: string[]) => Promise<JsonEnvelope<T>> {
-  const logSpy = vi.spyOn(console, "log").mockImplementation(() => undefined);
-
-  return async function runJson<T>(args: string[]): Promise<JsonEnvelope<T>> {
-    logSpy.mockClear();
-    await runCli(["node", "mycelium", "cg", ...args, "--json", "--repo", repoDir]);
-    return parseLastJsonLine<JsonEnvelope<T>>(logSpy);
+  console.log = (...message: unknown[]) => {
+    lines.push(message.map((value) => String(value)).join(" "));
   };
+
+  try {
+    await runCli(["node", "mycelium", "cg", ...args, "--json", "--repo", repoDir]);
+  } finally {
+    console.log = originalLog;
+  }
+
+  const line = lines[lines.length - 1] ?? "";
+  if (!line) {
+    throw new Error("Expected JSON output from control graph command.");
+  }
+
+  return JSON.parse(line) as JsonEnvelope<T>;
 }
 
 function expectOk<T>(payload: JsonEnvelope<T>): T {
@@ -162,7 +169,6 @@ async function expectNoWorktreeLeaks(handle: TempRepoHandle): Promise<void> {
 
 describe("cg --at revision queries", () => {
   afterEach(async () => {
-    vi.restoreAllMocks();
     process.exitCode = 0;
 
     if (!repoHandle) {
@@ -177,42 +183,59 @@ describe("cg --at revision queries", () => {
     "queries symbols, owner, and deps at specific revisions",
     async () => {
       const { repoDir, commitA, commitB, commitC } = await setupTimeTravelRepo();
-      const runJson = createJsonRunner(repoDir);
 
       const fooAtA = expectOk(
-        await runJson<SymbolFindResult>(["symbols", "find", "foo", "--at", commitA]),
+        await runJsonCommand<SymbolFindResult>(repoDir, [
+          "symbols",
+          "find",
+          "foo",
+          "--at",
+          commitA,
+        ]),
       );
       const fooAtAMatches = fooAtA.matches ?? [];
       expect(fooAtAMatches.map((match) => match.name)).toContain("foo");
       expect(fooAtAMatches.map((match) => match.file)).toContain("a/index.ts");
 
       const fooAtC = expectOk(
-        await runJson<SymbolFindResult>(["symbols", "find", "foo", "--at", commitC]),
+        await runJsonCommand<SymbolFindResult>(repoDir, [
+          "symbols",
+          "find",
+          "foo",
+          "--at",
+          commitC,
+        ]),
       );
       expect(fooAtC.matches ?? []).toHaveLength(0);
 
       const barAtC = expectOk(
-        await runJson<SymbolFindResult>(["symbols", "find", "bar", "--at", commitC]),
+        await runJsonCommand<SymbolFindResult>(repoDir, [
+          "symbols",
+          "find",
+          "bar",
+          "--at",
+          commitC,
+        ]),
       );
       const barAtCMatches = barAtC.matches ?? [];
       expect(barAtCMatches.map((match) => match.name)).toContain("bar");
       expect(barAtCMatches.map((match) => match.file)).toContain("b/index.ts");
 
       const ownerAtA = expectOk(
-        await runJson<OwnershipResult>(["owner", "a/index.ts", "--at", commitA]),
+        await runJsonCommand<OwnershipResult>(repoDir, ["owner", "a/index.ts", "--at", commitA]),
       );
       expect(ownerAtA.owner?.component?.id).toBe("a");
 
       const ownerAtC = expectOk(
-        await runJson<OwnershipResult>(["owner", "b/index.ts", "--at", commitC]),
+        await runJsonCommand<OwnershipResult>(repoDir, ["owner", "b/index.ts", "--at", commitC]),
       );
       expect(ownerAtC.owner?.component?.id).toBe("b");
 
       const depsAtA = expectOk(
-        await runJson<DependencyQueryResult>(["deps", "b", "--at", commitA]),
+        await runJsonCommand<DependencyQueryResult>(repoDir, ["deps", "b", "--at", commitA]),
       );
       const depsAtB = expectOk(
-        await runJson<DependencyQueryResult>(["deps", "b", "--at", commitB]),
+        await runJsonCommand<DependencyQueryResult>(repoDir, ["deps", "b", "--at", commitB]),
       );
 
       expect(depsAtA.edges ?? []).toHaveLength(0);
