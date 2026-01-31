@@ -21,6 +21,13 @@ type BlastQueryOptions = {
   task?: string;
 };
 
+const AT_OPTION_HELP =
+  "Run this query against the repo at the specified git revision (uses a temporary worktree).";
+const DIFF_OPTION_HELP =
+  "Git diff rev range (e.g., HEAD~1..HEAD). Uses the current checkout even when --at is set.";
+const AGAINST_OPTION_HELP =
+  "Git ref to diff against HEAD. Uses the current checkout even when --at is set.";
+
 // =============================================================================
 // COMMAND REGISTRATION
 // =============================================================================
@@ -34,8 +41,9 @@ export function registerBlastRadiusCommand(
     .description("Estimate blast radius for a change")
     .argument("[targets...]", "Paths to treat as changed")
     .option("--changed <paths...>", "Paths to treat as changed")
-    .option("--diff <range>", "Git diff rev range (e.g., HEAD~1..HEAD)")
-    .option("--against <ref>", "Git ref to diff against HEAD")
+    .option("--diff <range>", DIFF_OPTION_HELP)
+    .option("--against <ref>", AGAINST_OPTION_HELP)
+    .option("--at <commitish>", AT_OPTION_HELP)
     .option("--run <id>", "Run id for task blast artifact")
     .option("--task <id>", "Task id for task blast artifact")
     .action(async (targets, opts, command) => {
@@ -74,6 +82,7 @@ async function handleBlastQuery(
       repoRoot: flags.repoPath,
       baseSha: flags.revision.baseSha,
       ref: flags.revision.ref,
+      at: flags.at,
       shouldBuild: flags.shouldBuild,
     });
 
