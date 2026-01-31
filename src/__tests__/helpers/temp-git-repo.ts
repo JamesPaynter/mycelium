@@ -83,6 +83,7 @@ async function initGitRepo(repoDir: string): Promise<void> {
   await execa("git", ["config", "user.email", "mycelium-test@example.com"], {
     cwd: repoDir,
   });
+  await execa("git", ["config", "commit.gpgsign", "false"], { cwd: repoDir });
 }
 
 function normalizeLineEndings(contents: string): string {
