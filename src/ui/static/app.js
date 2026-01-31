@@ -48,6 +48,13 @@ const views = {
   map: createMapView({ appState }),
 };
 
+const listGardenPreview = createGardenView({
+  container: document.querySelector("#list-garden .grove-preview-body"),
+  appState,
+  actions: viewActions,
+  fetchApi,
+});
+
 init();
 
 // =============================================================================
@@ -110,6 +117,7 @@ function wireControls() {
     appState.pollingPaused = elements.pauseTailToggle.checked;
     views.list.setPollingPaused(appState.pollingPaused);
     views.garden.setPollingPaused?.(appState.pollingPaused);
+    listGardenPreview.setPollingPaused?.(appState.pollingPaused);
   });
 
   for (const tab of elements.viewTabs) {
@@ -123,6 +131,7 @@ function initViews() {
   for (const view of Object.values(views)) {
     view.init?.();
   }
+  listGardenPreview.init?.();
 }
 
 function loadTargetFromQuery() {
@@ -172,6 +181,7 @@ function setActiveView(viewName, options = {}) {
   for (const [name, view] of Object.entries(views)) {
     view.setActive?.(name === normalizedView);
   }
+  listGardenPreview.setActive?.(normalizedView === "list");
 
   if (!options.skipUrlUpdate && hasChanged) {
     updateQueryParams();
@@ -235,6 +245,7 @@ function setTarget(projectName, runId, options = {}) {
   views.list.reset();
   views.garden.reset?.();
   views.map.reset?.();
+  listGardenPreview.reset?.();
   updateQueryParams();
   void fetchRuns(projectName);
   startSummaryPolling();
@@ -267,6 +278,7 @@ async function requestRefresh() {
   await fetchSummary();
   await views.list.refresh();
   await views.map.refresh?.();
+  await listGardenPreview.refresh?.();
 }
 
 function setSelectedTask(taskId) {
@@ -292,6 +304,7 @@ async function fetchSummary() {
     appState.summary = summary;
     views.list.onSummary(summary);
     views.garden.onSummary?.(summary);
+    listGardenPreview.onSummary?.(summary);
     setGlobalError("");
   } catch (_error) {
     setGlobalError(toErrorMessage(_error));
