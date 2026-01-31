@@ -72,6 +72,7 @@ export function buildContainerEnv(args: {
     CODEX_HOME: CONTAINER_CODEX_HOME,
     RUN_LOGS_DIR: CONTAINER_LOGS_DIR,
     LOG_CODEX_PROMPTS: args.input.logCodexPrompts ? "1" : "0",
+    MYCELIUM_TEST_CG: process.env.MYCELIUM_TEST_CG,
   };
 }
 
