@@ -228,6 +228,116 @@ docker:
     expect(config.docker.pids_limit).toBe(128);
   });
 
+  it("defaults cleanup policies to on_success when cleanup is omitted", () => {
+    const configPath = writeConfig(
+      "cleanup-defaults.yaml",
+      `
+repo_path: /tmp/repo
+main_branch: development-codex
+doctor: "npm test"
+resources:
+  - name: backend
+    paths: ["server/*"]
+planner:
+  provider: openai
+  model: o3
+worker:
+  model: gpt-5.1-codex-max
+`,
+    );
+
+    const config = loadProjectConfig(configPath);
+
+    expect(config.cleanup).toEqual({
+      workspaces: "on_success",
+      containers: "on_success",
+    });
+  });
+
+  it("defaults cleanup policies to on_success when cleanup is an empty object", () => {
+    const configPath = writeConfig(
+      "cleanup-empty.yaml",
+      `
+repo_path: /tmp/repo
+main_branch: development-codex
+doctor: "npm test"
+cleanup: {}
+resources:
+  - name: backend
+    paths: ["server/*"]
+planner:
+  provider: openai
+  model: o3
+worker:
+  model: gpt-5.1-codex-max
+`,
+    );
+
+    const config = loadProjectConfig(configPath);
+
+    expect(config.cleanup).toEqual({
+      workspaces: "on_success",
+      containers: "on_success",
+    });
+  });
+
+  it("defaults missing cleanup fields to on_success", () => {
+    const configPath = writeConfig(
+      "cleanup-partial.yaml",
+      `
+repo_path: /tmp/repo
+main_branch: development-codex
+doctor: "npm test"
+cleanup:
+  workspaces: never
+resources:
+  - name: backend
+    paths: ["server/*"]
+planner:
+  provider: openai
+  model: o3
+worker:
+  model: gpt-5.1-codex-max
+`,
+    );
+
+    const config = loadProjectConfig(configPath);
+
+    expect(config.cleanup).toEqual({
+      workspaces: "never",
+      containers: "on_success",
+    });
+  });
+
+  it("allows opting out of cleanup with explicit never policies", () => {
+    const configPath = writeConfig(
+      "cleanup-never.yaml",
+      `
+repo_path: /tmp/repo
+main_branch: development-codex
+doctor: "npm test"
+cleanup:
+  workspaces: never
+  containers: never
+resources:
+  - name: backend
+    paths: ["server/*"]
+planner:
+  provider: openai
+  model: o3
+worker:
+  model: gpt-5.1-codex-max
+`,
+    );
+
+    const config = loadProjectConfig(configPath);
+
+    expect(config.cleanup).toEqual({
+      workspaces: "never",
+      containers: "never",
+    });
+  });
+
   it("applies doctor canary defaults", () => {
     const configPath = writeConfig(
       "defaults.yaml",
