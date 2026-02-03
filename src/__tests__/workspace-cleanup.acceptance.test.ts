@@ -26,7 +26,7 @@ const originalEnv: Record<(typeof ENV_VARS)[number], string | undefined> = Objec
   ENV_VARS.map((key) => [key, process.env[key]]),
 ) as Record<(typeof ENV_VARS)[number], string | undefined>;
 
-describe("acceptance: cleanup workspaces on success", () => {
+describe("acceptance: cleanup workspaces on success (default config)", () => {
   const tempRoots: string[] = [];
 
   afterEach(async () => {
@@ -106,8 +106,6 @@ async function writeProjectConfig(configPath: string, repoDir: string): Promise<
     "manifest_enforcement: off",
     "doctor: 'node -e \"process.exit(0)\"'",
     "max_parallel: 1",
-    "cleanup:",
-    "  workspaces: on_success",
     "resources:",
     "  - name: repo",
     '    paths: ["**/*"]',
