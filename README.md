@@ -2,6 +2,8 @@
 
 Codex-powered task orchestration for long-running software delivery.
 
+![Mycelium Visualizer (Garden view)](docs/assets/mycelium-visualizer-garden.png)
+
 Mycelium turns an implementation plan into explicit tasks, runs them in isolated workers
 (Docker by default), validates outcomes, and can resume after interruptions.
 
