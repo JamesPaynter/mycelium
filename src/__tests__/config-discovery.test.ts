@@ -48,6 +48,9 @@ describe("resolveProjectConfigPath", () => {
     expect(config).toContain("doctor: ./.mycelium/doctor.sh");
     expect(config).toContain("doctor_canary:");
     expect(config).toContain("env_var: ORCH_CANARY");
+    expect(config).toContain("cleanup:");
+    expect(config).toContain("workspaces: on_success");
+    expect(config).toContain("containers: on_success");
     expect(config).toContain("ui:");
     expect(config).toContain("open_browser: true");
     expect(config).toContain("planner:");

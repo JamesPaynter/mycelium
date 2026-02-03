@@ -148,8 +148,8 @@ const CleanupPolicySchema = z.enum(["never", "on_success"]);
 
 const CleanupSchema = z
   .object({
-    workspaces: CleanupPolicySchema.default("never"),
-    containers: CleanupPolicySchema.default("never"),
+    workspaces: CleanupPolicySchema.default("on_success"),
+    containers: CleanupPolicySchema.default("on_success"),
   })
   .strict();
 
