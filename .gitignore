@@ -19,6 +19,7 @@ release
 *.local
 *.gz
 *.tgz
+*.zip
 
 # Editor directories and files
 .vscode/*
